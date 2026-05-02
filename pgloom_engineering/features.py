@@ -5,6 +5,13 @@ from typing import Any
 from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 
+from pgloom_engineering.contract_store import (
+    list_handoffs,
+    list_plan_contracts,
+    list_recovery_actions,
+    list_task_contracts,
+)
+from pgloom_engineering.projects import default_agent_topology
 from pgloom_engineering.token_savior import list_token_savior_usage, summarize_token_savior_usage
 
 
@@ -205,13 +212,27 @@ def get_feature_aggregate(
         model_usage = _model_usage(conn, feature_id, task_ids)
     token_savior_rows = list_token_savior_usage(feature_id, database_url=database_url)
     token_savior_summary = summarize_token_savior_usage(feature_id, database_url=database_url)
+    plan_contracts = list_plan_contracts(feature_id, database_url=database_url)
+    task_contracts = list_task_contracts(feature_id, database_url=database_url)
+    handoffs = list_handoffs(feature_id, database_url=database_url)
+    recovery_actions = list_recovery_actions(feature_id, database_url=database_url)
+    feature_dict = dict(feature)
+    raw_metadata = feature_dict.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
     return {
-        "feature": dict(feature),
+        "feature": feature_dict,
         "workflow": dict(workflow) if workflow is not None else None,
         "tasks": [dict(row) for row in tasks],
         "approvals": approvals,
         "artifacts": artifacts,
         "recent_events": recent_events,
+        "agent_topology": metadata.get("agent_topology")
+        or default_agent_topology().model_dump(mode="json"),
+        "plan_contracts": plan_contracts,
+        "active_plan_contract": next((row for row in plan_contracts if row.get("active")), None),
+        "task_contracts": task_contracts,
+        "handoffs": handoffs,
+        "recovery_actions": recovery_actions,
         "model_usage": model_usage,
         "token_savior": {
             "summary": token_savior_summary,

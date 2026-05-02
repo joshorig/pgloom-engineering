@@ -11,6 +11,11 @@ REQUIRED_TABLES = {
     "engineering_self_repair_issues",
     "engineering_self_repair_deliberations",
     "engineering_token_savior_usage",
+    "engineering_plan_contracts",
+    "engineering_task_contracts",
+    "engineering_handoffs",
+    "engineering_recovery_actions",
+    "engineering_projects",
 }
 
 
