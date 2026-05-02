@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pgloom-engineering"
+version = "0.1.0"
+description = "Engineering orchestrator built on pgloom."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Josh Cassidy", email = "cassidy.joshua@googlemail.com" }]
+dependencies = [
+  "pgloom>=0.2,<0.3",
+  "typer>=0.12",
+  "pydantic-settings>=2",
+  "rich>=13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-timeout>=2",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+pgloom-engineering = "pgloom_engineering.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/joshorig/pgloom-engineering"
+Repository = "https://github.com/joshorig/pgloom-engineering"
+
+[tool.setuptools.packages.find]
+include = ["pgloom_engineering*"]
+
+[tool.setuptools.package-data]
+pgloom_engineering = ["db/schema/*.sql", "py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["psycopg.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+timeout = 30
