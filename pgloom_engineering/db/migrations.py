@@ -10,6 +10,7 @@ REQUIRED_TABLES = {
     "engineering_feature_children",
     "engineering_self_repair_issues",
     "engineering_self_repair_deliberations",
+    "engineering_token_savior_usage",
 }
 
 

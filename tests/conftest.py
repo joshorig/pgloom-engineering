@@ -21,6 +21,7 @@ def database_url() -> Iterator[str]:
         conn.execute(
             """
             truncate table
+              engineering_token_savior_usage,
               engineering_self_repair_deliberations,
               engineering_self_repair_issues,
               engineering_feature_children,
