@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pgloom.context import TokenSavingsRecord, record_token_savings
 from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pydantic import BaseModel, Field
@@ -53,6 +54,26 @@ def record_token_savior_usage(
         ).fetchone()
     if row is None:
         raise RuntimeError("token-savior usage insert did not return a row")
+    record_token_savings(
+        TokenSavingsRecord(
+            scope_id=usage.feature_id,
+            workflow_id=usage.workflow_id,
+            task_id=usage.task_id,
+            model_usage_id=usage.model_usage_id,
+            profile_name=usage.profile_name,
+            input_tokens_original=usage.input_tokens_original,
+            input_tokens_after=usage.input_tokens_after_savior,
+            tokens_saved=usage.tokens_saved,
+            reduction_ratio=usage.reduction_ratio,
+            estimated_cost_saved_usd=usage.estimated_cost_saved_usd,
+            metadata={
+                **usage.metadata,
+                "source_table": "engineering_token_savior_usage",
+                "source_row_id": row["id"],
+            },
+        ),
+        database_url=database_url,
+    )
     return dict(row)
 
 

@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Josh Cassidy", email = "cassidy.joshua@googlemail.com" }]
 dependencies = [
-  "pgloom>=0.2,<0.3",
+  "pgloom>=0.3,<0.4",
   "typer>=0.12",
   "pydantic-settings>=2",
   "PyYAML>=6",

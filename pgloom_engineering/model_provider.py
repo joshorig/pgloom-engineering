@@ -4,13 +4,12 @@ import json
 import re
 from typing import Any
 
+from pgloom.context import count_tokens
 from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pgloom.harness.subprocess import SubprocessResult, run_bounded
 from pgloom.models.cli import CLIModelProfile
 from pydantic import BaseModel, Field
-
-from pgloom_engineering.token_count import count_tokens
 
 
 class EngineeringModelInvocationResult(BaseModel):

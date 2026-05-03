@@ -172,6 +172,16 @@ def test_live_planner_records_model_usage_and_token_savior_rows(
             """,
             (workflow["id"],),
         ).fetchall()
+        generic_token_rows = conn.execute(
+            """
+            select model_usage_id, profile_name, input_tokens_original,
+                   input_tokens_after, tokens_saved, metadata
+            from token_savings
+            where scope_id = %s
+            order by id
+            """,
+            (workflow["id"],),
+        ).fetchall()
         capsule_rows = conn.execute(
             """
             select project, method, input_tokens_original, input_tokens_after_savior,
@@ -203,6 +213,19 @@ def test_live_planner_records_model_usage_and_token_savior_rows(
         "planner-critic",
     }
     assert len(token_rows) == 4
+    assert len(generic_token_rows) == len(token_rows)
+    assert sum(int(row["tokens_saved"]) for row in generic_token_rows) == sum(
+        int(row["tokens_saved"]) for row in token_rows
+    )
+    assert sum(int(row["input_tokens_original"]) for row in generic_token_rows) == sum(
+        int(row["input_tokens_original"]) for row in token_rows
+    )
+    assert sum(int(row["input_tokens_after"]) for row in generic_token_rows) == sum(
+        int(row["input_tokens_after_savior"]) for row in token_rows
+    )
+    assert {row["metadata"]["source_table"] for row in generic_token_rows} == {
+        "engineering_token_savior_usage"
+    }
     assert {int(row["tokens_saved"]) for row in token_rows} == {600}
     assert all(row["model_usage_id"] is not None for row in token_rows)
     assert {row["metadata"]["role"] for row in token_rows} == {

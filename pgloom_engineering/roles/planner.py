@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from pgloom.context import count_tokens
 from pgloom.db.postgres import connect
 from pgloom.harness.result import HandlerResult
 from pgloom.memory import MemoryEntry
@@ -41,7 +42,6 @@ from pgloom_engineering.planner.token_savior_context import (
     build_token_savior_project_context,
 )
 from pgloom_engineering.projects import ProjectConfig, get_project, role_enabled
-from pgloom_engineering.token_count import count_tokens
 from pgloom_engineering.token_savior import TokenSaviorUsage, record_token_savior_usage
 
 

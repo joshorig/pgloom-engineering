@@ -4,12 +4,12 @@ import shutil
 from typing import Literal
 
 from pgloom.artifacts import register_artifact
+from pgloom.context import count_tokens
 from pgloom.harness.subprocess import SubprocessResult, run_bounded
 from pydantic import BaseModel, Field
 
 from pgloom_engineering.config import get_settings
 from pgloom_engineering.rtk.policy import FilterPolicy, should_filter
-from pgloom_engineering.token_count import count_tokens
 from pgloom_engineering.token_savior import TokenSaviorUsage, record_token_savior_usage
 
 

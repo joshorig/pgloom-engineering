@@ -7,11 +7,11 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+from pgloom.context import count_tokens
 from pydantic import BaseModel
 
 from pgloom_engineering.path_policy import discover_qa_write_paths
 from pgloom_engineering.planner import ProjectContext
-from pgloom_engineering.token_count import count_tokens
 
 
 class TokenSaviorContextResult(BaseModel):
