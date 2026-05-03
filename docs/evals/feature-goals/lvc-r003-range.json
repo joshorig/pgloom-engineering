@@ -1,0 +1,20 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "lvc-standard",
+  "goal": "Implement R-003 range-query API on stores: zero-allocation StoreVisitor range scans for SINGLE and DOUBLE stores.",
+  "requirements": [
+    "Add a zero-allocation StoreVisitor interface.",
+    "Implement inclusive ascending and descending range scans for SINGLE and DOUBLE stores.",
+    "Cover empty range, single-key range, full-keyspace range, and reverse scans.",
+    "Optional key-prefix filtering must avoid Consumer boxing and visitor hot-path allocation."
+  ],
+  "constraints": [
+    "Alloc gate must stay green on the visitor hot path.",
+    "Do not introduce sorted-by-value queries, composite keys, or secondary indexes."
+  ],
+  "acceptance_criteria": [
+    "Range tests cover empty range, single-key range, full-keyspace, and reverse scan.",
+    "SINGLE and DOUBLE store variants are both covered.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ]
+}

@@ -26,6 +26,7 @@ def database_url() -> Iterator[str]:
               engineering_task_contracts,
               engineering_plan_contracts,
               engineering_projects,
+              engineering_project_context_capsules,
               engineering_token_savior_usage,
               engineering_self_repair_deliberations,
               engineering_self_repair_issues,

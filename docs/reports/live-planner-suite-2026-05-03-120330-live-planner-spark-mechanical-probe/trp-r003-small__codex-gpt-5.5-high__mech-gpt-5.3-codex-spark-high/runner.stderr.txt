@@ -1,0 +1,2 @@
+[token-savior:memory] sqlite-vec not installed; vector search disabled. Install with: pip install 'token-savior-recall[memory-vector]'
+Project has 400+ files, stopping at MAX_FILES=400. Set TOKEN_SAVIOR_MAX_FILES env var to increase.

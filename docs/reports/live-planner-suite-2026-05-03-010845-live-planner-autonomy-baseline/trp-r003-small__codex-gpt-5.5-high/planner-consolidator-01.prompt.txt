@@ -1,0 +1,603 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as the canonical local expansion baseline.
+  Consolidate candidates back toward its order, role/task_type mapping, and
+  target slice count unless the feature evidence justifies extra implementer
+  slices.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- Use only canonical role/task_type pairs: designer/engineering.design,
+  implementer/engineering.implement, reviewer/engineering.review,
+  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  historian/engineering.history.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to `tests/` and/or
+  `qa/fixtures/`; implementer write paths must not include those paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
+  redundant QA/review work.
+- Do not create finalization, merge, PR approval, or human-gate task slices.
+  Human merge is represented only by finalization_policy.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+- Deterministic validator and critic checks are authoritative. If candidates
+  disagree with the deterministic rules, follow the deterministic rules.
+
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only tests/ or qa/fixtures/.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-primary",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/ and qa/fixtures/ only",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "app-api/build.gradle, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the narrow feature slice.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-primary"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/ and qa/fixtures/ only",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "5 slices: design, qa-author, impl-primary, review, qa-verify",
+  "task_class": "small"
+}
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "Config semantic coverage: every existing /api/config/* route is exercised with domain=equities and domain=crypto and asserts runtimeConfigVersion, graphId, live config, partition state, and venues are domain-correct.",
+      "Diagnostics semantic coverage: every existing /api/diagnostics/* route is exercised with domain=equities and domain=crypto and asserts no equities identifiers leak into crypto responses and no crypto identifiers leak into equities responses.",
+      "Default compatibility coverage: omitted domain parameter continues to match existing equities behavior.",
+      "Edge-case coverage: unsupported or malformed domain handling follows existing domain-resolution behavior without adding mutation or new endpoint paths.",
+      "Playwright coverage: selector-switch flow covers both equities and crypto and observes domain-correct config or diagnostics metadata.",
+      "Configured QA gate coverage: ./qa/smoke.sh must pass and ./qa/regression.sh must be run for final evidence."
+    ],
+    "affected_surfaces": [
+      "app-api/",
+      "ui/",
+      "tests/",
+      "qa/",
+      "repo-memory/"
+    ],
+    "assumptions": [
+      "Domain defaults remain backward-compatible with existing equities behavior when no domain parameter is supplied.",
+      "Runtime metadata for crypto already exists in Redis hot views or existing runtime configuration sources and does not require a new persistence path.",
+      "This roadmap item is a compact read-only parity pass and should not introduce endpoint expansion, config mutation, or app-api write behavior.",
+      "Playwright coverage can be authored under tests/ while source implementation remains limited to app-api and any existing UI domain-selector wiring if required."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Config endpoint tests assert equities and crypto runtimeConfigVersion, graphId, live config, partition state, and venue list are domain-correct.",
+        "Diagnostics endpoint tests assert equities and crypto metadata do not leak identifiers across domains.",
+        "Playwright domain switch test exercises equities and crypto selector states and verifies requests or rendered diagnostics/config metadata reflect both domains.",
+        "qa/smoke.sh passes.",
+        "qa/regression.sh passes or any unavailable dependency is documented with exact failure evidence."
+      ],
+      "concurrency_protocol": "Resolve domain per request without mutable shared controller state; reuse existing thread-safe services/readers and avoid caching a global active domain across requests.",
+      "forbidden_alternatives": [
+        "Creating /api/diagnostics/crypto/* or other new endpoint families.",
+        "Patching dag-framework locally.",
+        "Adding Postgres, SQLite, Prisma, Drizzle, or any OLTP persistence layer.",
+        "Hard-coding crypto payloads in controllers instead of resolving existing runtime metadata sources.",
+        "Using a process-wide selected domain variable."
+      ],
+      "hard_constraints": [
+        "Do not add new diagnostics endpoints.",
+        "Do not add config mutation paths.",
+        "Do not add app-api writes to Redis, QuestDB, Parquet, SQL, or local files.",
+        "Preserve equities payload semantics for domain=equities and default calls.",
+        "Keep implementation narrow to config and diagnostics parity plus domain-switch coverage."
+      ],
+      "ownership_boundaries": "app-api owns request-time domain resolution and read-only response shaping from Redis hot views and existing runtime configuration services; ui owns selector behavior only if existing calls fail to pass the selected domain; tests own Playwright and contract assertions.",
+      "persistence_protocol": "No new persistence, writes, migrations, or mutation paths; app-api continues to read from Redis hot serving data and approved historical-read services only.",
+      "public_api": "Existing GET /api/config/* and GET /api/diagnostics/* endpoints accept ?domain=equities|crypto; crypto responses expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list, while equities responses remain unchanged."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement crypto-domain parity for read-only /api/config/* and /api/diagnostics/* so domain=crypto returns crypto-scoped runtime metadata while domain=equities preserves existing equities responses.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Existing controllers may resolve domain inconsistently across config and diagnostics surfaces, causing partial parity or cross-domain identifier leakage.",
+      "Crypto metadata may be present in Redis hot views under different keys than equities metadata, requiring careful source mapping without hard-coded payloads.",
+      "Default-domain compatibility could regress existing UI or API consumers if equities behavior changes when ?domain is omitted.",
+      "Playwright selector coverage may pass at the UI layer while backend calls still omit domain unless requests or rendered metadata are asserted.",
+      "Over-expanding the slice into new diagnostics routes or config mutation would violate the compact read-only R-003 contract."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "app-api/src/main/java/com/ull/app/api/",
+          "ui/src/",
+          "ui/playwright.config.ts"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "Endpoint inventory for /api/config/* and /api/diagnostics/*",
+          "Domain metadata source map for equities and crypto"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework/",
+          "platform-runtime/src/main/java/",
+          "platform-runtime/src/test/"
+        ],
+        "objective": "Confirm the existing config and diagnostics controller/service contract and record the R-003 domain-resolution design against app-api controllers, runtime metadata sources, and Playwright coverage expectations.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "Failing config parity tests for domain=equities and domain=crypto",
+          "Failing diagnostics parity tests for domain=equities and domain=crypto",
+          "Failing Playwright domain-switch coverage for both domains"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/java/",
+          "app-api/build.gradle",
+          "ui/src/",
+          "platform-runtime/",
+          "repo-memory/"
+        ],
+        "objective": "Add failing API and Playwright tests under tests/ that prove /api/config/*, /api/diagnostics/*, and the UI domain selector cover both equities and crypto domains.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/service/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/build.gradle",
+          "ui/src/",
+          "ui/playwright.config.ts",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "Domain-aware config endpoint implementation",
+          "Domain-aware diagnostics endpoint implementation",
+          "Preserved equities default behavior",
+          "No new diagnostics endpoints or config mutation paths"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework/",
+          "platform-runtime/src/main/java/",
+          "platform-runtime/src/test/",
+          "repo-memory/DECISIONS.md"
+        ],
+        "objective": "Update app-api config and diagnostics domain resolution so existing endpoints return crypto-scoped runtimeConfigVersion, graphId, live config, partition state, and venue lists without changing endpoint shape or adding mutations.",
+        "role": "implementer",
+        "slice_id": "impl-primary",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/",
+          "app-api/build.gradle",
+          "ui/src/",
+          "ui/playwright.config.ts",
+          "tests/",
+          "qa/fixtures/",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "impl-primary"
+        ],
+        "expected_outputs": [
+          "Review findings ordered by severity",
+          "Contract compliance assessment",
+          "Explicit confirmation that no forbidden endpoint, mutation, or persistence path was added"
+        ],
+        "forbidden_paths": [
+          "dag-framework/",
+          "platform-runtime/src/main/java/",
+          "platform-runtime/src/test/"
+        ],
+        "objective": "Review app-api and UI changes for R-003 contract compliance, domain leakage, read-only boundary violations, endpoint expansion, and adequacy of parity coverage.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "Smoke verification report",
+          "Full regression verification report",
+          "Config and diagnostics domain parity evidence",
+          "Playwright domain-switch evidence for equities and crypto"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/java/",
+          "app-api/build.gradle",
+          "ui/src/",
+          "platform-runtime/",
+          "repo-memory/"
+        ],
+        "objective": "Run final smoke, regression, and domain parity verification for config endpoints, diagnostics endpoints, and Playwright selector-switch behavior.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "npm",
+            "--prefix",
+            "ui",
+            "run",
+            "test:e2e"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "Config semantic coverage: every existing /api/config/* endpoint is exercised for domain=equities and domain=crypto, asserting runtimeConfigVersion, graphId, live config, partition state, and venue list are domain-correct.",
+      "Diagnostics semantic coverage: every existing /api/diagnostics/* endpoint is exercised for domain=equities and domain=crypto, asserting runtime and partition metadata do not leak identifiers across domains.",
+      "Edge-case coverage: omitted domain preserves existing default behavior, unknown or malformed domain follows the existing API validation policy, and back-to-back equities/crypto requests remain isolated.",
+      "Playwright coverage: selector-switch flow visits both domains and verifies API-backed metadata changes rather than only checking visual state.",
+      "Configured QA gate coverage: ./gradlew :app-api:test, ./qa/smoke.sh, and ./qa/regression.sh cover controller-level parity, E2E selector switching, and repo smoke/regression gates."
+    ],
+    "affected_surfaces": [
+      "app-api/",
+      "tests/",
+      "qa/",
+      "repo-memory/"
+    ],
+    "assumptions": [
+      "The existing app-api controllers already expose /api/config/* and /api/diagnostics/* routes and currently leak equities identifiers for crypto requests.",
+      "Domain selection is query-param based using ?domain=crypto or ?domain=equities, with equities preserved as the default if no domain is provided.",
+      "app-api remains read-only against Redis hot views and historical stores; this feature must not introduce writes, config mutation paths, or new diagnostics endpoints.",
+      "Playwright selector-switch coverage can be authored under the repo-level tests/ tree per council QA authoring constraints."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Config endpoint tests assert domain=equities returns existing equities runtimeConfigVersion, graphId, live config, partition state, and equities venue list.",
+        "Config endpoint tests assert domain=crypto returns crypto runtimeConfigVersion, graphId, live config, partition state, and crypto venue list without equities identifiers.",
+        "Diagnostics endpoint tests assert domain=equities returns existing equities-scoped runtime and partition metadata.",
+        "Diagnostics endpoint tests assert domain=crypto returns crypto-scoped runtime and partition metadata without equities leakage.",
+        "Playwright selector-switch test covers both domains and verifies the visible/API-backed metadata changes when switching domains.",
+        "qa/smoke.sh passes after implementation."
+      ],
+      "concurrency_protocol": "The implementation is read-only and must use existing request-scoped domain resolution without shared mutable controller state. Parallel equities and crypto requests must not contaminate cached identifiers, graph IDs, venues, live config, or partition-state payloads across domains.",
+      "forbidden_alternatives": [
+        "Do not special-case crypto by duplicating entire controller classes when a shared domain-aware projection path exists.",
+        "Do not hard-code equities identifiers in crypto responses or crypto identifiers in equities responses.",
+        "Do not introduce writes to Redis, QuestDB, runtime config, or graph state.",
+        "Do not add snapshot, journal, CRC, or durability machinery for this unrelated read-only parity feature.",
+        "Do not satisfy acceptance by adding new endpoints instead of fixing existing /api/config/* and /api/diagnostics/* behavior."
+      ],
+      "hard_constraints": [
+        "Do not add new diagnostics endpoints.",
+        "Do not add config mutation paths.",
+        "Keep the change compact and read-only.",
+        "Preserve equities behavior for domain=equities and default-domain behavior where already defined.",
+        "Thread ?domain=crypto through config and diagnostics controllers consistently.",
+        "Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list.",
+        "Add selector-switch Playwright coverage for both equities and crypto domains.",
+        "qa/smoke.sh must pass."
+      ],
+      "ownership_boundaries": "app-api owns request-domain parsing, config response projection, and diagnostics response projection. Runtime publishers and Redis/historical stores remain producers only and are not modified by this parity pass. QA owns tests/ and qa/fixtures/ only; implementers own app-api source/config/docs only.",
+      "persistence_protocol": "app-api reads existing Redis hot-view and historical-store backed runtime metadata only. The feature must not write config, diagnostics, Redis, QuestDB, fixtures outside qa/fixtures/, or any runtime graph state.",
+      "public_api": "Existing GET /api/config/* and GET /api/diagnostics/* endpoints accept an optional domain query parameter. For domain=crypto they return crypto runtimeConfigVersion, graphId, live config, partition state, and crypto-correct venues; for domain=equities they preserve existing equities payloads and identifiers. No new endpoints and no mutation routes are added."
+    },
+    "feature_id": "R-003-crypto-domain-config-diagnostics-parity",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement read-only crypto-domain parity for /api/config/* and /api/diagnostics/* so domain=crypto returns crypto-scoped runtime metadata while preserving existing domain=equities behavior.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Crypto responses may reuse equities defaults through shared controller helpers unless domain resolution is threaded through every config and diagnostics branch.",
+      "Venue lists and graph IDs are high-risk leakage fields because tests may assert shape without checking domain-specific identifiers.",
+      "Default-domain behavior may regress if query-param parsing changes globally instead of locally preserving current equities semantics.",
+      "Playwright coverage may become flaky if it relies on visible labels instead of stable selectors and API-backed assertions.",
+      "Read-only constraints could be violated if implementation attempts to create config mutation paths or runtime backfill hooks to manufacture missing crypto metadata."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "repo-memory/",
+          "app-api/src/main/java/com/ull/app/api/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "EndpointFieldInventory",
+          "DomainOwnershipNotes"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "platform-runtime/",
+          "app-core/",
+          "crypto-extension/"
+        ],
+        "objective": "Document the R-003 domain-aware config and diagnostics contract against app-api controllers and repo-memory roadmap evidence, including exact fields and no-mutation constraints.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "FailingConfigDiagnosticsDomainParityTests",
+          "PlaywrightDomainSwitchCoverage",
+          "CryptoEquitiesFixtureData"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/java/",
+          "app-api/build.gradle",
+          "repo-memory/",
+          "docs/",
+          "ui/"
+        ],
+        "objective": "Author failing regression and Playwright selector-switch tests under tests/ that prove config and diagnostics endpoints return distinct equities and crypto metadata.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/",
+          "app-api/src/main/resources/",
+          "app-api/build.gradle",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "DomainAwareConfigResponses",
+          "DomainAwareDiagnosticsResponses",
+          "NoMutationRouteChanges",
+          "UpdatedRoadmapStatusIfRequired"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "platform-runtime/",
+          "app-core/",
+          "crypto-extension/"
+        ],
+        "objective": "Update app-api config and diagnostics controller/service code to resolve ?domain=crypto and project crypto runtimeConfigVersion, graphId, live config, partition state, and venues while preserving equities responses.",
+        "role": "implementer",
+        "slice_id": "impl-primary",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/",
+          "app-api/src/main/resources/",
+          "app-api/build.gradle",
+          "tests/",
+          "qa/",
+          "repo-memory/"
+        ],
+        "depends_on": [
+          "impl-primary"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "ContractComplianceChecklist",
+          "RiskDisposition"
+        ],
+        "forbidden_paths": [
+          "platform-runtime/",
+          "app-core/",
+          "crypto-extension/"
+        ],
+        "objective": "Review app-api config and diagnostics changes plus tests for domain isolation, read-only behavior, acceptance coverage, and absence of new endpoint or mutation paths.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "SmokeVerificationReport",
+          "RegressionVerificationReport",
+          "AcceptanceMatrixResult"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/java/",
+          "app-api/src/main/resources/",
+          "app-api/build.gradle",
+          "repo-memory/",
+          "docs/",
+          "ui/"
+        ],
+        "objective": "Run smoke and full regression verification for R-003, preserving only test or fixture updates needed to stabilize deterministic acceptance coverage.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  }
+]

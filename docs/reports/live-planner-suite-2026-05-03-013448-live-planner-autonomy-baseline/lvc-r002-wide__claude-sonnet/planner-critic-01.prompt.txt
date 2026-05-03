@@ -1,0 +1,520 @@
+Review the PlanContract against every rubric check.
+
+Emit exactly one JSON object with:
+- rationale: string
+- per_check_results: list of CriticCheckResult objects
+
+Do not decide the final verdict. The runtime computes accept/revise/reject.
+Return exactly one result for every check_id below. Do not omit any check.
+
+### check_design_contract_completeness
+Lifecycle work must define persistence and concurrency protocols.
+
+### check_slice_path_coverage
+Every affected surface must be covered by slice allowed paths and tests.
+
+### check_forbidden_path_overlap
+No task slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+Cross-role boundaries are allowed: for example, a QA slice can forbid source paths
+that an implementer slice allows.
+
+### check_verification_commands
+Implementer and QA slices must define qa or Gradle verification commands.
+
+### check_lifecycle_coverage
+Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+
+### check_topology_consistency
+SINGLE topology is incompatible with multiple implementer slices.
+
+### check_reviewer_present
+Plans must include at least one reviewer slice.
+
+### check_qa_author_present
+Plans must include a test-first engineering.qa.author slice before implementers.
+
+### check_qa_verify_present
+Plans must include an engineering.qa.verify slice after reviewers.
+
+### check_qa_paths_disjoint
+QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+
+### check_orphan_slices
+Non-terminal slices should feed a later reviewer, QA, or historian slice.
+
+### check_finalization_policy
+Final feature PR merge must remain human-gated.
+
+### check_objective_specificity
+Slice objectives should name concrete artifacts, files, tests, or metrics.
+
+### check_risk_register_present
+Lifecycle work should carry an explicit risk register.
+
+### check_roadmap_dependency_handling
+Dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+
+### check_hot_path_invariants
+Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+
+### check_small_feature_compactness
+Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+
+### check_design_contract_completeness
+Name: Design contract completeness
+Severity: blocking
+Rubric: Lifecycle work must define persistence and concurrency protocols.
+### check_slice_path_coverage
+Name: Slice path coverage
+Severity: blocking
+Rubric: Every affected surface must be covered by slice allowed paths and tests.
+### check_forbidden_path_overlap
+Name: Forbidden-path overlap
+Severity: blocking
+Rubric: No slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+### check_verification_commands
+Name: Verification command coverage
+Severity: blocking
+Rubric: Implementer and QA slices must define qa or Gradle verification commands.
+### check_lifecycle_coverage
+Name: Acceptance matrix lifecycle coverage
+Severity: blocking
+Rubric: Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+### check_topology_consistency
+Name: Implementation topology consistency
+Severity: blocking
+Rubric: SINGLE topology is incompatible with multiple implementer slices.
+### check_reviewer_present
+Name: Reviewer slice presence
+Severity: blocking
+Rubric: Plans must include at least one reviewer slice.
+### check_qa_author_present
+Name: QA author slice presence
+Severity: blocking
+Rubric: Plans must include a test-first engineering.qa.author slice before implementers.
+### check_qa_verify_present
+Name: QA verify slice presence
+Severity: blocking
+Rubric: Plans must include an engineering.qa.verify slice after reviewers.
+### check_qa_paths_disjoint
+Name: QA paths disjoint from source
+Severity: blocking
+Rubric: QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+### check_orphan_slices
+Name: Orphan slice detection
+Severity: advisory
+Rubric: Non-terminal slices should feed a later reviewer, QA, or historian slice.
+### check_finalization_policy
+Name: Finalization policy locked to human merge
+Severity: blocking
+Rubric: Final feature PR merge must remain human-gated.
+### check_objective_specificity
+Name: Objective specificity
+Severity: advisory
+Rubric: Slice objectives should name concrete artifacts, files, tests, or metrics.
+### check_risk_register_present
+Name: Risk register present
+Severity: advisory
+Rubric: Lifecycle work should carry an explicit risk register.
+### check_roadmap_dependency_handling
+Name: Roadmap dependency handling
+Severity: blocking
+Rubric: Plans for dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+### check_hot_path_invariants
+Name: Hot-path invariant preservation
+Severity: blocking
+Rubric: Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+### check_small_feature_compactness
+Name: Small-feature compactness
+Severity: blocking
+Rubric: Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+PLAN:
+{
+  "acceptance_test_matrix": [
+    "Round-trip: write N keys \u2192 snapshot(path) \u2192 JVM kill \u2192 restore(path) \u2192 read all N keys; values match byte-for-byte across SingleDirect, DoubleDirect, SingleMmap, DoubleMmap variants.",
+    "Crash-mid-journal: crash after store write, before journal cursor advance; after restore(), only journal-acknowledged writes (seqno <= journalCursor) are visible; staged-but-unjournaled writes suppressed until SnapshotBarrier.reconcile() completes.",
+    "CRC invariant failure: corrupt one page CRC trailer in snapshot file; restore() throws SnapshotException(CRC_FAILURE); live store state byte-identical to pre-restore baseline (zero state mutation).",
+    "Stale/invalid header: wrong magic bytes cause SnapshotException(INVALID_MAGIC) before any page is processed; unsupported version byte causes SnapshotException(VERSION_MISMATCH); no state mutation in either case.",
+    "Partial snapshot write: truncate snapshot file; restore() throws SnapshotException(PARTIAL_WRITE) on length-vs-pageCount mismatch before any state mutation.",
+    "Zero-allocation gate: qa/smoke.sh allocation gate passes with snapshot/restore code present; zero new allocations confirmed on publish hot path post snapshot/restore cycle.",
+    "Restore latency gate: p99 restore latency < 10ms for a 1M-key snapshot under benchmark conditions.",
+    "SINGLE direct round-trip passes independently.",
+    "DOUBLE direct round-trip passes independently.",
+    "DOUBLE mmap round-trip passes independently.",
+    "Full regression: qa/regression.sh suite passes with no regressions across all four store variants."
+  ],
+  "affected_surfaces": [
+    "store/src/main/java/com/joshorig/ull/lvc/store/",
+    "store/src/test/java/",
+    "tests/",
+    "qa/",
+    "qa/fixtures/",
+    "docs/",
+    "repo-memory/"
+  ],
+  "assumptions": [
+    "Stores.java, DirectStores.java, and MmapStores.java factories expose a common Store interface extensible with snapshot/restore methods without breaking existing callers.",
+    "SnapshotBarrier.java (store/src/main/.../guaranteed/SnapshotBarrier.java) mediates the journal cursor handoff; store restore logic must not import guaranteed-inproc or guaranteed-aeron types directly.",
+    "Per-page CRC-32C computation does not allocate on the heap and is callable entirely off the publish hot path.",
+    "Restore atomicity is implemented via a .tmp sibling write followed by fsync and atomic rename commit, not in-place page overwrite.",
+    "A 1M-key snapshot fits within a single file at acceptable page granularity for sub-10ms p99 restore on reference hardware.",
+    "qa/smoke.sh and qa/regression.sh are the canonical gate scripts and remain authoritative after QA author additions.",
+    "JVM process kill in integration tests can be safely simulated via ProcessBuilder or an equivalent in-test harness.",
+    "Restore atomicity uses Files.move with ATOMIC_MOVE + REPLACE_EXISTING; source and destination are on the same filesystem.",
+    "Existing seqlock protocol slots are stable across snapshot/restore cycles; no slot-format migration is needed for the initial release."
+  ],
+  "design_contract": {
+    "acceptance_tests": [
+      "Round-trip integration test: write N keys, call snapshot(path), kill JVM, restart, call restore(path), read all N keys; values must match byte-for-byte across all four store variants.",
+      "Crash-mid-journal test: after restore(), only journal-acknowledged writes (seqno <= journalCursor) are visible; staged-but-unjournaled writes must be absent until SnapshotBarrier.reconcile() is called.",
+      "CRC mismatch test: corrupt one page CRC trailer in snapshot file; restore() must throw SnapshotException(CRC_FAILURE); live store state must be byte-identical to pre-restore state (no mutation).",
+      "Stale/invalid header test: snapshot with wrong magic causes SnapshotException(INVALID_MAGIC); unsupported version causes SnapshotException(VERSION_MISMATCH); in both cases before any page data is read.",
+      "Partial snapshot write test: truncate snapshot file; restore() must throw SnapshotException(PARTIAL_WRITE) on length-vs-pageCount mismatch before any state mutation.",
+      "Zero-allocation gate: qa/smoke.sh passes with no new heap allocation on publish hot path after snapshot/restore wiring.",
+      "Restore latency gate: p99 restore time for a 1M-key snapshot is below 10ms on reference hardware."
+    ],
+    "concurrency_protocol": "snapshot() acquires a read fence after draining all in-flight seqlock writes, ensuring a quiescent view before page serialization begins; no new writes are admitted during the page dump window. restore() is a cold-start-only operation and must not be called while the store has live writers; it acquires an exclusive write fence for the full duration of the validate-all-then-swap sequence. Staged-but-unjournaled writes remain suppressed by SnapshotBarrier until reconcile() completes after the backing-buffer swap.",
+    "forbidden_alternatives": [
+      "In-place partial restore \u2014 overwriting live store pages before full CRC validation completes.",
+      "Lazy or deferred CRC validation \u2014 all page CRCs must be verified before the atomic swap.",
+      "Heap allocation for CRC computation anywhere on or near the publish hot path.",
+      "Java serialization, Kryo, or any reflection-based format for the snapshot file.",
+      "Skipping journalCursor reconciliation and treating a raw snapshot as fully consistent.",
+      "Snapshot formats without per-page CRC trailers \u2014 no-checksum fast path is not permitted.",
+      "Partial-file restore that swaps only a subset of pages without full file validation.",
+      "Importing guaranteed-inproc or guaranteed-aeron types directly from store restore logic.",
+      "Incremental or delta snapshots \u2014 full-page snapshot only in this iteration.",
+      "Exposing restore as a hot or concurrent operation callable while writers are active."
+    ],
+    "hard_constraints": [
+      "Zero allocation on the publish hot path is invariant after this change; snapshot/restore are off-path operations.",
+      "qa/smoke.sh allocation gate must pass after impl-core and impl-invariants land.",
+      "Restore latency must be below 10ms p99 for a 1M-key snapshot on reference hardware.",
+      "CRC mismatch or invalid header must abort restore with SnapshotException before any live-state mutation.",
+      "Staged-but-unjournaled writes must not be readable until SnapshotBarrier.reconcile() completes inside restore().",
+      "Partial snapshot writes (truncated file, page count mismatch) must be detected and rejected without mutating live state.",
+      "All four store variants \u2014 SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore \u2014 must fully implement snapshot and restore.",
+      "restore() must not mutate live state on any validation failure (INVALID_MAGIC, VERSION_MISMATCH, CRC_FAILURE, PARTIAL_WRITE, JOURNAL_CURSOR_AHEAD)."
+    ],
+    "ownership_boundaries": "store/ owns SnapshotFormat, SnapshotWriter, SnapshotReader, SnapshotException, SnapshotErrorCode, and the snapshot/restore implementation on all four store variants. store/src/main/.../guaranteed/SnapshotBarrier.java owns journal cursor embedding at snapshot time and the reconcile() gate after restore; guaranteed-inproc and guaranteed-aeron expose cursor state only via SnapshotBarrier and store restore logic must not import guaranteed-inproc or guaranteed-aeron types directly. Tests for snapshot/restore live exclusively in store/src/test/java/ and tests/; binary fixtures live in qa/fixtures/.",
+    "persistence_protocol": "Write pages to a .tmp sibling of dest, fsync, then atomically rename to dest; delete .tmp in a finally block on any failure. CRC-32C computed per page as an inline 4-byte trailer during write. On restore: open file, validate magic (throw SnapshotException(INVALID_MAGIC) immediately on mismatch before any page is read), validate version (throw SnapshotException(VERSION_MISMATCH)), read declared pageCount, compare against actual file size (throw SnapshotException(PARTIAL_WRITE) on mismatch), validate each page CRC sequentially (throw SnapshotException(CRC_FAILURE) on first mismatch with zero live-state touched), then atomically swap backing buffer (direct: new ByteBuffer reference; mmap: remap region), then call SnapshotBarrier.reconcile(journalCursor).",
+    "public_api": "Store interface gains: `void snapshot(Path dest) throws SnapshotException` and `void restore(Path src) throws SnapshotException`. SnapshotException carries SnapshotErrorCode { INVALID_MAGIC, VERSION_MISMATCH, CRC_FAILURE, PARTIAL_WRITE, JOURNAL_CURSOR_AHEAD }. Snapshot binary format: [magic:8B = 0x4C56435F534E4150 ('LVC_SNAP')][version:4B = 1][keyCount:4B][journalCursor:8B] followed by ([PAGE_DATA:pageSize][CRC32C:4B])* inline per-page entries. All four variants \u2014 SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore \u2014 plus factory helpers DirectStores, MmapStores, and Stores implement both methods. SnapshotBarrier.java (store/src/main/.../guaranteed/SnapshotBarrier.java) embeds journalCursor at snapshot time and exposes reconcile(long journalCursor) to suppress staged-but-unjournaled writes until the journal confirms them after restore."
+  },
+  "feature_id": "R-002",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "implementation_topology": "split_specialists",
+  "problem_statement": "SINGLE and DOUBLE stores (direct and mmap backends) lack a durable snapshot mechanism, forcing cold-start to replay the full guaranteed journal from the beginning. Store.snapshot(Path) and Store.restore(Path) must be added with a magic/version header, inline per-page CRC-32C trailers, atomic swap semantics, and SnapshotBarrier-mediated journal cursor reconciliation so staged-but-unjournaled writes are not surfaced until the journal confirms them.",
+  "project": "lvc-standard",
+  "risk_register": [
+    "CRC-32C hardware acceleration absent on CI host \u2014 mitigate by profiling CRC cost in isolation and providing a pure-Java fallback with explicit benchmark assertion; add CI flag to force software path in regression tests.",
+    "Atomic rename semantics differ across POSIX/tmpfs/NFS/cross-device \u2014 mitigate by asserting source and dest are on the same filesystem inside snapshot() and abort with SnapshotException before rename.",
+    "SnapshotBarrier unavailable at cold-start \u2014 mitigate by allowing null supplier with explicit no-reconciliation mode documented in SnapshotException message.",
+    "mmap region swap races with in-flight readers \u2014 mitigate by holding exclusive write fence for the full duration of atomic swap and verifying with a concurrency stress test in qa-verify.",
+    "Snapshot staging file left on disk after failure \u2014 mitigate by deleting .tmp file in a finally block on every exception path in SnapshotWriter.",
+    "Restore latency regression for large 1M-key snapshots \u2014 mitigate by profiling CRC batch granularity and read-ahead order; enforce with p99 latency assertion in qa-verify.",
+    "Disk exhaustion during snapshot staging \u2014 mitigate by pre-flight available-space check throwing SnapshotException before staging write begins.",
+    "DOUBLE store dual-slot seqlock state partially captured if a write races with snapshot() \u2014 mitigate by acquiring read fence after draining all in-flight seqlock writes before any page is written.",
+    "Journal cursor in SnapshotHeader becomes stale if journal is trimmed between snapshot and restore \u2014 validate cursor offset is within current journal range before swapping; emit SnapshotException(JOURNAL_CURSOR_AHEAD) on out-of-range.",
+    "Zero-alloc regression if SnapshotWriter/Reader is instantiated on the publish path \u2014 all snapshot/restore objects are pre-allocated or strictly off-path; qa/smoke.sh allocation gate is authoritative.",
+    "Same-size corruption (all pages written but a CRC trailer zeroed) not caught by size check alone \u2014 per-page CRC-32C trailer is the authoritative check; size check is a fast pre-screen only.",
+    "SnapshotException swallowed by caller \u2014 exception is unchecked but documented as fatal; reviewed in review slice."
+  ],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "task_slices": [
+    {
+      "allowed_paths": [
+        "docs/",
+        "store/src/main/java/com/joshorig/ull/lvc/store/",
+        "repo-memory/ROADMAP.md"
+      ],
+      "depends_on": [],
+      "expected_outputs": [
+        "DesignContract",
+        "docs/snapshot-restore-design.md with header binary layout, inline CRC-32C protocol, atomic-swap sequence diagram, and SnapshotBarrier journal reconciliation contract",
+        "Updated docs/Stores.md with snapshot/restore API spec and file format layout",
+        "repo-memory/ROADMAP.md R-002 entry updated with final acceptance criteria and design phase marked complete"
+      ],
+      "forbidden_paths": [
+        "store/src/test/",
+        "store/src/test/java/",
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Lock the snapshot/restore public API on Store, DirectStores, MmapStores, and Stores.java; define SnapshotFormat wire layout (magic 0x4C56435F534E4150, version 1, keyCount, journalCursor, inline per-page CRC-32C trailers), SnapshotException error codes, SnapshotBarrier journal-cursor handoff contract, and atomic-swap/fence protocol; document in docs/snapshot-restore-design.md and docs/Stores.md; update repo-memory/ROADMAP.md marking R-002 design phase complete.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "store/src/test/",
+        "store/src/test/java/"
+      ],
+      "depends_on": [
+        "design"
+      ],
+      "expected_outputs": [
+        "store/src/test/java/.../snapshot/SnapshotRoundTripIntegrationTest.java (failing)",
+        "store/src/test/java/.../snapshot/SnapshotCrashMidJournalTest.java (failing)",
+        "store/src/test/java/.../snapshot/SnapshotCrcMismatchTest.java (failing)",
+        "store/src/test/java/.../snapshot/SnapshotHeaderValidationTest.java (failing)",
+        "store/src/test/java/.../snapshot/SnapshotPartialWriteTest.java (failing)",
+        "store/src/test/java/.../direct/SingleDirectSnapshotTest.java (failing)",
+        "store/src/test/java/.../direct/DoubleDirectSnapshotTest.java (failing)",
+        "store/src/test/java/.../mmap/SingleMmapSnapshotTest.java (failing)",
+        "store/src/test/java/.../mmap/DoubleMmapSnapshotTest.java (failing)",
+        "qa/fixtures/snapshot/corrupt_crc_page.snap",
+        "qa/fixtures/snapshot/truncated_mid_page.snap",
+        "qa/fixtures/snapshot/invalid_magic.snap"
+      ],
+      "forbidden_paths": [
+        "store/src/main/",
+        "docs/",
+        "repo-memory/",
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Write failing JUnit 5 tests in store/src/test/java/ covering: round-trip snapshot/restore for all four store variants (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap), crash-mid-journal cursor reconciliation, CRC mismatch abort with no state mutation, stale/invalid header rejection, and partial snapshot write rejection; add binary fixture files for corrupt-CRC, truncated, and invalid-magic edge cases in qa/fixtures/.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "store/src/main/java/com/joshorig/ull/lvc/store/",
+        "docs/"
+      ],
+      "depends_on": [
+        "qa-author"
+      ],
+      "expected_outputs": [
+        "store/src/main/java/.../snapshot/SnapshotFormat.java (magic 0x4C56435F534E4150, version 1, keyCount, journalCursor, inline CRC-32C layout constants)",
+        "store/src/main/java/.../snapshot/SnapshotWriter.java (read fence, .tmp write, inline per-page CRC-32C, fsync, atomic rename, finally-cleanup on failure)",
+        "store/src/main/java/.../snapshot/SnapshotReader.java (magic/version validation, page-count vs file-size pre-check, per-page CRC validation before swap)",
+        "store/src/main/java/.../snapshot/SnapshotException.java with SnapshotErrorCode { INVALID_MAGIC, VERSION_MISMATCH, CRC_FAILURE, PARTIAL_WRITE, JOURNAL_CURSOR_AHEAD }",
+        "Store interface updated with snapshot(Path) and restore(Path)",
+        "SingleDirectStore.java, DoubleDirectStore.java, SingleMmapStore.java, DoubleMmapStore.java updated with snapshot/restore",
+        "DirectStores.java and MmapStores.java factory methods updated",
+        "CRC-32C computation confirmed off-heap and off publish path"
+      ],
+      "forbidden_paths": [
+        "store/src/test/",
+        "store/src/test/java/",
+        "tests/",
+        "qa/fixtures/",
+        "repo-memory/",
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Implement Store.snapshot(Path) and Store.restore(Path) on SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore; add SnapshotFormat.java (magic, version, keyCount, journalCursor, inline per-page CRC-32C layout), SnapshotWriter.java (read-fence + .tmp+fsync+rename write path with finally-cleanup), SnapshotReader.java (header validation + page-count vs file-size pre-check + per-page CRC validation before any swap), SnapshotException.java with SnapshotErrorCode enum; wire factory methods in DirectStores.java, MmapStores.java, and Stores.java.",
+      "role": "implementer",
+      "slice_id": "impl-core",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./gradlew :store:test --tests '*SnapshotRoundTripIntegrationTest'"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "store/src/main/java/com/joshorig/ull/lvc/store/",
+        "qa/regression.sh",
+        "docs/",
+        "repo-memory/ROADMAP.md"
+      ],
+      "depends_on": [
+        "impl-core"
+      ],
+      "expected_outputs": [
+        "store/src/main/java/.../guaranteed/SnapshotBarrier.java with journalCursor embedding at snapshot time and reconcile() suppression gate after restore",
+        "Exclusive write fence + atomic swap (validate-all-then-swap) implemented in all four store variants",
+        "SnapshotException(CRC_FAILURE) thrown with live state byte-identical to pre-restore state (verified by SnapshotCrcMismatchTest)",
+        "Staged-but-unjournaled write gate verified by SnapshotCrashMidJournalTest",
+        "File-length pre-check for partial snapshots verified by SnapshotPartialWriteTest",
+        "Restore latency measurement hook added (off-hot-path)",
+        "qa/regression.sh updated with crash-mid-journal gate and cursor-reconciliation gate",
+        "repo-memory/ROADMAP.md R-002 status updated to in-progress"
+      ],
+      "forbidden_paths": [
+        "store/src/test/",
+        "store/src/test/java/",
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Implement SnapshotBarrier.java (store/src/main/.../guaranteed/SnapshotBarrier.java) to embed journalCursor in snapshot header during snapshot() and expose reconcile(long journalCursor) to suppress staged-but-unjournaled writes until the journal confirms them after restore(); implement exclusive write fence + validate-all-then-swap ordering in all four store variants; add restore latency measurement hook (off-hot-path); update qa/regression.sh with crash-mid-journal and cursor-reconciliation gates; mark R-002 in-progress in repo-memory/ROADMAP.md.",
+      "role": "implementer",
+      "slice_id": "impl-invariants",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ],
+        [
+          "./gradlew :store:test --tests '*SnapshotCrashMidJournalTest'"
+        ],
+        [
+          "./gradlew :store:test --tests '*SnapshotCrcMismatchTest'"
+        ],
+        [
+          "./gradlew :store:test --tests '*SnapshotHeaderValidationTest'"
+        ],
+        [
+          "./gradlew :store:test --tests '*SnapshotPartialWriteTest'"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "store/src/main/java/com/joshorig/ull/lvc/store/",
+        "store/src/test/java/",
+        "tests/",
+        "docs/",
+        "repo-memory/ROADMAP.md",
+        "qa/fixtures/",
+        "qa/regression.sh"
+      ],
+      "depends_on": [
+        "impl-invariants"
+      ],
+      "expected_outputs": [
+        "ReviewReport covering: API surface sign-off, CRC protocol correctness, atomic-swap race analysis, SnapshotBarrier.reconcile() correctness, zero-alloc gate confirmation, restore latency path analysis, and any required repair items",
+        "Sign-off or exhaustive list of blocking issues for impl-invariants to address before qa-verify"
+      ],
+      "forbidden_paths": [
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Multi-panel review of: snapshot format correctness (magic, version, inline CRC-32C per page, journalCursor field semantics), SnapshotBarrier.reconcile() correctness for staged-but-unjournaled suppression, exclusive write fence ordering and atomic swap safety (no partial state exposure during swap), validate-all-then-swap contract in SnapshotReader, CRC-abort path guaranteeing zero live-state mutation, zero-allocation publish path invariant compliance, restore latency path analysis, and SnapshotException error code completeness across all four store variants.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "store/src/test/",
+        "store/src/test/java/"
+      ],
+      "depends_on": [
+        "review"
+      ],
+      "expected_outputs": [
+        "qa/smoke.sh: PASS \u2014 allocation gate, zero new allocations on publish hot path post restore",
+        "qa/regression.sh: PASS \u2014 all snapshot/restore tests green for SingleDirect, DoubleDirect, SingleMmap, DoubleMmap",
+        "SnapshotRoundTripIntegrationTest: all assertions GREEN",
+        "SnapshotCrashMidJournalTest: only journal-acknowledged writes visible after restore \u2014 PASS",
+        "SnapshotCrcMismatchTest: SnapshotException(CRC_FAILURE) thrown, no state mutation \u2014 PASS",
+        "SnapshotHeaderValidationTest: SnapshotException(INVALID_MAGIC / VERSION_MISMATCH) before any page read \u2014 PASS",
+        "SnapshotPartialWriteTest: SnapshotException(PARTIAL_WRITE) thrown, live state unchanged \u2014 PASS",
+        "Restore latency p99 < 10ms for 1M-key snapshot: CONFIRMED",
+        "./gradlew :store:test: full store test suite PASS"
+      ],
+      "forbidden_paths": [
+        "store/src/main/",
+        "docs/",
+        "repo-memory/",
+        "benchmarks/",
+        "conformance-tests/"
+      ],
+      "objective": "Execute qa/smoke.sh allocation gate and qa/regression.sh full suite after reviewer sign-off; confirm all five snapshot/restore acceptance tests pass (round-trip, crash-mid-journal, CRC mismatch, stale/invalid header, partial write) for all four store variants; confirm restore latency p99 < 10ms for a 1M-key snapshot; confirm no regressions in existing baselines.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ],
+        [
+          "./gradlew :store:test"
+        ]
+      ]
+    }
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "shared",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [],
+  "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "store/src/test/",
+    "store/src/test/java/"
+  ],
+  "relevant_paths": [
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "docs/migration_from_exchanger.md",
+    "docs/Stores.md",
+    "store/src/main/java/com/joshorig/ull/lvc/store/Stores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/SingleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DoubleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DirectStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/DoubleMmapStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/MmapStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/SingleMmapStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/SnapshotBarrier.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/DirectStoresTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/DoubleDirectStoreBranchesTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/SingleDirectStoreMetricsTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/SingleDirectStoreBranchesTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/mmap/SingleMmapStoreBranchesTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/mmap/DoubleMmapStoreBranchesTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/mmap/MmapStoresTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/guaranteed/GuaranteedPublisherAtomicTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/guaranteed/SnapshotBarrierTest.java",
+    ".git/refs/heads/ci-version-bump-single-pass",
+    "tests/",
+    "qa/fixtures/",
+    "store/src/test/",
+    "store/src/test/java/"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nProject: /Volumes/devssd/repos/ull/lvc-standard\nFiles: 296, Lines: 22784, Functions: 1369, Classes: 359\nPackages (12): .github, benchmarks, conformance-tests, core, docs, guaranteed-aeron, guaranteed-inproc, qa, repo-memory, sbe-adapters, signal, store\nClasses: 359 total\nTop-level functions: 4 total\n\n# Token Savior Packed Context\nContext pack for 'Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so cold-start restores from a CRC-validated snapshot plus guaranteed journal cursor reconciliation. Store.snapshot(Path) writes a snapshot with magic/version header and per-page CRC. Store.restore(Path) atomically swaps in the snapshot after full validation. Restore reconciles with the guaranteed journal cursor. Restore must not surface staged-but-unjournaled writes until the journal cursor is reconciled. SINGLE and DOUBLE direct/mmap stores must support snapshot and restore. Round-trip integration test writes keys, snapshots, kills JVM, restores, and reads all keys. Crash-mid-journal test shows only journal-acknowledged writes after restore. CRC mismatch aborts restore with a structured invariant failure and no state mutation. Stale or invalid snapshot headers are rejected. Partial snapshot writes are rejected without mutating live state.' (55 symbols, ~2904 tokens / 3000 budget)\n------------------------------------------------------------\n\n# com.joshorig.ull.lvc.store.guaranteed.Journal.tail()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)\n    long tail();\n\n# com.joshorig.ull.lvc.store.guaranteed.Journal.close()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)\n    @Override void close();\n\n# com.joshorig.ull.lvc.store.guaranteed.Journal.Visitor.onRecord(int,long,DirectBuffer,int,int)  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)\n        void onRecord(int keyId, long seq, DirectBuffer buffer, int offset, int length);\n\n# Stores  (value=0.20, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)\n    private Stores() {}\n\n# com.joshorig.ull.lvc.store.Stores.Stores()  (value=0.20, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)\n    private Stores() {}\n\n# com.joshorig.ull.lvc.store.Stores.direct()  (value=0.20, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)\n    public static Direct direct() { return new Direct(); }\n\n# com.joshorig.ull.lvc.store.Stores.mmap(Path)  (value=0.20, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)\n    public static Mmap mmap(Path path) { return new Mmap(path); }\n\n# com.joshorig.ull.lvc.inspect.RingInspector.Header.depth()  (value=0.20, cost=20t, core/src/main/java/com/joshorig/ull/lvc/inspect/RingInspector.java)\n        public long depth() { return tail - head; }\n\n# com.joshorig.ull.lvc.guaranteed.aeron.AeronMetrics.incAppendMessages()  (value=0.20, cost=20t, guaranteed-aeron/src/main/java/com/joshorig/ull/lvc/guaranteed/aeron/AeronMetrics.java)\n    public void incAppendMessages() { journalAppendMessages.inc(); }\n\n# com.joshorig.ull.lvc.guaranteed.aeron.AeronMetrics.addAppendBytes(int)  (value=0.20, cost=20t, guaranteed-aeron/src/main/java/com/joshorig/ull/lvc/guaranteed/aeron/AeronMetrics.java)\n    public void addAppendBytes(int n) { journalAppendBytes.add(n); }\n\n... (45 more symbols selected, sources omitted)\n\n# Search Hits: scheduled\n[]\n\n# Search Hits: snapshot\n[{'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcMmapBenchmark.java', 'line_number': 112, 'content': '        // read stable snapshot'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 26, 'content': '/** Ensures snapshot frames (flagged) are delivered and followed by deltas correctly. */'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 65, 'content': '    public void snapshotThenDeltas_ipc() {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 92, 'content': '        // Publish snapshots for all keys at seq=10'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 125, 'content': '                assertTrue(done.await(5, TimeUnit.SECONDS), \"must deliver snapshot + deltas\");'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 128, 'content': '                fail(\"interrupted while waiting for snapshot + deltas\");'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 24, 'content': '/** Publish a very large snapshot to trigger reassembly overflow drops metric. */'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 78, 'content': '            .snapshotChannel(snapChannel).snapshotStreamBase(streamBase + 2000)'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 99, 'content': '                        // Poll a larger budget so snapshot fragments complete quickly.'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 101, 'content': '                        if (metrics.snapshot().reassemblyOverflowDrops > 0) {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronReplayMergeMetricsIpcTest.java', 'line_number': 166, 'content': '            AeronMetricsFormatter.formatLine(metrics.snapshot(), sb);'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronReplayMergeMetricsIpcTest.java', 'line_number': 197, 'content': '            sch.scheduleAtFixedRate(() -> { if (metrics.snapshot().liveMessages > 0) liveSeen.countDown(); }, 0, 10, TimeUnit.MILLISECONDS);'}]\n\n# Search Hits: atomic\n[{'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 5, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcStructuredSignaledBenchmark.java', 'line_number': 5, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedIpcIntegrationTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedPositionResumeIpcTest.java', 'line_number': 12, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronSnapshotGatingIpcTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/ConformanceDoubleTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/ConformanceSingleTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 11, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 25, 'content': '    void direct_double_batch_atomic_visibility() throws Exception {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 87, 'content': '    void mmap_double_batch_atomic_visibility_and_region_stability() throws Exception {'}]\n\n# Search Hits: restore\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 19, 'content': '### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 22, 'content': \"- **Goal:** Scheduled checkpoint of the full store to disk + atomic swap on restore, collapsing cold-start time from journal replay to mmap'd reload.\"}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 23, 'content': '- **Scope:** `Store.snapshot(Path)`, `Store.restore(Path)`, snapshot format with magic+version header, CRC per page, integration with guaranteed journal cursor so restore picks up from checkpoint offset.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 25, 'content': '- **Acceptance:** Full round-trip test (write \u2192 snapshot \u2192 kill \u2192 restore \u2192 read), alloc gate unaffected, restore latency < 10ms for 1M keys.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 27, 'content': '- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics \u2014 restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.'}]\n\n# Search Hits: SINGLE\n[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 66, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 84, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 64, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 81, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 103, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 120, 'content': '                if (\"SINGLE\".equals(variant)) {'}]\n\n# Search Hits: DOUBLE\n[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 104, 'content': '                if ((mask & D_PAIR) != 0)  n += store.readRegion(slotId, scratchByReader[idx], 0, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 157, 'content': '            codec.setBlockIf(domainMask, 1 /*D_PAIR*/, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, val);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 33, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 123, 'content': '        if (!ok) return; // under contention in DOUBLE readers, might rarely fail claim in non-claim path'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 46, 'content': '        codec.setBlockIf(mask, D_PAIR, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, (byte)0x7F);'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 57, 'content': '            // PAIR_DOUBLES remains zero'}]\n\n\n# ROADMAP relevant entry\n\n### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores\n- **Status:** TODO\n- **Feature id:** null\n- **Goal:** Scheduled checkpoint of the full store to disk + atomic swap on restore, collapsing cold-start time from journal replay to mmap'd reload.\n- **Scope:** `Store.snapshot(Path)`, `Store.restore(Path)`, snapshot format with magic+version header, CRC per page, integration with guaranteed journal cursor so restore picks up from checkpoint offset.\n- **Out of scope:** Incremental snapshots, cross-version schema evolution (R-005 territory), distributed coordination.\n- **Acceptance:** Full round-trip test (write \u2192 snapshot \u2192 kill \u2192 restore \u2192 read), alloc gate unaffected, restore latency < 10ms for 1M keys.\n- **Depends on:** none.\n- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics \u2014 restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.\n\n# DECISIONS relevant excerpt\n\n## 2026-04-xx \u2014 Atomic GuaranteedPublisher (staged store+journal)\n**Context:** Journal-write failures after a successful store write were leaving the system in a split state: the store had the new value but the journal didn't, which violated the per-key in-order at-least-once contract on replay.\n**Decision:** Introduce `GuaranteedPublisher.publishChecked(...)` + `PublishResult` enum. The method stages the store write and journal append such that either both land or neither does. On journal-append failure the store write is aborted (not committed).\n- Downstream consumers must handle `PublishResult.ABORTED` explicitly; implicit success is gone.\n- Journal failure tests (`GuaranteedPublisherAtomicTest`) now enforce this invariant in conformance.\n- CI matrix simplified to a single JDK.\n\n# Memory digest\n\n"
+}
+
+VALIDATOR_ERRORS:
+[]

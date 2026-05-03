@@ -1,0 +1,24 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "lvc-standard",
+  "goal": "Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so cold-start restores from a CRC-validated snapshot plus guaranteed journal cursor reconciliation.",
+  "requirements": [
+    "Store.snapshot(Path) writes a snapshot with magic/version header and per-page CRC.",
+    "Store.restore(Path) atomically swaps in the snapshot after full validation.",
+    "Restore reconciles with the guaranteed journal cursor.",
+    "Restore must not surface staged-but-unjournaled writes until the journal cursor is reconciled.",
+    "SINGLE and DOUBLE direct/mmap stores must support snapshot and restore."
+  ],
+  "constraints": [
+    "Zero allocation on the publish hot path stays invariant.",
+    "qa/smoke.sh must pass the allocation gate.",
+    "Restore latency must be below 10ms p99 for a 1M-key snapshot."
+  ],
+  "acceptance_criteria": [
+    "Round-trip integration test writes keys, snapshots, kills JVM, restores, and reads all keys.",
+    "Crash-mid-journal test shows only journal-acknowledged writes after restore.",
+    "CRC mismatch aborts restore with a structured invariant failure and no state mutation.",
+    "Stale or invalid snapshot headers are rejected.",
+    "Partial snapshot writes are rejected without mutating live state."
+  ]
+}

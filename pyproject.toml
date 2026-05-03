@@ -16,6 +16,7 @@ dependencies = [
   "pydantic-settings>=2",
   "PyYAML>=6",
   "rich>=13",
+  "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +38,7 @@ Repository = "https://github.com/joshorig/pgloom-engineering"
 include = ["pgloom_engineering*"]
 
 [tool.setuptools.package-data]
-pgloom_engineering = ["db/schema/*.sql", "py.typed"]
+pgloom_engineering = ["db/schema/*.sql", "planner/prompts/*.md", "py.typed"]
 
 [tool.ruff]
 line-length = 100

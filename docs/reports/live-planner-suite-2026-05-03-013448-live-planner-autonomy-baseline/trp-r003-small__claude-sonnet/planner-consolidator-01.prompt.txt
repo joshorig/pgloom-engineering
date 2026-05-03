@@ -1,0 +1,624 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as the canonical local expansion baseline.
+  Consolidate candidates back toward its order, role/task_type mapping, and
+  target slice count unless the feature evidence justifies extra implementer
+  slices.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- Use only canonical role/task_type pairs: designer/engineering.design,
+  implementer/engineering.implement, reviewer/engineering.review,
+  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  historian/engineering.history.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Use concrete path prefixes only; remove wildcard paths from candidates.
+- Ensure each slice's own allowed_paths and forbidden_paths do not overlap.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to the QA/test roots shown in
+  candidate project contexts. Implementer write paths must not include those
+  paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
+  redundant QA/review work.
+- Do not create finalization, merge, PR approval, or human-gate task slices.
+  Human merge is represented only by finalization_policy.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+- Deterministic validator and critic checks are authoritative. If candidates
+  disagree with the deterministic rules, follow the deterministic rules.
+
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-primary",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "app-api/build.gradle, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the narrow feature slice.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-primary"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "5 slices: design, qa-author, impl-primary, review, qa-verify",
+  "task_class": "small"
+}
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "GET /api/config/* ?domain=crypto returns crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and domain-correct venue list",
+      "GET /api/config/* ?domain=equities returns equities identifiers unchanged",
+      "GET /api/config/* with no domain param defaults to equities behavior (backward compat)",
+      "GET /api/diagnostics/* ?domain=crypto returns crypto-scoped diagnostics metadata",
+      "GET /api/diagnostics/* ?domain=equities returns equities diagnostics unchanged",
+      "GET /api/diagnostics/* with no domain param defaults to equities behavior",
+      "Playwright domain selector switch covers domain=equities and domain=crypto for config view on Chromium and WebKit",
+      "Playwright domain selector switch covers domain=equities and domain=crypto for diagnostics view on Chromium and WebKit",
+      "Playwright golden-path flow 'cockpit top opportunity launches backtest with the selected symbol' remains green",
+      "qa/smoke.sh passes with zero failures",
+      "No new /api/config/* or /api/diagnostics/* endpoints introduced",
+      "No config mutation path introduced",
+      "app-api emits no writes to Redis or any persistence layer"
+    ],
+    "affected_surfaces": [
+      "app-api/src/main/java/com/ull/app/api/web/",
+      "app-api/src/main/java/com/ull/app/api/service/",
+      "app-api/src/main/java/com/ull/app/api/config/",
+      "app-api/src/test/java/",
+      "ui/tests/",
+      "docs/"
+    ],
+    "assumptions": [
+      "Redis hot views already publish crypto-scoped config and diagnostics projections that app-api can read by domain key via HotViewReadService / RedisHotViewReader.",
+      "DerivedDiagnosticsService already accepts a domain parameter for most diagnostics methods per the search evidence; config controllers may not yet forward the domain parameter.",
+      "No new API endpoint paths are required; only existing handler methods need domain-forwarding wiring.",
+      "Equities behavior is preserved by treating domain=equities or an absent domain param as the existing default path.",
+      "Playwright tests in ui/tests/ are the canonical E2E gate for domain-switch UI coverage across Chromium and WebKit."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "GET /api/config/* ?domain=crypto returns crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and crypto venue list.",
+        "GET /api/config/* ?domain=equities or no param returns equities identifiers unchanged.",
+        "GET /api/diagnostics/* ?domain=crypto returns crypto-scoped diagnostics metadata.",
+        "GET /api/diagnostics/* ?domain=equities or no param returns equities diagnostics unchanged.",
+        "Playwright domain selector switch spec passes for both equities and crypto on config and diagnostics views.",
+        "qa/smoke.sh passes with zero failures and no equities regressions."
+      ],
+      "concurrency_protocol": "Stateless read-only request-scoped domain resolution; no shared mutable state is introduced. Existing thread-safe Redis client handles concurrent reads.",
+      "forbidden_alternatives": [
+        "Adding Postgres, SQLite, Prisma, or Drizzle as a persistence layer.",
+        "Writing to Redis from app-api.",
+        "Introducing new API endpoint paths to serve crypto metadata.",
+        "Hardcoding crypto venue lists or config versions in controller logic instead of reading from Redis hot views."
+      ],
+      "hard_constraints": [
+        "Do not add new /api/diagnostics/* or /api/config/* endpoints.",
+        "Do not add config mutation paths.",
+        "app-api must not write to Redis or any persistence layer.",
+        "Do not pin or patch dag-framework locally.",
+        "Domain param must default to equities behavior when absent to preserve backward compatibility with all existing callers."
+      ],
+      "ownership_boundaries": "app-api controllers resolve the domain param and forward it to the service layer; DerivedDiagnosticsService and config service resolve domain-keyed Redis hot view keys via HotViewReadService. app-core writes crypto projections into Redis; app-api never writes. Domain resolution is stateless and request-scoped.",
+      "persistence_protocol": "Read-only from Redis hot views only. No new persistence layer. No writes from app-api. QuestDB historical store is not touched by this feature.",
+      "public_api": "GET /api/config/* and GET /api/diagnostics/* accept optional ?domain=equities|crypto query param. When domain=crypto: runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList reflect crypto-scoped values from Redis hot views. When domain=equities or param is absent: existing equities behavior is unchanged. No new endpoints. No mutation paths."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "single",
+    "problem_statement": "The /api/config/* and /api/diagnostics/* endpoints return equities-oriented runtime metadata regardless of the domain query parameter; threading ?domain=crypto must expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list while preserving equities behavior for domain=equities or absent param.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Redis hot view keys for crypto config/diagnostics projections may not yet be published by app-core \u2014 verify projection existence before wiring app-api read paths, or the feature silently returns empty/null crypto fields.",
+      "DerivedDiagnosticsService domain param is partially implemented per BASELINE_STATUS.md \u2014 some methods may still lack domain forwarding; a full method-by-method audit is required to avoid partial crypto exposure.",
+      "Equities backward-compatibility regression: domain=absent defaulting must be validated in both unit and Playwright tests since all existing callers omit the domain param.",
+      "Playwright golden-path flow 'cockpit top opportunity launches backtest with the selected symbol' must remain green; the new domain selector-switch spec must not interfere with existing cockpit test setup.",
+      "Config controller may not currently accept a domain @RequestParam at all \u2014 if adding one, verify no existing integration tests or API contract snapshots (api-contract-snapshots.test.ts) break due to the new optional parameter."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/service/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "docs/R003_DESIGN_CONTRACT.md listing all controller methods and domain-key conventions"
+        ],
+        "forbidden_paths": [
+          "app-api/src/test/",
+          "ui/tests/",
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "objective": "Document the domain-forwarding contract for config and diagnostics controllers in docs/R003_DESIGN_CONTRACT.md, enumerating all controller methods in app-api/src/main/java/com/ull/app/api/web/ and service methods in DerivedDiagnosticsService that require domain param threading, and confirming Redis hot view key conventions for crypto-scoped config and diagnostics projections.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "Failing JUnit tests asserting crypto and equities config endpoint parity",
+          "Failing JUnit tests asserting crypto and equities diagnostics endpoint parity",
+          "Failing Playwright domain selector-switch spec for config and diagnostics views"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Write failing JUnit tests in app-api/src/test/java/ that assert domain=crypto and domain=equities response payloads for all config and diagnostics controller endpoints, and write a failing Playwright selector-switch spec in ui/tests/ covering domain toggle for config and diagnostics views on Chromium and WebKit.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/service/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/build.gradle"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "Updated config controllers with domain param forwarding",
+          "Updated diagnostics controllers with domain param forwarding",
+          "Updated DerivedDiagnosticsService domain resolution covering all methods",
+          "All JUnit tests from qa-author slice now passing"
+        ],
+        "forbidden_paths": [
+          "app-api/src/test/",
+          "ui/tests/",
+          "tests/",
+          "qa/fixtures/",
+          "repo-memory/"
+        ],
+        "objective": "Thread ?domain=crypto|equities through all config and diagnostics controller methods in app-api/src/main/java/com/ull/app/api/web/ and wire the domain param into DerivedDiagnosticsService and config service calls so Redis hot view reads return crypto-scoped runtimeConfigVersion, graphId, liveConfig, partitionState, and venue list for domain=crypto while equities behavior is unchanged when domain=equities or param is absent.",
+        "role": "implementer",
+        "slice_id": "impl-primary",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/service/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "docs/",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "impl-primary"
+        ],
+        "expected_outputs": [
+          "Review findings report confirming no new endpoints or mutation paths",
+          "Confirmed equities backward compatibility for all config and diagnostics methods",
+          "Confirmed Redis read-only boundary is not violated"
+        ],
+        "forbidden_paths": [
+          "platform-runtime/",
+          "app-core/"
+        ],
+        "objective": "Review all changes in app-api/src/main/java/com/ull/app/api/web/ and service/ for domain param correctness, equities backward-compatibility, Redis read-only boundary compliance, absence of new endpoints or mutation paths, and full alignment with docs/R003_DESIGN_CONTRACT.md and repo-memory/DECISIONS.md.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "qa/smoke.sh green",
+          "qa/regression.sh green",
+          "Playwright domain-switch specs passing on Chromium and WebKit",
+          "Playwright golden-path cockpit flow passing",
+          "Zero equities regression failures"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run qa/smoke.sh and qa/regression.sh to confirm all config and diagnostics domain parity JUnit tests pass, all Playwright domain-switch specs pass across Chromium and WebKit including the golden-path cockpit flow, and zero equities regressions are introduced.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "GET /api/config/*?domain=crypto returns runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList sourced from crypto Redis hot-view keys",
+      "GET /api/config/*?domain=equities returns unchanged equities payload with no crypto field leakage",
+      "GET /api/diagnostics/*?domain=crypto returns crypto-scoped runtime metadata fields",
+      "GET /api/diagnostics/*?domain=equities returns unchanged equities diagnostics payload",
+      "Absent ?domain param defaults to equities behavior on both config and diagnostics endpoints",
+      "Missing or null crypto Redis keys yield a safe empty/default value, not a 500 or exception",
+      "Playwright domain-switch spec transitions equities\u2192crypto and crypto\u2192equities and asserts domain-correct field values for both on Chromium and WebKit",
+      "All existing api-contract-snapshots.test.ts equities snapshot assertions continue to pass (zero regressions)",
+      "qa/smoke.sh exits 0",
+      "qa/regression.sh exits 0"
+    ],
+    "affected_surfaces": [
+      "app-api/src/main/java/com/ull/app/api/web/",
+      "app-api/src/main/java/com/ull/app/api/config/",
+      "app-api/src/main/java/com/ull/app/api/redis/",
+      "app-api/src/test/java/",
+      "ui/tests/",
+      "qa/fixtures/",
+      "tests/",
+      "qa/"
+    ],
+    "assumptions": [
+      "Redis hot views already contain crypto-scoped keys for runtimeConfigVersion, graphId, partitionState, and venueList written by app-core; this feature only adds the read-path dispatch in app-api.",
+      "The ?domain query parameter is already parsed by existing Spring infrastructure in app-api; only controller branching logic is missing.",
+      "No new /api/config/* or /api/diagnostics/* endpoint routes are required; existing endpoint response bodies need domain-aware field population only.",
+      "Equities Redis key layout and response shapes are stable and must not be modified.",
+      "A UI domain-switch selector (or URL param) already exists in the Playwright harness for cockpit tests and can be reused for the domain-switch spec."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "GET /api/config/*?domain=crypto returns crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList.",
+        "GET /api/config/*?domain=equities returns unchanged equities payload with no crypto field leakage.",
+        "GET /api/diagnostics/*?domain=crypto returns crypto-scoped runtime metadata.",
+        "GET /api/diagnostics/*?domain=equities returns unchanged equities diagnostics payload.",
+        "Playwright domain-switch spec asserts domain-correct UI data for both equities and crypto on Chromium and WebKit.",
+        "qa/smoke.sh exits 0 after implementation."
+      ],
+      "concurrency_protocol": "Stateless read-only controllers; no locking or shared mutable state. Domain selection is a per-request parameter resolved at call time.",
+      "forbidden_alternatives": [
+        "Do not introduce a separate CryptoConfigController or CryptoDiagnosticsController; extend existing controllers only.",
+        "Do not fetch crypto metadata from QuestDB or any store other than Redis.",
+        "Do not add feature flags or backwards-compatibility shims; implement the domain branch directly."
+      ],
+      "hard_constraints": [
+        "Do not add new /api/diagnostics/* or /api/config/* endpoints.",
+        "Do not add config mutation paths.",
+        "Equities response shape and Redis keys must be preserved byte-for-byte.",
+        "No writes to Redis, QuestDB, or any other store.",
+        "Missing crypto Redis keys must return a safe empty/default value, not a 500."
+      ],
+      "ownership_boundaries": "app-api controllers own domain-dispatch logic and Redis reads via RedisHotViewReader. app-core owns writing crypto hot-view keys to Redis. No controller may write to Redis or any other store.",
+      "persistence_protocol": "Read-only from Redis hot views via RedisHotViewReader. No writes. No new Redis key schemas are introduced by this feature; crypto keys are assumed pre-existing from app-core.",
+      "public_api": "GET /api/config/*?domain={equities|crypto} and GET /api/diagnostics/*?domain={equities|crypto} return domain-correct payloads. No new routes. No mutation paths. Crypto response includes: runtimeConfigVersion, graphId, liveConfig, partitionState, venueList. Equities response shape is unchanged. Absent domain param defaults to equities."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "single",
+    "problem_statement": "Config and diagnostics API surfaces (/api/config/* and /api/diagnostics/*) return equities-oriented runtime metadata when domain=crypto is selected; they must instead return crypto-scoped runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList while leaving equities behavior completely unchanged.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Crypto Redis hot-view keys (runtimeConfigVersion, graphId, partitionState, venueList) may not yet be written by app-core in all environments, causing null returns; mitigate with null-safe defaults and qa/fixtures/ JSON stubs in the test harness.",
+      "Domain dispatch conditional in ConfigController may fall through to equities path when domain param is absent or misspelled, causing silent equities regression; mitigate by defaulting absent domain to equities explicitly and asserting no crypto leakage in equities tests.",
+      "Playwright domain-switch selector may not yet exist in the UI component or may differ from the agreed selector ID, causing the e2e spec to fail at selector resolution; mitigate by agreeing on selector ID in the design slice before qa-author writes the spec.",
+      "app-api integration tests running against a live Redis instance in CI may be flaky if crypto keys are unseeded; mitigate with MockRedis or TestContainers backed by qa/fixtures/ stubs."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/src/main/java/com/ull/app/api/redis/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "objective": "Lock the domain-dispatch design for ConfigController and DiagnosticsController in app-api/src/main/java/com/ull/app/api/web/, specifying exact Redis key names for crypto fields, null-safe default strategy, response-field additions, and Playwright selector contract for the domain-switch spec.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "Failing JUnit tests for /api/config/* domain parity (equities and crypto)",
+          "Failing JUnit tests for /api/diagnostics/* domain parity (equities and crypto)",
+          "qa/fixtures/ JSON stubs for equities and crypto domain responses",
+          "Failing Playwright domain-switch spec in ui/tests/"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Write failing JUnit tests in app-api/src/test/java/ asserting domain=crypto and domain=equities responses for all config and diagnostics endpoints, add qa/fixtures/ JSON stubs for both domains, and write a failing Playwright domain-switch spec in ui/tests/ covering equities-to-crypto and crypto-to-equities transitions on Chromium and WebKit.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test",
+            "--tests",
+            "*Config*Parity*",
+            "--continue"
+          ],
+          [
+            "./gradlew",
+            ":app-api:test",
+            "--tests",
+            "*Diagnostics*Parity*",
+            "--continue"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/src/main/java/com/ull/app/api/redis/",
+          "app-api/build.gradle",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "Updated ConfigController with domain-dispatch to crypto Redis keys",
+          "Updated DiagnosticsController with domain-dispatch to crypto Redis keys",
+          "Null-safe crypto field reads for runtimeConfigVersion, graphId, liveConfig, partitionState, venueList"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "objective": "Thread the ?domain parameter through ConfigController and DiagnosticsController in app-api/src/main/java/com/ull/app/api/web/, adding RedisHotViewReader calls for crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList keys with null-safe defaults, while preserving all equities read paths and response shapes unchanged.",
+        "role": "implementer",
+        "slice_id": "impl-primary",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/java/com/ull/app/api/web/",
+          "app-api/src/main/java/com/ull/app/api/config/",
+          "app-api/src/main/java/com/ull/app/api/redis/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "qa/fixtures/",
+          "docs/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "impl-primary"
+        ],
+        "expected_outputs": [
+          "ReviewReport"
+        ],
+        "forbidden_paths": [
+          "platform-ingest-alpaca/",
+          "platform-ingest-crypto-coingecko/",
+          "platform-ingest-crypto-coinglass/"
+        ],
+        "objective": "Review ConfigController and DiagnosticsController changes in app-api/src/main/java/com/ull/app/api/web/ and RedisHotViewReader usage in app-api/src/main/java/com/ull/app/api/redis/ for correctness of domain dispatch, equities regression safety, null-safety on absent crypto keys, and full contract compliance against the design slice.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "qa/smoke.sh exit 0",
+          "qa/regression.sh exit 0",
+          "All Playwright domain-switch specs green on Chromium and WebKit",
+          "Zero equities regressions in api-contract-snapshots.test.ts"
+        ],
+        "forbidden_paths": [
+          "app-api/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run qa/smoke.sh and qa/regression.sh confirming all config and diagnostics domain-parity tests pass for equities and crypto, all Playwright domain-switch specs pass on Chromium and WebKit, and existing api-contract-snapshots.test.ts assertions show zero equities regressions.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "npx",
+            "playwright",
+            "test",
+            "ui/tests/"
+          ]
+        ]
+      }
+    ]
+  }
+]

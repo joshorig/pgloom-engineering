@@ -1,0 +1,217 @@
+{
+  "comparison": {
+    "notes": [
+      "Codex CLI text output exposes actual total tokens via a trailing 'tokens used' line.",
+      "Claude text-mode artifacts from this run do not expose provider usage, so Claude token totals are estimated from prompt/response characters.",
+      "Claude JSON output includes total_cost_usd when available.",
+      "Codex CLI text output from these runs exposes tokens but not USD cost.",
+      "api_equivalent_cost_usd is computed from input/cache/output token splits when pricing is configured."
+    ],
+    "runs": [
+      {
+        "accepted_at_iteration": 1,
+        "backend": "codex",
+        "model": "gpt-5.5",
+        "quality": {
+          "blocking_check_count": 0,
+          "blocking_findings": [],
+          "score": 100,
+          "validator_error_count": 0,
+          "verdict": "accept"
+        },
+        "reasoning": "high",
+        "roles": [
+          "designer",
+          "implementer",
+          "qa",
+          "reviewer"
+        ],
+        "run_dir": "docs/reports/live-planner-suite-2026-05-03-010845-live-planner-autonomy-baseline/trp-r003-small__codex-gpt-5.5-high",
+        "slice_count": 5,
+        "status": "accepted",
+        "token_savior": {
+          "method": "token_savior_pack_context",
+          "optimized_tokens": 4733,
+          "original_tokens": 29644,
+          "reduction_ratio": 0.8403386857374173,
+          "tokens_saved": 24911
+        },
+        "usage": {
+          "actual_total_tokens": 92944,
+          "actual_usage_call_count": 4,
+          "api_equivalent_cost_source": "pricing_table",
+          "api_equivalent_cost_usd": 0.590859,
+          "call_count": 4,
+          "elapsed_seconds": 246.539,
+          "estimated_input_tokens": 28201,
+          "estimated_output_tokens": 11247,
+          "estimated_total_tokens": 39448,
+          "records": [
+            {
+              "actual_input_tokens": 20155,
+              "actual_output_tokens": 2811,
+              "actual_total_tokens": 22966,
+              "actual_usage_source": "codex_json_usage",
+              "backend": "codex",
+              "cache_creation_input_tokens": null,
+              "cache_read_input_tokens": 7552,
+              "call_index": 1,
+              "command": [
+                "codex",
+                "exec",
+                "-m",
+                "gpt-5.5",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-s",
+                "read-only",
+                "-C",
+                "/Volumes/devssd/repos/oss/pgloom-engineering",
+                "--ephemeral",
+                "--json",
+                "-"
+              ],
+              "elapsed_seconds": 68.148,
+              "estimated_input_tokens": 6116,
+              "estimated_output_tokens": 3022,
+              "estimated_total_tokens": 9138,
+              "model": "gpt-5.5",
+              "profile_name": "planner-panelist",
+              "prompt_chars": 24461,
+              "reasoning": "high",
+              "reasoning_output_tokens": 516,
+              "response_chars": 12087,
+              "total_cost_usd": null
+            },
+            {
+              "actual_input_tokens": 18738,
+              "actual_output_tokens": 2362,
+              "actual_total_tokens": 21100,
+              "actual_usage_source": "codex_json_usage",
+              "backend": "codex",
+              "cache_creation_input_tokens": null,
+              "cache_read_input_tokens": 7552,
+              "call_index": 2,
+              "command": [
+                "codex",
+                "exec",
+                "-m",
+                "gpt-5.5",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-s",
+                "read-only",
+                "-C",
+                "/Volumes/devssd/repos/oss/pgloom-engineering",
+                "--ephemeral",
+                "--json",
+                "-"
+              ],
+              "elapsed_seconds": 54.908,
+              "estimated_input_tokens": 4609,
+              "estimated_output_tokens": 2526,
+              "estimated_total_tokens": 7135,
+              "model": "gpt-5.5",
+              "profile_name": "planner-panelist",
+              "prompt_chars": 18434,
+              "reasoning": "high",
+              "reasoning_output_tokens": 516,
+              "response_chars": 10102,
+              "total_cost_usd": null
+            },
+            {
+              "actual_input_tokens": 19894,
+              "actual_output_tokens": 3794,
+              "actual_total_tokens": 23688,
+              "actual_usage_source": "codex_json_usage",
+              "backend": "codex",
+              "cache_creation_input_tokens": null,
+              "cache_read_input_tokens": 7552,
+              "call_index": 1,
+              "command": [
+                "codex",
+                "exec",
+                "-m",
+                "gpt-5.5",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-s",
+                "read-only",
+                "-C",
+                "/Volumes/devssd/repos/oss/pgloom-engineering",
+                "--ephemeral",
+                "--json",
+                "-"
+              ],
+              "elapsed_seconds": 80.435,
+              "estimated_input_tokens": 6970,
+              "estimated_output_tokens": 4377,
+              "estimated_total_tokens": 11347,
+              "model": "gpt-5.5",
+              "profile_name": "planner-consolidator",
+              "prompt_chars": 27880,
+              "reasoning": "high",
+              "reasoning_output_tokens": 516,
+              "response_chars": 17507,
+              "total_cost_usd": null
+            },
+            {
+              "actual_input_tokens": 23674,
+              "actual_output_tokens": 1516,
+              "actual_total_tokens": 25190,
+              "actual_usage_source": "codex_json_usage",
+              "backend": "codex",
+              "cache_creation_input_tokens": null,
+              "cache_read_input_tokens": 7552,
+              "call_index": 1,
+              "command": [
+                "codex",
+                "exec",
+                "-m",
+                "gpt-5.5",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-s",
+                "read-only",
+                "-C",
+                "/Volumes/devssd/repos/oss/pgloom-engineering",
+                "--ephemeral",
+                "--json",
+                "-"
+              ],
+              "elapsed_seconds": 43.048,
+              "estimated_input_tokens": 10506,
+              "estimated_output_tokens": 1322,
+              "estimated_total_tokens": 11828,
+              "model": "gpt-5.5",
+              "profile_name": "planner-critic",
+              "prompt_chars": 42024,
+              "reasoning": "high",
+              "reasoning_output_tokens": 516,
+              "response_chars": 5286,
+              "total_cost_usd": null
+            }
+          ],
+          "total_cost_usd": null
+        }
+      }
+    ]
+  },
+  "output_root": "docs/reports/live-planner-suite-2026-05-03-010845-live-planner-autonomy-baseline",
+  "runs": [
+    {
+      "backend": "codex",
+      "case_id": "trp-r003-small",
+      "elapsed_seconds": 250.102,
+      "model": "gpt-5.5",
+      "reasoning": "high",
+      "returncode": 0,
+      "run_dir": "docs/reports/live-planner-suite-2026-05-03-010845-live-planner-autonomy-baseline/trp-r003-small__codex-gpt-5.5-high"
+    }
+  ],
+  "suite": "live-planner-autonomy-baseline",
+  "thresholds": {
+    "failures": [],
+    "passed": true
+  }
+}

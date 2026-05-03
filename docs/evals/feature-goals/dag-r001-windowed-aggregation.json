@@ -1,0 +1,23 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "dag-framework",
+  "goal": "Implement R-001 WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, and watermark integration.",
+  "requirements": [
+    "Add WindowSpec for tumbling and sliding windows.",
+    "Add WindowAssigner and Trigger primitives.",
+    "Use zero-allocation aggregation state with Agrona collections.",
+    "Support late-arrival policy for drop versus allow-lateness window.",
+    "Watermark advancement must drive window close."
+  ],
+  "constraints": [
+    "Do not implement custom user-defined windows.",
+    "Do not implement session windows in this feature.",
+    "Window state is per-partition and never cross-partition."
+  ],
+  "acceptance_criteria": [
+    "Unit tests cover tumbling windows, sliding windows, and late arrivals.",
+    "Watermark advancement closes windows deterministically.",
+    "jmhSmokeCheck is green with the window node in benchmark surface.",
+    "qa/smoke.sh passes."
+  ]
+}

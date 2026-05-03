@@ -1,22 +1,58 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
+from pgloom.db.postgres import connect
 from pgloom.harness.result import HandlerResult
+from pgloom.memory import MemoryEntry
+from pgloom.memory_postgres import PostgresMemoryStore
 from pgloom.tasks import enqueue_task
 
+from pgloom_engineering.config import get_settings
 from pgloom_engineering.contract_store import (
     create_plan_contract,
     record_handoff,
+    record_recovery_action,
     upsert_task_contract,
 )
-from pgloom_engineering.contracts import PlanContract, TaskContract
+from pgloom_engineering.contracts import (
+    FeatureGoalContract,
+    PlanContract,
+    RecoveryDecisionContract,
+    TaskContract,
+)
 from pgloom_engineering.features import attach_task
+from pgloom_engineering.model_provider import EngineeringCLIModelProvider
+from pgloom_engineering.path_policy import discover_qa_write_paths
+from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
+from pgloom_engineering.planner.context_capsule import (
+    capsule_from_token_savior,
+    capsule_query_hash,
+    current_git_head,
+    get_context_capsule,
+    token_savior_from_capsule,
+    upsert_context_capsule,
+)
+from pgloom_engineering.planner.exceptions import PlannerCouncilExhausted
+from pgloom_engineering.planner.token_savior_context import (
+    TokenSaviorContextResult,
+    build_token_savior_project_context,
+)
+from pgloom_engineering.projects import ProjectConfig, get_project, role_enabled
+from pgloom_engineering.token_count import count_tokens
+from pgloom_engineering.token_savior import TokenSaviorUsage, record_token_savior_usage
 
 
 class PlannerHandler:
+    def __init__(self, *, council: PlannerCouncil | None = None) -> None:
+        self._council = council
+
     def handle(self, task: dict[str, Any]) -> HandlerResult:
         payload = task.get("payload") or {}
+        if payload.get("feature_goal_contract") and not payload.get("plan_contract"):
+            return self._handle_council(task, payload)
         raw_contract = payload.get("plan_contract")
         if not raw_contract:
             return HandlerResult(
@@ -37,6 +73,88 @@ class PlannerHandler:
                 blocker_code="engineering.plan_contract_invalid",
                 blocker_reason=str(exc),
             )
+        return self._persist_and_decompose(task, payload, contract)
+
+    def _handle_council(self, task: dict[str, Any], payload: dict[str, Any]) -> HandlerResult:
+        database_url = payload.get("database_url")
+        try:
+            feature_goal = FeatureGoalContract.model_validate(payload["feature_goal_contract"])
+        except Exception as exc:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.feature_goal_contract_invalid",
+                blocker_reason=str(exc),
+            )
+        project_context, token_savior = _build_project_context(
+            payload,
+            feature_goal,
+            database_url,
+            workflow_id=str(task.get("workflow_id") or ""),
+        )
+        council = self._council or _build_council(
+            database_url=database_url,
+            payload=payload,
+            feature_goal=feature_goal,
+        )
+        try:
+            outcome = council.run(
+                feature_goal=feature_goal,
+                project_context=project_context,
+                workflow_id=task.get("workflow_id"),
+                task_id=task.get("id"),
+            )
+        except PlannerCouncilExhausted as exc:
+            _record_token_savior_for_planner_calls(
+                feature_id=str(task.get("workflow_id")),
+                workflow_id=task.get("workflow_id"),
+                task_id=task.get("id"),
+                token_savior=token_savior,
+                database_url=database_url,
+            )
+            iterations = [
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                for item in exc.iterations
+            ]
+            record_recovery_action(
+                RecoveryDecisionContract(
+                    feature_id=str(task.get("workflow_id")),
+                    task_id=task.get("id"),
+                    blocker_code="engineering.planner_council_exhausted",
+                    action="replan",
+                    rationale="Planner council exhausted before producing an accepted plan.",
+                    attempt=len(iterations) or 1,
+                    max_attempts=get_settings().planner_max_iterations,
+                ),
+                status="open",
+                outcome=json.dumps({"iterations": iterations}, default=str),
+                database_url=database_url,
+            )
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.planner_council_exhausted",
+                blocker_reason="planner council exhausted",
+                result={"iterations": iterations},
+            )
+        _record_token_savior_for_planner_calls(
+            feature_id=str(task.get("workflow_id")),
+            workflow_id=task.get("workflow_id"),
+            task_id=task.get("id"),
+            token_savior=token_savior,
+            database_url=database_url,
+        )
+        _write_accepted_plan_memory(
+            contract=outcome.final,
+            workflow_id=str(task.get("workflow_id") or outcome.final.feature_id),
+            database_url=database_url,
+        )
+        return self._persist_and_decompose(task, payload, outcome.final)
+
+    def _persist_and_decompose(
+        self,
+        task: dict[str, Any],
+        payload: dict[str, Any],
+        contract: PlanContract,
+    ) -> HandlerResult:
         database_url = payload.get("database_url")
         plan_row = create_plan_contract(
             contract,
@@ -55,8 +173,46 @@ class PlannerHandler:
             )
 
         created: dict[str, str] = {}
+        deferred: list[dict[str, str]] = []
+        project = _project_from_payload(payload, contract.project, database_url)
         for task_slice in contract.task_slices:
-            depends_on = [created[dep] for dep in task_slice.depends_on]
+            if project is not None and not role_enabled(project, task_slice.role):
+                deferred.append(
+                    {
+                        "slice_id": task_slice.slice_id,
+                        "role": task_slice.role,
+                        "reason": (
+                            "role gated to disabled in "
+                            "engineering_projects.metadata.role_gates"
+                        ),
+                    }
+                )
+                record_recovery_action(
+                    RecoveryDecisionContract(
+                        feature_id=contract.feature_id,
+                        task_id=task.get("id"),
+                        blocker_code="engineering.role_gate_disabled",
+                        action="block_execution",
+                        rationale=(
+                            "role gated to disabled in "
+                            "engineering_projects.metadata.role_gates"
+                        ),
+                        attempt=1,
+                        max_attempts=1,
+                    ),
+                    status="deferred",
+                    outcome=json.dumps(
+                        {
+                            "slice_id": task_slice.slice_id,
+                            "role": task_slice.role,
+                            "project": contract.project,
+                        },
+                        sort_keys=True,
+                    ),
+                    database_url=database_url,
+                )
+                continue
+            depends_on = [created[dep] for dep in task_slice.depends_on if dep in created]
             child = enqueue_task(
                 workflow_id=contract.feature_id,
                 domain="engineering",
@@ -67,7 +223,7 @@ class PlannerHandler:
                     "plan_contract_id": plan_row["id"],
                     "plan_contract_hash": plan_row["contract_hash"],
                     "task_slice_id": task_slice.slice_id,
-                    "project": payload.get("project"),
+                    "project": payload.get("project") or contract.project,
                     "allow_unregistered_project": payload.get("allow_unregistered_project", False),
                     "requires_multi_agent_review": True,
                 },
@@ -111,6 +267,564 @@ class PlannerHandler:
                 "task_id": task.get("id"),
                 "plan_contract_id": plan_row["id"],
                 "child_task_ids": list(created.values()),
+                "deferred_slices": deferred,
                 "planning": "multi_agent",
             }
         )
+
+
+def _build_council(
+    *,
+    database_url: str | None,
+    payload: dict[str, Any] | None = None,
+    feature_goal: FeatureGoalContract | None = None,
+) -> PlannerCouncil:
+    settings = get_settings()
+    profile_commands = dict(settings.planner_profile_commands)
+    panelist_count = settings.planner_panelist_count
+    if payload is not None and feature_goal is not None:
+        project = _project_from_payload(payload, feature_goal.project, database_url)
+        if project is not None:
+            profile_commands.update(_project_profile_commands(project))
+        panelist_count = _adaptive_panelist_count(feature_goal, settings.planner_panelist_count)
+    profile_commands = _role_routed_profile_commands(profile_commands, settings.planner_command)
+    config = CouncilConfig(
+        panelist_count=panelist_count,
+        iter_1_panelist_count=settings.planner_iter_1_panelist_count,
+        iter_2_panelist_count=settings.planner_iter_2_panelist_count,
+        max_iterations=settings.planner_max_iterations,
+        panelist_profile=settings.planner_panelist_profile,
+        critic_profile=settings.planner_critic_profile,
+        consolidator_profile=settings.planner_consolidator_profile,
+        timeout_seconds_per_invocation=settings.planner_invocation_timeout_seconds,
+        command=settings.planner_command,
+        profile_commands=profile_commands,
+        consolidator_scoped_inputs_enabled=settings.planner_consolidator_scoped_inputs_enabled,
+        production_grade_preempts_critic=settings.planner_production_grade_preempts_critic,
+        production_grade_critic_sample_rate=settings.planner_production_grade_critic_sample_rate,
+    )
+    return PlannerCouncil(
+        config=config,
+        provider=EngineeringCLIModelProvider(database_url=database_url),
+    )
+
+
+def _role_routed_profile_commands(
+    profile_commands: dict[str, list[str]],
+    default_command: list[str],
+) -> dict[str, list[str]]:
+    settings = get_settings()
+    routed = dict(profile_commands)
+    role_specs = {
+        settings.planner_panelist_profile: (
+            settings.planner_claude_panelist_model,
+            settings.planner_codex_panelist_model,
+            settings.planner_codex_panelist_reasoning,
+        ),
+        settings.planner_consolidator_profile: (
+            settings.planner_claude_consolidator_model,
+            settings.planner_codex_consolidator_model,
+            settings.planner_codex_consolidator_reasoning,
+        ),
+        settings.planner_critic_profile: (
+            settings.planner_claude_critic_model,
+            settings.planner_codex_critic_model,
+            settings.planner_codex_critic_reasoning,
+        ),
+    }
+    for profile_name, (claude_model, codex_model, codex_reasoning) in role_specs.items():
+        command = routed.get(profile_name, default_command)
+        routed[profile_name] = _route_model_command(
+            command,
+            claude_model=claude_model,
+            codex_model=codex_model,
+            codex_reasoning=codex_reasoning,
+        )
+    return routed
+
+
+def _route_model_command(
+    command: list[str],
+    *,
+    claude_model: str,
+    codex_model: str,
+    codex_reasoning: str,
+) -> list[str]:
+    if not command:
+        return command
+    routed = list(command)
+    binary = Path(routed[0]).name
+    if binary == "claude":
+        return _replace_flag_value(routed, "--model", claude_model)
+    if binary == "codex":
+        routed = _replace_flag_value(routed, "-m", codex_model)
+        routed = _replace_or_append_reasoning(routed, codex_reasoning)
+    return routed
+
+
+def _replace_flag_value(command: list[str], flag: str, value: str) -> list[str]:
+    routed = list(command)
+    if flag in routed:
+        index = routed.index(flag)
+        if index + 1 < len(routed):
+            routed[index + 1] = value
+            return routed
+    return [*routed, flag, value]
+
+
+def _replace_or_append_reasoning(command: list[str], reasoning: str) -> list[str]:
+    routed = list(command)
+    setting = f'model_reasoning_effort="{reasoning}"'
+    for index, item in enumerate(routed):
+        if item.startswith("model_reasoning_effort="):
+            routed[index] = setting
+            return routed
+        if item == "-c" and index + 1 < len(routed) and routed[index + 1].startswith(
+            "model_reasoning_effort="
+        ):
+            routed[index + 1] = setting
+            return routed
+    return [*routed, "-c", setting]
+
+
+def _build_project_context(
+    payload: dict[str, Any],
+    feature_goal: FeatureGoalContract,
+    database_url: str | None,
+    workflow_id: str = "",
+) -> tuple[ProjectContext, TokenSaviorContextResult | None]:
+    project = _project_from_payload(payload, feature_goal.project, database_url)
+    root = project.root if project is not None else Path(".")
+    metadata = project.metadata if project is not None else {}
+    settings = get_settings()
+    memory_digest = _build_memory_digest(
+        project_name=feature_goal.project,
+        project_root=root,
+        query=_token_savior_query(feature_goal),
+        workflow_id=workflow_id,
+        database_url=database_url,
+        budget_tokens=settings.planner_memory_budget_tokens,
+    )
+    if settings.planner_token_savior_enabled:
+        query = _token_savior_query(feature_goal)
+        git_head = current_git_head(root)
+        query_hash = capsule_query_hash(
+            query,
+            budget_tokens=settings.planner_token_savior_budget_tokens,
+            memory_digest=memory_digest,
+        )
+        if settings.planner_context_capsule_cache_enabled and project is not None:
+            cached = get_context_capsule(
+                project=project.name,
+                git_head=git_head,
+                query_hash=query_hash,
+                capsule_version=settings.planner_context_capsule_version,
+                database_url=database_url,
+            )
+            if cached is not None:
+                token_savior = token_savior_from_capsule(cached)
+                return _merge_project_context_metadata(
+                    token_savior.context,
+                    metadata,
+                ), token_savior
+        token_savior = build_token_savior_project_context(
+            project_root=root,
+            query=query,
+            budget_tokens=settings.planner_token_savior_budget_tokens,
+            memory_digest=memory_digest,
+        )
+        context = _merge_project_context_metadata(token_savior.context, metadata)
+        if settings.planner_context_capsule_cache_enabled and project is not None:
+            capsule = capsule_from_token_savior(
+                project=project.name,
+                git_head=git_head,
+                query_hash=query_hash,
+                capsule_version=settings.planner_context_capsule_version,
+                result=token_savior.model_copy(update={"context": context}),
+                metadata={"cache": "miss", "memory_digest_tokens": _approx_tokens(memory_digest)},
+            )
+            upsert_context_capsule(capsule, database_url=database_url)
+        return context, token_savior
+    return ProjectContext(
+        project_root=root,
+        roadmap_excerpt="\n\n".join(
+            part
+            for part in [str(metadata.get("roadmap_excerpt") or ""), memory_digest]
+            if part
+        ),
+        decisions_excerpt=str(metadata.get("decisions_excerpt") or ""),
+        qa_smoke_path=root.joinpath("qa/smoke.sh"),
+        qa_regression_path=root.joinpath("qa/regression.sh"),
+        relevant_paths=list(metadata.get("relevant_paths") or []),
+        qa_write_paths=list(metadata.get("qa_write_paths") or discover_qa_write_paths(root)),
+    ), None
+
+
+def _token_savior_query(feature_goal: FeatureGoalContract) -> str:
+    parts = [
+        feature_goal.goal,
+        *feature_goal.requirements,
+        *feature_goal.acceptance_criteria,
+    ]
+    return " ".join(part for part in parts if part).strip() or feature_goal.project
+
+
+def _project_profile_commands(project: ProjectConfig) -> dict[str, list[str]]:
+    raw = project.metadata.get("planning")
+    if not isinstance(raw, dict):
+        raw = project.metadata.get("planner")
+    if not isinstance(raw, dict):
+        return {}
+    commands = raw.get("profile_commands")
+    if not isinstance(commands, dict):
+        return {}
+    result: dict[str, list[str]] = {}
+    for profile_name, command in commands.items():
+        if isinstance(profile_name, str) and _is_command_list(command):
+            result[profile_name] = list(command)
+    return result
+
+
+def _merge_project_context_metadata(
+    context: ProjectContext,
+    metadata: dict[str, Any],
+) -> ProjectContext:
+    return context.model_copy(
+        update={
+            "relevant_paths": list(
+                dict.fromkeys(
+                    [
+                        *context.relevant_paths,
+                        *list(metadata.get("relevant_paths") or []),
+                    ]
+                )
+            ),
+            "qa_write_paths": list(
+                dict.fromkeys(
+                    [
+                        *context.qa_write_paths,
+                        *list(metadata.get("qa_write_paths") or []),
+                    ]
+                )
+            ),
+        }
+    )
+
+
+def _adaptive_panelist_count(
+    feature_goal: FeatureGoalContract,
+    default_count: int,
+) -> int:
+    settings = get_settings()
+    text = _token_savior_query(feature_goal).lower()
+    high_risk_terms = [
+        "snapshot",
+        "restore",
+        "migration",
+        "schema",
+        "security",
+        "concurrency",
+        "replication",
+        "distributed",
+        "persistence",
+        "payment",
+    ]
+    small_terms = [
+        "diagnostic",
+        "config",
+        "docs",
+        "readme",
+        "single-surface",
+        "range",
+        "export",
+        "visualizer",
+    ]
+    if any(term in text for term in high_risk_terms):
+        return max(2, settings.planner_high_risk_panelist_count)
+    if any(term in text for term in small_terms):
+        return max(2, settings.planner_small_feature_panelist_count)
+    return max(2, default_count)
+
+
+def _build_memory_digest(
+    *,
+    project_name: str,
+    project_root: Path,
+    query: str,
+    workflow_id: str,
+    database_url: str | None,
+    budget_tokens: int,
+) -> str:
+    sections = [
+        _token_savior_memory_digest(project_root, query),
+        _pgloom_memory_digest(project_name, query, workflow_id, database_url),
+    ]
+    digest = "\n\n".join(section for section in sections if section.strip())
+    if _approx_tokens(digest) <= budget_tokens:
+        return digest
+    return digest[: budget_tokens * 4] + "\n...[memory digest truncated]"
+
+
+def _token_savior_memory_digest(project_root: Path, query: str) -> str:
+    token_savior_src = Path("/Volumes/devssd/repos/oss/token-savior/src")
+    if token_savior_src.exists():
+        import sys
+
+        sys.path.insert(0, str(token_savior_src))
+    try:
+        memory_db = __import__("token_savior.memory_db", fromlist=["memory_db"])
+        observations = memory_db.get_recent_index(
+            str(project_root),
+            limit=8,
+            type_filter=["guardrail", "ruled_out", "convention", "warning", "decision"],
+        )
+        summaries = memory_db.session_summary_search(
+            str(project_root),
+            _memory_search_query(query),
+            limit=4,
+        )
+    except Exception:
+        return ""
+    lines: list[str] = []
+    if observations:
+        lines.append("# Token Savior memory observations")
+        for obs in observations:
+            title = obs.get("title") or ""
+            obs_type = obs.get("type") or "note"
+            symbol = obs.get("symbol") or ""
+            lines.append(f"- [{obs_type}] {title} {f'({symbol})' if symbol else ''}".strip())
+    if summaries:
+        lines.append("# Token Savior session summaries")
+        for summary in summaries:
+            completed = summary.get("completed") or summary.get("excerpt") or ""
+            if completed:
+                lines.append(f"- {str(completed)[:240]}")
+    return "\n".join(lines)
+
+
+def _pgloom_memory_digest(
+    project_name: str,
+    query: str,
+    workflow_id: str,
+    database_url: str | None,
+) -> str:
+    try:
+        store = PostgresMemoryStore(database_url=database_url)
+        project_scope = f"project:{project_name}"
+        rows = [
+            *store.search(workflow_id or None, query, limit=5),
+            *store.search(project_scope, query, limit=8),
+            *store.search(None, f"{project_name} {query}", limit=5),
+        ]
+    except Exception:
+        return ""
+    seen: set[tuple[str, str]] = set()
+    lines = ["# pgloom memory"]
+    for row in rows:
+        key = (row.workflow_id, row.key)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"- {row.key}: {row.value[:240]}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _write_accepted_plan_memory(
+    *,
+    contract: PlanContract,
+    workflow_id: str,
+    database_url: str | None,
+) -> None:
+    try:
+        store = PostgresMemoryStore(database_url=database_url)
+        project_scope = f"project:{contract.project}"
+        metadata = {
+            "project": contract.project,
+            "feature_id": contract.feature_id,
+            "source": "pgloom-engineering.planner",
+        }
+        store.put(
+            MemoryEntry(
+                workflow_id=workflow_id,
+                key=f"feature:{contract.feature_id}:accepted_plan_summary",
+                value=_accepted_plan_summary(contract),
+                metadata=metadata,
+            )
+        )
+        store.put(
+            MemoryEntry(
+                workflow_id=project_scope,
+                key=f"project:{contract.project}:qa_commands",
+                value=_qa_command_memory(contract),
+                metadata=metadata,
+            )
+        )
+        store.put(
+            MemoryEntry(
+                workflow_id=project_scope,
+                key=f"project:{contract.project}:risk_patterns",
+                value=_risk_memory(contract),
+                metadata=metadata,
+            )
+        )
+        store.put(
+            MemoryEntry(
+                workflow_id=project_scope,
+                key=f"project:{contract.project}:planning_guardrails",
+                value=_guardrail_memory(contract),
+                metadata=metadata,
+            )
+        )
+    except Exception:
+        return
+
+
+def _accepted_plan_summary(contract: PlanContract) -> str:
+    slices = [
+        f"{item.slice_id}:{item.role}:{item.task_type}:{','.join(item.allowed_paths)}"
+        for item in contract.task_slices
+    ]
+    return "\n".join(
+        [
+            f"feature_id: {contract.feature_id}",
+            f"problem: {contract.problem_statement}",
+            f"affected_surfaces: {', '.join(contract.affected_surfaces)}",
+            "task_slices:",
+            *[f"- {item}" for item in slices],
+            "acceptance:",
+            *[f"- {item}" for item in contract.acceptance_test_matrix[:8]],
+        ]
+    )
+
+
+def _qa_command_memory(contract: PlanContract) -> str:
+    commands: list[str] = []
+    for task_slice in contract.task_slices:
+        if task_slice.role != "qa":
+            continue
+        for command in task_slice.verification_commands:
+            rendered = " ".join(command)
+            if rendered and rendered not in commands:
+                commands.append(rendered)
+    return "\n".join(f"- {command}" for command in commands) or "No QA commands recorded."
+
+
+def _risk_memory(contract: PlanContract) -> str:
+    return "\n".join(f"- {item}" for item in contract.risk_register) or "No risks recorded."
+
+
+def _guardrail_memory(contract: PlanContract) -> str:
+    qa_paths = sorted(
+        {
+            path
+            for task_slice in contract.task_slices
+            if task_slice.role == "qa"
+            for path in task_slice.allowed_paths
+        }
+    )
+    implementer_paths = sorted(
+        {
+            path
+            for task_slice in contract.task_slices
+            if task_slice.role == "implementer"
+            for path in task_slice.allowed_paths
+        }
+    )
+    return "\n".join(
+        [
+            "Use two QA phases: engineering.qa.author before implementers and "
+            "engineering.qa.verify after reviewers.",
+            "QA write paths stay restricted to tests/ and qa/fixtures/.",
+            "Implementer slices must not claim QA write paths.",
+            f"recent_qa_paths: {', '.join(qa_paths) or 'none'}",
+            f"recent_implementer_paths: {', '.join(implementer_paths) or 'none'}",
+        ]
+    )
+
+
+def _memory_search_query(query: str) -> str:
+    import re
+
+    terms = re.findall(r"[A-Za-z][A-Za-z0-9_]{2,}", query)
+    return " ".join(terms[:8]) or "planning"
+
+
+def _approx_tokens(text: str) -> int:
+    return count_tokens(text)
+
+
+def _is_command_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _record_token_savior_for_planner_calls(
+    *,
+    feature_id: str,
+    workflow_id: str | None,
+    task_id: str | None,
+    token_savior: TokenSaviorContextResult | None,
+    database_url: str | None,
+) -> None:
+    if token_savior is None or token_savior.input_tokens_original == 0:
+        return
+    profile_names = {
+        get_settings().planner_panelist_profile,
+        get_settings().planner_critic_profile,
+        get_settings().planner_consolidator_profile,
+    }
+    with connect(database_url) as conn:
+        rows = conn.execute(
+            """
+            select id, profile_name
+            from model_usage
+            where workflow_id = %s
+              and task_id = %s
+              and profile_name = any(%s)
+            order by id
+            """,
+            (workflow_id, task_id, sorted(profile_names)),
+        ).fetchall()
+    for row in rows:
+        record_token_savior_usage(
+            TokenSaviorUsage(
+                feature_id=feature_id,
+                workflow_id=workflow_id,
+                task_id=task_id,
+                model_usage_id=int(row["id"]),
+                profile_name=str(row["profile_name"]),
+                input_tokens_original=token_savior.input_tokens_original,
+                input_tokens_after_savior=token_savior.input_tokens_after_savior,
+                tokens_saved=token_savior.tokens_saved,
+                reduction_ratio=token_savior.reduction_ratio,
+                metadata={
+                    "method": token_savior.method,
+                    "scope": "planner_project_context",
+                    "role": _role_from_profile(str(row["profile_name"])),
+                },
+            ),
+            database_url=database_url,
+        )
+
+
+def _role_from_profile(profile_name: str) -> str:
+    settings = get_settings()
+    if profile_name == settings.planner_panelist_profile:
+        return "panelist"
+    if profile_name == settings.planner_consolidator_profile:
+        return "consolidator"
+    if profile_name == settings.planner_critic_profile:
+        return "critic"
+    return profile_name
+
+
+def _project_from_payload(
+    payload: dict[str, Any],
+    fallback_name: str,
+    database_url: str | None,
+) -> ProjectConfig | None:
+    raw_project = payload.get("project")
+    if isinstance(raw_project, dict):
+        return ProjectConfig.model_validate(raw_project)
+    if isinstance(raw_project, str):
+        return get_project(raw_project, database_url=database_url)
+    return get_project(fallback_name, database_url=database_url)

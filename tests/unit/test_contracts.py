@@ -21,6 +21,7 @@ def valid_plan() -> PlanContract:
             public_api="CLI feature",
             acceptance_tests=["pytest"],
         ),
+        affected_surfaces=["pgloom_engineering"],
         implementation_topology=ImplementationTopology.COUNCIL_DECIDES,
         task_slices=[
             TaskSliceContract(
@@ -60,6 +61,36 @@ def test_plan_validation_rejects_weak_handoffs() -> None:
         "missing_forbidden_paths",
         "missing_verification_commands",
     }
+
+
+def test_plan_validation_rejects_role_task_type_mismatch() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].role = "reviewer"
+    plan.task_slices[0].task_type = "engineering.finalization"
+
+    errors = validate_plan_contract(plan)
+
+    assert {row["code"] for row in errors} >= {"invalid_role_task_type"}
+
+
+def test_plan_validation_accepts_module_test_roots_for_qa() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].role = "qa"
+    plan.task_slices[0].task_type = "engineering.qa.verify"
+    plan.task_slices[0].allowed_paths = ["tests/", "store/src/test/"]
+
+    errors = validate_plan_contract(plan)
+
+    assert "qa_paths_not_restricted" not in {row["code"] for row in errors}
+
+
+def test_plan_validation_rejects_implementer_qa_write_paths() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].allowed_paths = ["pgloom_engineering", "app-api/src/test/"]
+
+    errors = validate_plan_contract(plan)
+
+    assert {row["code"] for row in errors} >= {"implementer_claims_qa_paths"}
 
 
 def test_plan_validation_rejects_drift_without_supersession() -> None:
@@ -107,6 +138,7 @@ def test_plan_contract_rejects_forward_dependencies() -> None:
             project="pgloom",
             problem_statement="Bad dependency.",
             design_contract=DesignContract(),
+            affected_surfaces=["pgloom_engineering"],
             task_slices=[
                 TaskSliceContract(
                     slice_id="slice-1",

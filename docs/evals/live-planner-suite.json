@@ -1,0 +1,99 @@
+{
+  "name": "live-planner-autonomy-baseline",
+  "pricing_file": "docs/reports/planner-pricing-2026-05-03.json",
+  "defaults": {
+    "max_iterations": 2,
+    "context_budget_tokens": 3000,
+    "claude_max_budget_usd": "10.00",
+    "thresholds": {
+      "required_quality_verdict": "accept",
+      "min_quality_score": 90,
+      "required_production_grade_verdict": "accept",
+      "min_production_grade_score": 90,
+      "max_accepted_iteration": 2
+    }
+  },
+  "models": [
+    {
+      "backend": "claude",
+      "model": "sonnet"
+    },
+    {
+      "backend": "codex",
+      "model": "gpt-5.5",
+      "reasoning": "high"
+    }
+  ],
+  "cases": [
+    {
+      "id": "lvc-r003-small",
+      "task_class": "small",
+      "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+      "feature_goal": "docs/evals/feature-goals/lvc-r003-range.json",
+      "panelists": 2,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 1.75
+      }
+    },
+    {
+      "id": "lvc-r002-wide",
+      "task_class": "wide",
+      "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+      "feature_goal": "docs/evals/feature-goals/lvc-r002-snapshot-restore.json",
+      "panelists": 3,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 1.5
+      }
+    },
+    {
+      "id": "trp-r003-small",
+      "task_class": "small-cross-project",
+      "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+      "feature_goal": "docs/evals/feature-goals/trp-r003-config-diagnostics.json",
+      "panelists": 2,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 1.25
+      }
+    },
+    {
+      "id": "trp-r016-wide",
+      "task_class": "wide-cross-project",
+      "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+      "feature_goal": "docs/evals/feature-goals/trp-r016-signalspec.json",
+      "panelists": 3,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 3.25
+      }
+    },
+    {
+      "id": "dag-r003-small",
+      "task_class": "small-cross-project",
+      "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+      "feature_goal": "docs/evals/feature-goals/dag-r003-yaml-loader.json",
+      "panelists": 2,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 1.25
+      }
+    },
+    {
+      "id": "dag-r001-medium",
+      "task_class": "medium-cross-project",
+      "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+      "feature_goal": "docs/evals/feature-goals/dag-r001-windowed-aggregation.json",
+      "panelists": 2,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 1.5
+      }
+    },
+    {
+      "id": "dag-r006-wide",
+      "task_class": "wide-cross-project",
+      "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+      "feature_goal": "docs/evals/feature-goals/dag-r006-backpressure.json",
+      "panelists": 3,
+      "thresholds": {
+        "max_api_equivalent_cost_usd": 2.25
+      }
+    }
+  ]
+}

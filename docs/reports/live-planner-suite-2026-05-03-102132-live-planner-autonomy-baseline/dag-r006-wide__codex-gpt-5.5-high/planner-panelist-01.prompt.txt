@@ -1,0 +1,270 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- Prefer concrete paths already present in PROJECT_CONTEXT.relevant_paths or
+  PROJECT_CONTEXT.qa_write_paths. Do not invent conventional Gradle paths such
+  as `benchmarks/src/main/java/` unless they appear in context.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Wide/system features should not be collapsed into one broad implementer.
+  Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants when those concerns exist.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Test matrix covers DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK under sustained overrun.",
+    "Overflow-to-disk spill file drains and reads back correctly.",
+    "jmhSmokeCheck remains green.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Do not add custom policies.",
+    "Do not add priority-based shedding.",
+    "Do not add cross-partition backpressure propagation.",
+    "Reuse MmapJournal machinery from lvc-standard instead of inventing a new spill format.",
+    "Allocation gate must stay green."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-006 backpressure policy selector with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK exposed via GraphPartitionRunner.Builder.",
+  "project": "dag-framework",
+  "requirements": [
+    "Add BackpressurePolicy enum and per-edge config.",
+    "Implement overflow-to-disk via mmap spill file.",
+    "Support edge-level policy hot-swap.",
+    "Test all four policies under sustained overrun.",
+    "Assert spill file reads back correctly on drain."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "architecture",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "api",
+    "architecture",
+    "symbol",
+    "class",
+    "module",
+    "surface",
+    "implementation",
+    "file"
+  ],
+  "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/dag_framework/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/dag_framework/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "benchmarks/src/test/",
+    "benchmarks/src/test/java/",
+    "dag-framework-api/src/test/",
+    "dag-framework-api/src/test/java/",
+    "dag-framework-lvc/src/test/",
+    "dag-framework-lvc/src/test/java/",
+    "runtime-core/src/test/",
+    "runtime-core/src/test/java/"
+  ],
+  "relevant_paths": [
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/PartitionPolicy.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/JoinPolicy.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/impl/SimpleGraphDefinitionBuilder.java",
+    "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/LatenessPolicy.java",
+    "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/GraphPartitionRunner.java",
+    "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+    "runtime-core/src/test/java/com/joshorig/ull/dag/runtime/GraphPartitionRunnerJoinEpochIsolationTest.java"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nFiles: 274, Lines: 20394, Functions: 1314, Classes: 416\n# Token Savior Project Summary\nPackages (14): .github, benchmarks, compiler-core, dag-framework-api, dag-framework-lvc, deployment-core, docs, examples, qa, repo-memory, runtime-core, scripts, sim, sim-kdb\n# Token Savior Project Summary\nClasses: 416 total\n# Token Savior Packed Context\nContext pack for 'Implement R-006 backpressure policy selector with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK exposed via GraphPartitionRunner.Builder. Add BackpressurePolicy enum and per-edge config. Implement overflow-to-disk via mmap spill file. Support edge-level policy hot-swap. Test all four policies under sustained overrun. Assert spill file reads back correctly on drain. Test matrix covers DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK under sustained overrun. Overflow-to-disk spill file drains and reads back correctly. jmhSmokeCheck remains green. qa/smoke.sh and qa/regression.sh pass.' (70 symbols, ~2908 tokens / 3000 budget)\n# com.joshorig.ull.dag.compiler.SimpleGraphCompilerJoinExpectedExactTest.dm(int)  (value=0.20, cost=20t, compiler-core/src/test/java/com/joshorig/ull/dag/compiler/SimpleGraphCompilerJoinExpectedExactTest.java)\n... (60 more symbols selected, sources omitted)\n# Search Hits: R-006\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 59, 'content': '### [R-006] Backpressure policy selector'}]\n# Search Hits: backpressure\n[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 646, 'content': '            // Apply backpressure to adapters'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 183, 'content': 'asfast uses tight loops while honoring CPU budget & backpressure.'}, {'file': 'docs/archive/plans/simulator_plan.md', 'line_number': 189, 'content': '- Replay backpressure: configurable behavior when model under test lags\u2014block, drop, or conflate according to live policy.'}, {'file': 'docs/archive/plans/simulator_plan.md', 'line_number': 234, 'content': '- Hardening: backpressure strategies, retry policies, metrics dashboards.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 64, 'content': '- **Out of scope:** Custom policies, priority-based shedding, cross-partition backpressure propagation.'}]\n# Search Hits: policy\n[{'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 9, 'content': '    /** Set partitioning policy for symbol or key routing. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 38, 'content': '    /** JOIN with explicit JoinPolicy. expectedInputs is ignored unless policy is ALL (acts as exact indegree when >0). */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 41, 'content': '                                                 JoinPolicy policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/JoinPolicy.java', 'line_number': 3, 'content': '/** Join triggering policy for fan-in nodes. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/NodeDef.java', 'line_number': 17, 'content': '    /** For JOIN nodes, triggering policy. Null for non-JOIN or legacy ALL behavior. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/impl/SimpleGraphDefinitionBuilder.java', 'line_number': 43, 'content': '    @Override public GraphDefinitionBuilder addJoinNodeWithPolicy(String nodeId, NodeFactory factory, JoinPolicy policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/impl/SimpleGraphDefinitionBuilder.java', 'line_number': 49, 'content': '                policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/nodes/Contracts.java', 'line_number': 28, 'content': '    /** Timer node: fired by framework according to watermark/timer policy. */'}, {'file': 'docs/archive/examples/Tasks.md', 'line_number': 36, 'content': '\u2022  MemoryPool interface with acquire()/release(), dynamic resizing policy'}, {'file': 'docs/archive/examples/Tasks.md', 'line_number': 134, 'content': '\u2022  GUARANTEED feeds rely on ring buffers + reference counting; if lagging, observe metrics and apply backoff/drop policy at source (not ideal but configurable)'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 191, 'content': 'If DAG can\u2019t keep up, either block, drop (configurable), or \u201cquasi-conflate\u201d using your live policy.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 500, 'content': 'Cons: needs network access; time-bounded slices (by policy).'}]\n# Search Hits: selector\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 59, 'content': '### [R-006] Backpressure policy selector'}]\n# Search Hits: DROP_NEW\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}]\n# Search Hits: DROP_OLD\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}]\n### [R-006] Backpressure policy selector\n- **Scope:** `BackpressurePolicy` enum + per-edge config, overflow-to-disk via mmap spill file, policy hot-swap at edge level.\n### [R-006] Backpressure policy selector\n- **Acceptance:** Test matrix covers all 4 policies under sustained overrun, alloc gate green, overflow-to-disk test asserts spill file reads back correctly on drain."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-policy-core",
+    "impl-overflow-spill",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "dag-framework-api/ and runtime-core/ backpressure paths",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement policy enum, per-edge config, and runtime policy behavior.",
+      "role": "implementer",
+      "slice_id": "impl-policy-core",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "runtime-core/ and dag-framework-lvc/ spill/journal paths",
+      "depends_on": [
+        "impl-policy-core"
+      ],
+      "purpose": "Implement overflow-to-disk spill/drain behavior and hot-swap invariants.",
+      "role": "implementer",
+      "slice_id": "impl-overflow-spill",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-overflow-spill"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+PRIOR_ITERATION:
+{}

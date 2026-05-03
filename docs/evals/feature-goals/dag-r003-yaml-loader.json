@@ -1,0 +1,23 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "dag-framework",
+  "goal": "Implement R-003 YAML graph topology loader so graph.yaml can be loaded at startup without recompiling.",
+  "requirements": [
+    "Add GraphYamlLoader.fromFile(Path).",
+    "Define schema for nodes, edges, partitions, and watermarks.",
+    "Validate node types against the registered node catalog.",
+    "Return actionable errors for unknown node types.",
+    "Compare loaded CompiledPlan to a hand-built plan for byte equivalence."
+  ],
+  "constraints": [
+    "Startup-only loader; no YAML parsing on hot paths.",
+    "No hot reload or mutation via YAML edit.",
+    "No YAML schema versioning in this slice."
+  ],
+  "acceptance_criteria": [
+    "Load test covers a 5-node graph from YAML.",
+    "Loaded CompiledPlan is byte-equivalent to hand-built plan.",
+    "Load time is below 100ms.",
+    "qa/smoke.sh passes."
+  ]
+}

@@ -1,0 +1,257 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- Prefer concrete paths already present in PROJECT_CONTEXT.relevant_paths or
+  PROJECT_CONTEXT.qa_write_paths. Do not invent conventional Gradle paths such
+  as `benchmarks/src/main/java/` unless they appear in context.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Wide/system features should not be collapsed into one broad implementer.
+  Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants when those concerns exist.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Unit tests cover tumbling windows, sliding windows, and late arrivals.",
+    "Watermark advancement closes windows deterministically.",
+    "jmhSmokeCheck is green with the window node in benchmark surface.",
+    "qa/smoke.sh passes."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Do not implement custom user-defined windows.",
+    "Do not implement session windows in this feature.",
+    "Window state is per-partition and never cross-partition."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-001 WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, and watermark integration.",
+  "project": "dag-framework",
+  "requirements": [
+    "Add WindowSpec for tumbling and sliding windows.",
+    "Add WindowAssigner and Trigger primitives.",
+    "Use zero-allocation aggregation state with Agrona collections.",
+    "Support late-arrival policy for drop versus allow-lateness window.",
+    "Watermark advancement must drive window close."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "qa",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "test",
+    "qa",
+    "smoke",
+    "regression",
+    "acceptance",
+    "failure",
+    "fixture",
+    "verify"
+  ],
+  "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/dag_framework/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/dag_framework/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "benchmarks/src/test/",
+    "benchmarks/src/test/java/",
+    "dag-framework-api/src/test/",
+    "dag-framework-api/src/test/java/",
+    "runtime-core/src/test/",
+    "runtime-core/src/test/java/",
+    "sim-kdb/src/test/",
+    "sim-kdb/src/test/java/"
+  ],
+  "relevant_paths": [
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "runtime-core/src/test/java/com/joshorig/ull/dag/runtime/GraphPartitionRunnerWatermarkLatenessTest.java",
+    "sim-kdb/src/test/java/com/joshorig/ull/dag/simulation/kdb/QLoaderClientIntegrationTest.java",
+    "benchmarks/src/test/",
+    "benchmarks/src/test/java/",
+    "runtime-core/src/test/",
+    "dag-framework-api/src/test/",
+    "tests/",
+    "qa/fixtures/",
+    "dag-framework-api/src/test/java/",
+    "runtime-core/src/test/java/"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nPackages (14): .github, benchmarks, compiler-core, dag-framework-api, dag-framework-lvc, deployment-core, docs, examples, qa, repo-memory, runtime-core, scripts, sim, sim-kdb\n# Token Savior Packed Context\nContext pack for 'Implement R-001 WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, and watermark integration. Add WindowSpec for tumbling and sliding windows. Add WindowAssigner and Trigger primitives. Use zero-allocation aggregation state with Agrona collections. Support late-arrival policy for drop versus allow-lateness window. Watermark advancement must drive window close. Unit tests cover tumbling windows, sliding windows, and late arrivals. Watermark advancement closes windows deterministically. jmhSmokeCheck is green with the window node in benchmark surface. qa/smoke.sh passes.' (71 symbols, ~2868 tokens / 3000 budget)\n# Search Hits: tumbling\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 12, 'content': '- **Goal:** New `WindowedAggregateNode` supports tumbling + sliding windows with event-time + processing-time semantics, integrated with existing watermark API.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 13, 'content': '- **Scope:** `WindowSpec` (tumbling, sliding, session), `WindowAssigner`, `Trigger`, zero-alloc aggregation state with Agrona collections, late-arrival policy (drop vs allow-lateness window).'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 15, 'content': '- **Acceptance:** Unit test covers tumbling + sliding + late-arrival scenarios, `jmhSmokeCheck` green with window node in benchmark surface, watermark advancement drives window close.'}]\n# Search Hits: sliding\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 12, 'content': '- **Goal:** New `WindowedAggregateNode` supports tumbling + sliding windows with event-time + processing-time semantics, integrated with existing watermark API.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 13, 'content': '- **Scope:** `WindowSpec` (tumbling, sliding, session), `WindowAssigner`, `Trigger`, zero-alloc aggregation state with Agrona collections, late-arrival policy (drop vs allow-lateness window).'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 15, 'content': '- **Acceptance:** Unit test covers tumbling + sliding + late-arrival scenarios, `jmhSmokeCheck` green with window node in benchmark surface, watermark advancement drives window close.'}]\n# Search Hits: event-time\n[{'file': 'docs/archive/history/sim_convo.md', 'line_number': 47, 'content': 'deterministic ordering, speed control (1\u00d7, N\u00d7, as-fast-as-possible), pauses/bookmarks, wall-clock vs event-time modes, seeded RNG for any stochastic bits,'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 347, 'content': 'Scheduler/Clock: System.nanoTime() driven event-time scheduler with modes: asfast, Nx, 1x, step; HdrHistogram for pacing/latency.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 12, 'content': '- **Goal:** New `WindowedAggregateNode` supports tumbling + sliding windows with event-time + processing-time semantics, integrated with existing watermark API.'}, {'file': 'runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java', 'line_number': 7, 'content': '    /** Notify the policy of an observed event-time timestamp (nanos since epoch UTC). */'}, {'file': 'runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java', 'line_number': 14, 'content': '     * Simple policy: watermark equals the maximum observed event-time.'}, {'file': 'runtime-core/src/test/java/com/joshorig/ull/dag/runtime/GraphPartitionRunnerTimerTest.java', 'line_number': 26, 'content': '            // Schedule first timer at event-time 100'}]\n### [R-001] Windowed aggregation node\n- **Acceptance:** Unit test covers tumbling + sliding + late-arrival scenarios, `jmhSmokeCheck` green with window node in benchmark surface, watermark advancement drives window close.\n### [R-002] Stateful two-stream join node\n- **Acceptance:** Inner+outer join test against seeded two-stream fixture, timeout eviction test, alloc gate green.\n### [R-002] Stateful two-stream join node\n- **Acceptance:** Load test for a 5-node graph from YAML, compare loaded `CompiledPlan` to hand-built plan for byte equivalence, load-time < 100ms.\n### [R-004] Per-node metrics exporter\n- **Acceptance:** Metrics counters visible after a seeded graph run, alloc gate green on metrics-enabled runner, integration test with a mock scrape.\n### [R-004] Per-node metrics exporter\n- **Scope:** `GraphPartitionRunner.replaceNode(nodeId, newImpl)`, drain-then-swap coordinator with watermark snapshot, rollback on swap failure.\n### [R-004] Per-node metrics exporter\n- **Acceptance:** Runtime swap test replaces a node mid-run without dropping events, both versions visible in metrics, rollback restores original on simulated swap failure.\n### [R-006] Backpressure policy selector\n- **Acceptance:** Test matrix covers all 4 policies under sustained overrun, alloc gate green, overflow-to-disk test asserts spill file reads back correctly on drain.\n### [R-007] Graph visualizer/tracer JSON export\n- **Acceptance:** Export produces valid JSON for a 10-node seeded graph, schema round-trips through jq, counters match observed throughput."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-primary",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/, sim-kdb/src/test/, sim-kdb/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "repo-memory/ROADMAP.md, repo-memory/DECISIONS.md, qa/smoke.sh",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the narrow feature slice.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-primary"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/, sim-kdb/src/test/, sim-kdb/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "5-6 slices",
+  "task_class": "medium"
+}
+
+PRIOR_ITERATION:
+{}

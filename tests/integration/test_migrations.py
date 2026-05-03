@@ -534,6 +534,7 @@ def _plan_contract(feature_id: str) -> PlanContract:
             ownership_boundaries="Only pgloom_engineering may change.",
             acceptance_tests=["pytest"],
         ),
+        affected_surfaces=["pgloom_engineering", "tests"],
         task_slices=[
             TaskSliceContract(
                 slice_id="slice-1",

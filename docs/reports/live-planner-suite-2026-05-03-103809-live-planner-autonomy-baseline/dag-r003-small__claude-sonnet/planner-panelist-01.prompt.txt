@@ -1,0 +1,268 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- Prefer concrete paths already present in PROJECT_CONTEXT.relevant_paths or
+  PROJECT_CONTEXT.qa_write_paths. Do not invent conventional Gradle paths such
+  as `benchmarks/src/main/java/` unless they appear in context.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Wide/system features should not be collapsed into one broad implementer.
+  Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants when those concerns exist.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Load test covers a 5-node graph from YAML.",
+    "Loaded CompiledPlan is byte-equivalent to hand-built plan.",
+    "Load time is below 100ms.",
+    "qa/smoke.sh passes."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Startup-only loader; no YAML parsing on hot paths.",
+    "No hot reload or mutation via YAML edit.",
+    "No YAML schema versioning in this slice."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-003 YAML graph topology loader so graph.yaml can be loaded at startup without recompiling.",
+  "project": "dag-framework",
+  "requirements": [
+    "Add GraphYamlLoader.fromFile(Path).",
+    "Define schema for nodes, edges, partitions, and watermarks.",
+    "Validate node types against the registered node catalog.",
+    "Return actionable errors for unknown node types.",
+    "Compare loaded CompiledPlan to a hand-built plan for byte equivalence."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "architecture",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "api",
+    "architecture",
+    "symbol",
+    "class",
+    "module",
+    "surface",
+    "implementation",
+    "file"
+  ],
+  "project_root": "/Volumes/devssd/repos/ull/dag_framework",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/dag_framework/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/dag_framework/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "benchmarks/src/test/",
+    "benchmarks/src/test/java/",
+    "dag-framework-api/src/test/",
+    "dag-framework-api/src/test/java/",
+    "dag-framework-lvc/src/test/",
+    "dag-framework-lvc/src/test/java/",
+    "runtime-core/src/test/",
+    "runtime-core/src/test/java/"
+  ],
+  "relevant_paths": [
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/lvc/LatestValuePayloadLoader.java",
+    "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/lvc/GuaranteedPayloadLoader.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/ReplayPreloader.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/GraphReadiness.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/GraphReadinessComposite.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/GraphContext.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/CompiledGraph.java",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphExtension.java"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nFiles: 274, Lines: 20394, Functions: 1314, Classes: 416\n# Token Savior Project Summary\nPackages (14): .github, benchmarks, compiler-core, dag-framework-api, dag-framework-lvc, deployment-core, docs, examples, qa, repo-memory, runtime-core, scripts, sim, sim-kdb\n# Token Savior Project Summary\nClasses: 416 total\n# Token Savior Packed Context\nContext pack for 'Implement R-003 YAML graph topology loader so graph.yaml can be loaded at startup without recompiling. Add GraphYamlLoader.fromFile(Path). Define schema for nodes, edges, partitions, and watermarks. Validate node types against the registered node catalog. Return actionable errors for unknown node types. Compare loaded CompiledPlan to a hand-built plan for byte equivalence. Load test covers a 5-node graph from YAML. Loaded CompiledPlan is byte-equivalent to hand-built plan. Load time is below 100ms. qa/smoke.sh passes.' (72 symbols, ~2788 tokens / 3000 budget)\n# com.joshorig.ull.dag.time.WatermarkPolicy.MaxWatermark.onEvent(long)  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java)\n... (62 more symbols selected, sources omitted)\n# Search Hits: R-003\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] YAML graph topology loader'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 56, 'content': '- **Depends on:** [R-003] (YAML provides the new node definition), [R-004] (swap diagnostics need metrics).'}]\n# Search Hits: YAML\n[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 9, 'content': 'Configuration Structure (YAML)'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 92, 'content': '- Builder API and YAML/JSON loader support'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 107, 'content': '| JSON topology + config      | Graphs and layouts definable in YAML/JSON                               |'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 19, 'content': 'A single catalog table in kdb+ (plus optional YAML file persisted in git) describes every dataset:'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 53, 'content': 'Quants post a simulation spec (JSON/YAML) naming tables, date ranges, filters, and alignments (e.g., \u201casof join quotes to trades\u201d, \u201cdrop out-of-order with seq < lastSeq\u201d).'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 79, 'content': 'Quants add rows here (or via a YAML that is ingested to this table). transformFn points to a function in .simu.tf.* namespace, often identity.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 239, 'content': 'Add a single row to .simu.meta.catalog (or a YAML that is loaded into it).'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 319, 'content': 'Source of truth in git: YAML files (one per table) \u2192 validated by a Java CLI and applied to the kdb+ catalog over IPC.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 323, 'content': 'AuthN/Z: OIDC (Keycloak/Okta), GitHub CODEOWNERS on YAMLs; service-to-service mTLS.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 399, 'content': 'catalog YAML, transforms, SBE schema, replay engine.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 425, 'content': '\u251c\u2500 simu-catalog-cli/         # Java CLI to validate/apply YAML \u2192 kdb+'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 455, 'content': 'Quants interact through YAML specs and dashboards; core devs review YAML & transforms, not bespoke pipelines.'}]\n# Search Hits: graph\n[{'file': 'README.md', 'line_number': 8, 'content': '- define graphs using stable source/node identities'}, {'file': 'README.md', 'line_number': 9, 'content': '- compile those graphs into runtime plans'}, {'file': 'README.md', 'line_number': 20, 'content': '  - Risk graph: `./gradlew --no-daemon --console=plain :examples:runRiskGraph`'}, {'file': 'README.md', 'line_number': 21, 'content': '  - Pricing graph: `./gradlew --no-daemon --console=plain :examples:runPricingGraph`'}, {'file': 'README.md', 'line_number': 28, 'content': '  - graph definition types, contracts, journal abstractions, core reusable node/input primitives'}, {'file': 'README.md', 'line_number': 32, 'content': '  - graph compilation and validation logic'}, {'file': 'README.md', 'line_number': 61, 'content': '- graph definition and contracts live in `dag-framework-api`'}, {'file': 'WARP.md', 'line_number': 43, 'content': '  - Risk graph'}, {'file': 'WARP.md', 'line_number': 45, 'content': '  - Pricing graph'}, {'file': 'WARP.md', 'line_number': 69, 'content': '  - graph definitions, journal abstractions, core input/node/shared-state primitives'}, {'file': 'WARP.md', 'line_number': 73, 'content': '  - graph compilation'}, {'file': 'build.gradle', 'line_number': 28, 'content': \"        'ull-dag-framework': 'Ultra-low-latency directed acyclic graph execution framework',\"}]\n# Search Hits: topology\n[{'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 107, 'content': '| JSON topology + config      | Graphs and layouts definable in YAML/JSON                               |'}, {'file': 'examples/README.md', 'line_number': 8, 'content': '- in-process, IPC, and multi-process topology diagrams'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] YAML graph topology loader'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 54, 'content': '- **Out of scope:** Multi-node atomic swap, topology change (adding/removing nodes), config-driven swap from YAML edit.'}]\n# Search Hits: loader\n[{'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 6, 'content': '    private final ReplayPreloader replayPreloader;'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 10, 'content': '    public PreloadingEnvelopeReader(EventJournal.EnvelopeReader delegate, ReplayPreloader replayPreloader) {'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 14, 'content': '        if (replayPreloader == null) {'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 15, 'content': '            throw new IllegalArgumentException(\"replayPreloader null\");'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 18, 'content': '        this.replayPreloader = replayPreloader;'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 26, 'content': '            replayPreloader.afterReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 34, 'content': '        replayPreloader.beforeReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 42, 'content': '            replayPreloader.afterReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/ReplayPreloader.java', 'line_number': 4, 'content': 'public interface ReplayPreloader {'}, {'file': 'docs/CONSUMING_DAG_FRAMEWORK.md', 'line_number': 64, 'content': '        new PreloadingEnvelopeReader(baseReader, replayPreloader);'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 92, 'content': '- Builder API and YAML/JSON loader support'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 1, 'content': \"We currently use kdb for our pricing model dag implementation. We use it to run the simulator, the current implementation downloads data files locally to users' machines, a zip file of data a day for each table. When implementing a new data table, the core developers have to write a new historical downloader implementation after the quants define their kdbrenderer implementation. This setup has a few issues, files being downloaded locally means difficult for quants to backtest models over large date ranges which limits the models they can develop.  We want a  better solution, we want to be able to replay years worth of data into a simulation/backtest and we don't want core devs to have to write code for every new data we capture as input into modal/kdb\"}]\n# Search Hits: yaml\n[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 4, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 11, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 204, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 703, 'content': '```yaml'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 136, 'content': '# backtest.yaml'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 279, 'content': 'A sample backtest.yaml + CI harness that runs a one-day replay in the pipeline.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 611, 'content': 'Configs: local-dev.yaml (Aeron channels, streams), model.properties (feature flags).'}, {'file': 'docs/archive/history/summary_2025-08-13.md', 'line_number': 20, 'content': '- Confirmed queues are taken from graph.yaml'}, {'file': 'docs/archive/history/summary_2025-08-13.md', 'line_number': 72, 'content': '   - Config: expand graph.yaml to include the pricing graph queues, memories, and nodes; validate side-by-side with the risk graph.'}, {'file': 'docs/archive/history/summary_2025-08-16.md', 'line_number': 21, 'content': '  - Extended graph.yaml:'}, {'file': 'docs/archive/history/summary_2025-08-16.md', 'line_number': 80, 'content': '  - Expose skew and weighting parameters in graph.yaml (per pair and per scheme).'}, {'file': 'docs/archive/plans/generic_executor_plan.md', 'line_number': 152, 'content': '\u2022  Keep current pricing_graph.yaml and risk_graph.yaml compatible by adding a new section and deprecating direct className executors over time.'}]\n### [R-003] YAML graph topology loader\n- **Scope:** `GraphYamlLoader.fromFile(Path)`, schema for nodes/edges/partitions/watermarks, validation against registered node catalog, error messages for unknown node types.\n# DECISIONS relevant excerpt\n**Context:** Both are candidate low-latency messaging stacks. Chronicle Map/Queue is popular but has licensing friction for commercial use and a different allocation profile than Aeron IPC."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-core",
+    "impl-invariants",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "repo-memory/ROADMAP.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the primary source/runtime change.",
+      "role": "implementer",
+      "slice_id": "impl-core",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "qa/regression.sh",
+      "depends_on": [
+        "impl-core"
+      ],
+      "purpose": "Implement lifecycle, failure, persistence, or integration invariants.",
+      "role": "implementer",
+      "slice_id": "impl-invariants",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-invariants"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+PRIOR_ITERATION:
+{}

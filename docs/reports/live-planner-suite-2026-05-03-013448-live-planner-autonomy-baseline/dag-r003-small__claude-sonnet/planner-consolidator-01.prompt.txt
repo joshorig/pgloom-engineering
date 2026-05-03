@@ -1,0 +1,740 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as the canonical local expansion baseline.
+  Consolidate candidates back toward its order, role/task_type mapping, and
+  target slice count unless the feature evidence justifies extra implementer
+  slices.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- Use only canonical role/task_type pairs: designer/engineering.design,
+  implementer/engineering.implement, reviewer/engineering.review,
+  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  historian/engineering.history.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Use concrete path prefixes only; remove wildcard paths from candidates.
+- Ensure each slice's own allowed_paths and forbidden_paths do not overlap.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to the QA/test roots shown in
+  candidate project contexts. Implementer write paths must not include those
+  paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
+  redundant QA/review work.
+- Do not create finalization, merge, PR approval, or human-gate task slices.
+  Human merge is represented only by finalization_policy.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+- Deterministic validator and critic checks are authoritative. If candidates
+  disagree with the deterministic rules, follow the deterministic rules.
+
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-core",
+    "impl-invariants",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "repo-memory/ROADMAP.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the primary source/runtime change.",
+      "role": "implementer",
+      "slice_id": "impl-core",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "qa/regression.sh",
+      "depends_on": [
+        "impl-core"
+      ],
+      "purpose": "Implement lifecycle, failure, persistence, or integration invariants.",
+      "role": "implementer",
+      "slice_id": "impl-invariants",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-invariants"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "5-node YAML fixture loads to a CompiledPlan byte-equivalent to the hand-built plan (GraphYamlLoaderTest equals assertion)",
+      "Load time for 5-node graph is below 100ms on CI hardware (wall-clock assertion in GraphYamlLoaderTest)",
+      "YAML with one unknown node type raises GraphLoadException with unknownNodeTypes containing exactly that type",
+      "YAML with three unknown node types raises GraphLoadException listing all three collected in a single parse pass",
+      "YAML missing the required 'nodes' schema section raises a descriptive GraphLoadException with non-null message and sourceFile set",
+      "GraphYamlLoader is stateless and concurrent startup invocations return independent non-corrupted CompiledPlan instances",
+      "No YAML parsing code path is reachable from hot-path execution (reviewer gate + static analysis)",
+      "qa/smoke.sh passes end-to-end with GraphYamlLoader wired into startup bootstrap",
+      "qa/regression.sh reports zero regressions in compiler-core and dag-framework-api test suites"
+    ],
+    "affected_surfaces": [
+      "compiler-core/src/main/java/",
+      "compiler-core/build.gradle",
+      "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+      "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/",
+      "dag-framework-api/src/test/java/",
+      "qa/fixtures/",
+      "qa/",
+      "docs/",
+      "examples/",
+      "repo-memory/"
+    ],
+    "assumptions": [
+      "The YAML loader is invoked only at startup; hot reload and runtime mutation are explicitly out of scope for this slice.",
+      "No YAML schema versioning is required in this slice.",
+      "A registered node catalog (NodeCatalog or equivalent) exists in compiler-core or dag-framework-api and exposes a node-type lookup by string name.",
+      "CompiledPlan has or can be given a deterministic equals contract that enables byte-equivalence comparison in tests.",
+      "snake_yaml or Jackson-dataformat-yaml will be added as a compile-scope dependency in compiler-core/build.gradle; version is chosen to avoid classpath conflicts with existing transitive deps.",
+      "graph.yaml fixtures for test and smoke use will reside in qa/fixtures/.",
+      "GraphYamlLoader belongs in compiler-core because graph compilation and validation logic already lives there per the README."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "GraphYamlLoaderTest: load qa/fixtures/graph_5node.yaml; assert returned CompiledPlan.equals(handBuiltPlan) is true.",
+        "GraphYamlLoaderTest: measure wall-clock load time for 5-node graph; assert elapsed < 100ms.",
+        "GraphYamlLoaderTest: YAML with one unknown node type raises GraphLoadException listing exactly that type.",
+        "GraphYamlLoaderTest: YAML with three unknown node types raises GraphLoadException listing all three in a single pass.",
+        "GraphYamlLoaderTest: YAML missing the required 'nodes' section raises a descriptive GraphLoadException with a non-null message.",
+        "qa/smoke.sh passes end-to-end after loader is wired into the startup bootstrap."
+      ],
+      "concurrency_protocol": "GraphYamlLoader is stateless; no shared mutable state. Concurrent startup calls are safe without synchronization.",
+      "forbidden_alternatives": [
+        "JSON-only loader \u2014 YAML is the specified format for this roadmap item.",
+        "Runtime or hot-path YAML parsing.",
+        "Custom YAML parser \u2014 use snake_yaml or Jackson-dataformat-yaml.",
+        "Storing or parsing YAML schema version fields in this slice.",
+        "Duplicating compilation logic inside the loader instead of delegating to the existing compiler pipeline."
+      ],
+      "hard_constraints": [
+        "No YAML parsing on any hot path \u2014 loading is startup-only.",
+        "No hot reload; YAML edits require a full restart.",
+        "No YAML schema versioning in this slice.",
+        "GraphLoadException must enumerate all unknown node types in a single pass \u2014 never fail-fast on the first unknown type.",
+        "Loaded CompiledPlan must be byte-equivalent to the equivalent hand-built plan (enforced by test assertion).",
+        "Load time for a 5-node graph must be below 100ms on CI hardware.",
+        "Must not introduce circular module dependencies between compiler-core and runtime-core."
+      ],
+      "ownership_boundaries": "GraphYamlLoader owns YAML parsing and structural validation only. NodeCatalog/NodeRegistry in compiler-core or dag-framework-api owns node-type resolution. CompiledPlan construction delegates entirely to the existing compiler/builder pipeline \u2014 the loader must not duplicate compilation logic.",
+      "persistence_protocol": "Startup-only read of the Path argument. No write-back, no in-process caching, no mutation after load. File is read once and closed.",
+      "public_api": "compiler-core module: new class GraphYamlLoader { public static CompiledPlan fromFile(java.nio.file.Path yamlPath) throws GraphLoadException; } \u2014 no other public methods. GraphLoadException is a checked exception with: List<String> unknownNodeTypes, Path sourceFile, int lineHint, String message. All unknown types are collected in a single parse pass before the exception is raised."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "There is no way to define a DAG graph topology without recompiling Java builder code. R-003 adds GraphYamlLoader.fromFile(Path) so a graph.yaml file describing nodes, edges, partitions, and watermarks can be loaded once at startup, validated against the registered node catalog, and converted to a CompiledPlan that is byte-equivalent to the equivalent hand-built plan.",
+    "project": "dag-framework",
+    "risk_register": [
+      "Byte-equivalence fragility: CompiledPlan may lack a stable equals/hashCode or deterministic serialization contract; mitigation: verify or add deterministic equals to CompiledPlan in the design slice before impl-core proceeds.",
+      "YAML library classpath conflict: snake_yaml or Jackson-dataformat-yaml version may clash with existing transitive dependencies; mitigation: audit build.gradle for existing transitive YAML deps before adding a new dependency; prefer versions already present.",
+      "Node catalog API instability: if NodeCatalog/NodeRegistry is not yet a stable public interface, the loader may require API changes in dag-framework-api; mitigation: identify the exact interface during the design slice.",
+      "Circular module dependency: GraphYamlLoader in compiler-core depends on dag-framework-api types; the reverse must not be introduced; mitigation: confirm module dependency direction in the design slice and add a build-time cycle check.",
+      "Load-time regression: YAML library initialization at startup may exceed 100ms on cold JVM or slow CI; mitigation: benchmark on CI in qa-verify and fail the build if the threshold is breached.",
+      "Single-pass error collection: naive implementation fails on first unknown type, breaking the multi-error acceptance criterion; mitigation: qa-author slice writes the multi-unknown-type test before implementation to force the correct design.",
+      "Schema drift risk for future graph.yaml files: versioning is deferred; mitigation: record in repo-memory/ROADMAP.md that schema versioning is a follow-on slice and not part of R-003."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "repo-memory/",
+          "compiler-core/src/main/java/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "docs/design/r003_yaml_loader.md covering public API, YAML schema draft, GraphLoadException shape, node catalog integration point, and byte-equivalence strategy"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "objective": "Produce a DesignContract for GraphYamlLoader: define the public API signature (fromFile(Path) throws GraphLoadException), the YAML schema sections (nodes, edges, partitions, watermarks), GraphLoadException field layout, the exact NodeCatalog integration point in compiler-core, and the byte-equivalence comparison strategy against CompiledPlan; verify no circular module dependency is introduced; record decisions in docs/design/r003_yaml_loader.md.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "GraphYamlLoaderTest.java (all tests failing, covering: 5-node load + byte equivalence, load time < 100ms, single unknown type, multi-unknown single-pass, missing schema field)",
+          "qa/fixtures/graph_5node.yaml",
+          "qa/fixtures/graph_unknown_nodes.yaml"
+        ],
+        "forbidden_paths": [
+          "compiler-core/src/main/",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/",
+          "docs/",
+          "repo-memory/",
+          "examples/"
+        ],
+        "objective": "Write failing unit tests in dag-framework-api/src/test/java/ for GraphYamlLoader.fromFile(Path) covering: 5-node load and byte equivalence against hand-built CompiledPlan, load-time assertion below 100ms, single unknown node type error, multi-unknown-type single-pass error, and missing 'nodes' schema section error; add qa/fixtures/graph_5node.yaml and qa/fixtures/graph_unknown_nodes.yaml fixtures.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "compiler-core/src/main/java/",
+          "compiler-core/build.gradle",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "GraphYamlLoader.java",
+          "GraphLoadException.java",
+          "YamlGraphSpec.java and supporting DTO classes (YamlNodeSpec, YamlEdgeSpec, YamlPartitionSpec, YamlWatermarkSpec)",
+          "Updated compiler-core/build.gradle with YAML library dependency"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/"
+        ],
+        "objective": "Implement GraphYamlLoader.fromFile(Path) and GraphLoadException in compiler-core/src/main/java/; define YAML schema DTO classes (YamlGraphSpec, YamlNodeSpec, YamlEdgeSpec, YamlPartitionSpec, YamlWatermarkSpec); wire YAML parsing via snake_yaml or Jackson-dataformat-yaml; delegate CompiledPlan construction to the existing compiler pipeline; add the YAML library dependency to compiler-core/build.gradle.",
+        "role": "implementer",
+        "slice_id": "impl-core",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":compiler-core:test",
+            "--tests",
+            "*.GraphYamlLoaderTest"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "compiler-core/src/main/java/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/core/",
+          "examples/",
+          "docs/"
+        ],
+        "depends_on": [
+          "impl-core"
+        ],
+        "expected_outputs": [
+          "Single-pass unknown-type collection logic in GraphYamlLoader",
+          "Startup-only enforcement guard (IllegalStateException or equivalent if called post-startup)",
+          "Startup wiring in GraphContext or bootstrap reading graph.yaml from a configurable path",
+          "Updated examples/ graph.yaml demonstrating the loader"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/"
+        ],
+        "objective": "Add full single-pass node-catalog validation to GraphYamlLoader (collect all unknown types before raising GraphLoadException), enforce the startup-only constraint with an explicit guard, and wire GraphYamlLoader.fromFile(Path) into GraphContext or the startup bootstrap so graph.yaml is loaded from a configurable path at startup; update examples/ graph.yaml to demonstrate loader usage.",
+        "role": "implementer",
+        "slice_id": "impl-invariants",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":compiler-core:test"
+          ],
+          [
+            "./gradlew",
+            ":dag-framework-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "compiler-core/src/main/java/",
+          "dag-framework-api/src/main/java/",
+          "dag-framework-api/src/test/java/",
+          "tests/",
+          "qa/fixtures/",
+          "docs/",
+          "repo-memory/",
+          "examples/"
+        ],
+        "depends_on": [
+          "impl-invariants"
+        ],
+        "expected_outputs": [
+          "ReviewReport",
+          "docs/reviews/r003_review.md with per-criterion pass/fail findings and any required repairs"
+        ],
+        "forbidden_paths": [
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/"
+        ],
+        "objective": "Review GraphYamlLoader, GraphLoadException, YAML schema DTOs, node-catalog validation, and startup wiring for: contract compliance with the design doc, correctness of the byte-equivalence strategy, completeness of single-pass error reporting, absence of hot-path YAML parsing, no circular module dependencies, and adequate test coverage; produce docs/reviews/r003_review.md with pass/fail findings per acceptance criterion.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":compiler-core:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "All GraphYamlLoaderTest cases green",
+          "qa/reports/r003_qa_verify.txt with smoke and regression results",
+          "Zero regressions in existing compiler-core and dag-framework-api test suites"
+        ],
+        "forbidden_paths": [
+          "compiler-core/src/main/",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/",
+          "docs/",
+          "repo-memory/",
+          "examples/"
+        ],
+        "objective": "Run qa/smoke.sh and qa/regression.sh; assert all GraphYamlLoaderTest cases pass (5-node byte equivalence, load time < 100ms, single unknown type, multi-unknown single-pass, missing field error); confirm zero regressions in existing compiler-core and dag-framework-api test suites; record results in qa/reports/r003_qa_verify.txt.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "5-node graph loaded from qa/fixtures/r003_five_node_graph.yaml produces a CompiledPlan byte-equivalent to the hand-built reference plan",
+      "Median load time across 5 consecutive fromFile calls on the 5-node fixture is below 100ms (warm JVM, cold-start excluded)",
+      "YAML with an unregistered node type throws GraphLoadException whose message contains the unknown type name and source line",
+      "YAML missing required 'nodes' section throws GraphLoadException with an actionable description",
+      "YAML missing required 'edges' section throws GraphLoadException with an actionable description",
+      "CompiledPlan loaded with partitions and watermarks sections matches hand-built plan field-by-field via CompiledPlanEquivalenceUtil",
+      "No YAML parser invocation found on any hot-path code path (verified by reviewer grep for parse calls outside startup entry points)",
+      "qa/smoke.sh exits 0 post-integration",
+      "qa/regression.sh exits 0 post-integration"
+    ],
+    "affected_surfaces": [
+      "dag-framework-api/src/main/",
+      "dag-framework-api/src/test/",
+      "compiler-core/src/main/",
+      "runtime-core/src/main/",
+      "runtime-core/src/test/",
+      "qa/fixtures/",
+      "tests/",
+      "docs/",
+      "repo-memory/"
+    ],
+    "assumptions": [
+      "CompiledPlan is the canonical in-memory representation produced by the compiler pipeline and has a stable equals/serialization contract usable for byte-equivalence assertions.",
+      "A NodeCatalog (registry of valid node types by string key) already exists and is accessible at loader instantiation time.",
+      "A YAML parsing library (Jackson or SnakeYAML) is available on the classpath or can be added as a compile-scoped dependency without affecting hot-path execution.",
+      "The loader is called only during application startup; no concurrent or re-entrant loading scenarios are in scope.",
+      "Existing compiler-core builder APIs are sufficient to assemble a CompiledPlan from parsed YAML data without new builder methods."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Load qa/fixtures/r003_five_node_graph.yaml; assert returned CompiledPlan equals hand-built reference plan (byte-equivalence via CompiledPlan.equals or field-by-field diff).",
+        "Median load time across 5 consecutive fromFile calls on the 5-node fixture is below 100ms.",
+        "Supply a YAML with an unregistered node type; assert GraphLoadException message contains the unknown type name.",
+        "Supply a YAML missing the required 'nodes' section; assert GraphLoadException with actionable description.",
+        "qa/smoke.sh exits 0 after the feature lands."
+      ],
+      "concurrency_protocol": "GraphYamlLoader is stateless; fromFile is safe for concurrent calls. NodeCatalog is treated as read-only during load. No shared mutable state is introduced.",
+      "forbidden_alternatives": [
+        "Parsing YAML inline during event processing, graph execution, or any non-startup code path.",
+        "A stateful or mutable GraphYamlLoader that supports reload, setState, or invalidation.",
+        "Adding a schema version field, discriminator, or migration strategy in this slice.",
+        "Using reflection-based dynamic class loading for node instantiation outside the NodeCatalog contract."
+      ],
+      "hard_constraints": [
+        "No YAML parsing on hot paths; fromFile must be invoked only at startup before the graph begins executing.",
+        "No hot reload, file-watching, or mutation of a running graph via YAML edit.",
+        "No YAML schema versioning or migration path in this slice.",
+        "Load time for a 5-node graph must be below 100ms wall-clock (measured as median of 5 warm runs, JVM cold-start excluded).",
+        "Unknown node types must produce a GraphLoadException containing the unrecognised type name and source line number."
+      ],
+      "ownership_boundaries": "GraphYamlLoader lives in dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/. It owns YAML parsing and structural validation. compiler-core owns CompiledPlan construction; the loader delegates plan assembly to existing compiler-core builder APIs and must not reach into compiler-core internals directly.",
+      "persistence_protocol": "No persistence. The loader reads from the filesystem at startup and returns an in-memory CompiledPlan. YAML files are never written or mutated by the loader.",
+      "public_api": "GraphYamlLoader { static CompiledPlan fromFile(Path yamlPath, NodeCatalog catalog) throws GraphLoadException; }  YAML schema top-level sections: nodes (id, type, config map), edges (from, to, optional label), partitions (id, nodeRefs list), watermarks (nodeId, strategy).  GraphLoadException carries: unknownType (String), sourceLine (int), actionableMessage (String)."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Graph topologies are hard-coded at compile time; there is no way to load a DAG graph from a YAML file at startup, requiring recompilation for every topology change.",
+    "project": "dag-framework",
+    "risk_register": [
+      "Byte-equivalence may fail due to non-deterministic field ordering in CompiledPlan construction; mitigation: design slice specifies canonical field order and qa-author uses CompiledPlanEquivalenceUtil field-by-field diff as fallback.",
+      "Jackson/SnakeYAML transitive dependency version may conflict with existing classpath; mitigation: design slice audits dependency tree and documents chosen library version before impl-core begins.",
+      "NodeCatalog lookup semantics (case sensitivity, FQCN vs simple name) are under-specified; mitigation: design slice documents exact lookup contract and qa-author writes a negative test for case-mismatch.",
+      "100ms load-time budget may be exceeded on slower CI hardware; mitigation: qa-verify measures median over 5 warm runs and documents the hardware baseline; budget is a soft gate on CI, hard gate on review.",
+      "Partition and watermark YAML schema may not map cleanly to existing compiler-core builder APIs; mitigation: impl-invariants slice documents any API gaps and raises a follow-up ticket rather than adding builder methods in scope."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/",
+          "repo-memory/ROADMAP.md",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+          "compiler-core/src/main/java/com/joshorig/ull/dag/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "docs/design/r003_yaml_loader.md containing public API, YAML schema, error contract, NodeCatalog lookup spec, and byte-equivalence strategy"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "objective": "Author docs/design/r003_yaml_loader.md locking GraphYamlLoader.fromFile signature, YAML schema (nodes/edges/partitions/watermarks), NodeCatalog lookup semantics (case, package qualification), GraphLoadException error shape, byte-equivalence strategy, and YAML library choice; update repo-memory/ROADMAP.md to mark R-003 in-progress.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "dag-framework-api/src/test/java/com/joshorig/ull/dag/loader/GraphYamlLoaderTest.java (all 5 cases failing red)",
+          "qa/fixtures/r003_five_node_graph.yaml (5-node graph fixture)",
+          "qa/fixtures/r003_unknown_node_type.yaml (fixture with unregistered type)",
+          "qa/fixtures/r003_missing_nodes_section.yaml (fixture missing required section)"
+        ],
+        "forbidden_paths": [
+          "dag-framework-api/src/main/",
+          "compiler-core/src/main/",
+          "runtime-core/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Write failing GraphYamlLoaderTest in dag-framework-api/src/test/java/com/joshorig/ull/dag/loader/ covering: 5-node load with byte-equivalence assertion, load-time < 100ms (median of 5 runs), unknown-node-type GraphLoadException, missing-nodes-section GraphLoadException, and missing-edges-section GraphLoadException; create qa/fixtures/r003_five_node_graph.yaml and qa/fixtures/r003_unknown_node_type.yaml fixtures.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+          "compiler-core/src/main/java/com/joshorig/ull/dag/",
+          "docs/",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/GraphYamlLoader.java",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/GraphLoadException.java",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/GraphYamlSchema.java (POJO classes for nodes and edges sections)"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "objective": "Implement GraphYamlLoader.fromFile(Path, NodeCatalog) in dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/GraphYamlLoader.java, define GraphYamlSchema POJO classes for nodes and edges sections, and wire YAML-to-CompiledPlan mapping through existing compiler-core builder APIs.",
+        "role": "implementer",
+        "slice_id": "impl-core",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+          "compiler-core/src/main/java/com/joshorig/ull/dag/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/",
+          "docs/",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "impl-core"
+        ],
+        "expected_outputs": [
+          "NodeCatalog validation integrated in GraphYamlLoader with actionable GraphLoadException messages including type name and source line",
+          "GraphYamlSchema partition and watermark POJO classes with compiler-core builder mappings",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/loader/CompiledPlanEquivalenceUtil.java"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "objective": "Extend GraphYamlLoader with NodeCatalog validation (unknown type -> GraphLoadException with type name and source line), implement partitions and watermarks schema POJOs and their mapping to CompiledPlan builder calls, and add CompiledPlanEquivalenceUtil helper (field-by-field diff) used by the acceptance test's byte-equivalence assertion.",
+        "role": "implementer",
+        "slice_id": "impl-invariants",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+          "compiler-core/src/main/java/com/joshorig/ull/dag/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/",
+          "dag-framework-api/src/test/java/com/joshorig/ull/dag/",
+          "qa/fixtures/",
+          "docs/",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "impl-invariants"
+        ],
+        "expected_outputs": [
+          "ReviewReport listing any contract violations, hot-path risk findings, error message gaps, and required fixes before qa-verify"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "objective": "Multi-panel review of GraphYamlLoader, GraphLoadException, GraphYamlSchema, NodeCatalog validation, and CompiledPlanEquivalenceUtil for: hot-path safety (no YAML parsing outside startup call site), error message quality and actionability, byte-equivalence correctness, partition/watermark mapping completeness, and compliance with docs/design/r003_yaml_loader.md design contract.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "qa/smoke.sh exit 0",
+          "qa/regression.sh exit 0",
+          "All 5 GraphYamlLoaderTest cases green",
+          "Load-time assertion passes (median < 100ms over 5 warm runs)"
+        ],
+        "forbidden_paths": [
+          "dag-framework-api/src/main/",
+          "compiler-core/src/main/",
+          "runtime-core/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run qa/smoke.sh and qa/regression.sh; confirm all 5 GraphYamlLoaderTest cases pass green (5-node byte-equivalence, load-time median < 100ms, unknown-type error, missing-nodes-section error, missing-edges-section error); apply any fixture corrections requested by the reviewer.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  }
+]

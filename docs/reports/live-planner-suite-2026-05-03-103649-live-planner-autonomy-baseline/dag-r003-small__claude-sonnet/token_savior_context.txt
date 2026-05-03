@@ -1,0 +1,86 @@
+# Token Savior Project Summary
+Project: /Volumes/devssd/repos/ull/dag_framework
+Files: 274, Lines: 20394, Functions: 1314, Classes: 416
+Packages (14): .github, benchmarks, compiler-core, dag-framework-api, dag-framework-lvc, deployment-core, docs, examples, qa, repo-memory, runtime-core, scripts, sim, sim-kdb
+Classes: 416 total
+Top-level functions: 4 total
+
+# Token Savior Packed Context
+Context pack for 'Implement R-003 YAML graph topology loader so graph.yaml can be loaded at startup without recompiling. Add GraphYamlLoader.fromFile(Path). Define schema for nodes, edges, partitions, and watermarks. Validate node types against the registered node catalog. Return actionable errors for unknown node types. Compare loaded CompiledPlan to a hand-built plan for byte equivalence. Load test covers a 5-node graph from YAML. Loaded CompiledPlan is byte-equivalent to hand-built plan. Load time is below 100ms. qa/smoke.sh passes.' (72 symbols, ~2788 tokens / 3000 budget)
+------------------------------------------------------------
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.id()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    String id();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.nodeOrder()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    List<String> nodeOrder();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.partitioner()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    PartitionPolicy<?> partitioner();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.partitionCount()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    int partitionCount();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.inputBindings()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    Map<String, List<InputEdge>> inputBindings();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.edges()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    List<EdgeDef> edges();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.nodes()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    Map<String, NodeDef> nodes();
+
+# com.joshorig.ull.dag.runtime.CompiledPlan.sources()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/runtime/CompiledPlan.java)
+    Map<String, SourceDef> sources();
+
+# com.joshorig.ull.dag.time.Clocks.Clocks()  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/time/Clocks.java)
+    private Clocks() {}
+
+# com.joshorig.ull.dag.time.WatermarkPolicy.MaxWatermark.onEvent(long)  (value=0.21, cost=20t, runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java)
+        @Override public void onEvent(long eventTimeNanos) {
+            if (eventTimeNanos > max) max = eventTimeNanos;
+
+... (62 more symbols selected, sources omitted)
+
+# Search Hits: R-003
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] YAML graph topology loader'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 56, 'content': '- **Depends on:** [R-003] (YAML provides the new node definition), [R-004] (swap diagnostics need metrics).'}]
+
+# Search Hits: YAML
+[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 9, 'content': 'Configuration Structure (YAML)'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 92, 'content': '- Builder API and YAML/JSON loader support'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 107, 'content': '| JSON topology + config      | Graphs and layouts definable in YAML/JSON                               |'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 19, 'content': 'A single catalog table in kdb+ (plus optional YAML file persisted in git) describes every dataset:'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 53, 'content': 'Quants post a simulation spec (JSON/YAML) naming tables, date ranges, filters, and alignments (e.g., “asof join quotes to trades”, “drop out-of-order with seq < lastSeq”).'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 79, 'content': 'Quants add rows here (or via a YAML that is ingested to this table). transformFn points to a function in .simu.tf.* namespace, often identity.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 239, 'content': 'Add a single row to .simu.meta.catalog (or a YAML that is loaded into it).'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 319, 'content': 'Source of truth in git: YAML files (one per table) → validated by a Java CLI and applied to the kdb+ catalog over IPC.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 323, 'content': 'AuthN/Z: OIDC (Keycloak/Okta), GitHub CODEOWNERS on YAMLs; service-to-service mTLS.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 399, 'content': 'catalog YAML, transforms, SBE schema, replay engine.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 425, 'content': '├─ simu-catalog-cli/         # Java CLI to validate/apply YAML → kdb+'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 455, 'content': 'Quants interact through YAML specs and dashboards; core devs review YAML & transforms, not bespoke pipelines.'}]
+
+# Search Hits: graph
+[{'file': 'README.md', 'line_number': 8, 'content': '- define graphs using stable source/node identities'}, {'file': 'README.md', 'line_number': 9, 'content': '- compile those graphs into runtime plans'}, {'file': 'README.md', 'line_number': 20, 'content': '  - Risk graph: `./gradlew --no-daemon --console=plain :examples:runRiskGraph`'}, {'file': 'README.md', 'line_number': 21, 'content': '  - Pricing graph: `./gradlew --no-daemon --console=plain :examples:runPricingGraph`'}, {'file': 'README.md', 'line_number': 28, 'content': '  - graph definition types, contracts, journal abstractions, core reusable node/input primitives'}, {'file': 'README.md', 'line_number': 32, 'content': '  - graph compilation and validation logic'}, {'file': 'README.md', 'line_number': 61, 'content': '- graph definition and contracts live in `dag-framework-api`'}, {'file': 'WARP.md', 'line_number': 43, 'content': '  - Risk graph'}, {'file': 'WARP.md', 'line_number': 45, 'content': '  - Pricing graph'}, {'file': 'WARP.md', 'line_number': 69, 'content': '  - graph definitions, journal abstractions, core input/node/shared-state primitives'}, {'file': 'WARP.md', 'line_number': 73, 'content': '  - graph compilation'}, {'file': 'build.gradle', 'line_number': 28, 'content': "        'ull-dag-framework': 'Ultra-low-latency directed acyclic graph execution framework',"}]
+
+# Search Hits: topology
+[{'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 107, 'content': '| JSON topology + config      | Graphs and layouts definable in YAML/JSON                               |'}, {'file': 'examples/README.md', 'line_number': 8, 'content': '- in-process, IPC, and multi-process topology diagrams'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] YAML graph topology loader'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 54, 'content': '- **Out of scope:** Multi-node atomic swap, topology change (adding/removing nodes), config-driven swap from YAML edit.'}]
+
+# Search Hits: loader
+[{'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 6, 'content': '    private final ReplayPreloader replayPreloader;'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 10, 'content': '    public PreloadingEnvelopeReader(EventJournal.EnvelopeReader delegate, ReplayPreloader replayPreloader) {'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 14, 'content': '        if (replayPreloader == null) {'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 15, 'content': '            throw new IllegalArgumentException("replayPreloader null");'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 18, 'content': '        this.replayPreloader = replayPreloader;'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 26, 'content': '            replayPreloader.afterReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 34, 'content': '        replayPreloader.beforeReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/PreloadingEnvelopeReader.java', 'line_number': 42, 'content': '            replayPreloader.afterReplay(activeEnvelope);'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/journal/ReplayPreloader.java', 'line_number': 4, 'content': 'public interface ReplayPreloader {'}, {'file': 'docs/CONSUMING_DAG_FRAMEWORK.md', 'line_number': 64, 'content': '        new PreloadingEnvelopeReader(baseReader, replayPreloader);'}, {'file': 'docs/archive/history/ULL_DAG_Framework_Design_Final.md', 'line_number': 92, 'content': '- Builder API and YAML/JSON loader support'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 1, 'content': "We currently use kdb for our pricing model dag implementation. We use it to run the simulator, the current implementation downloads data files locally to users' machines, a zip file of data a day for each table. When implementing a new data table, the core developers have to write a new historical downloader implementation after the quants define their kdbrenderer implementation. This setup has a few issues, files being downloaded locally means difficult for quants to backtest models over large date ranges which limits the models they can develop.  We want a  better solution, we want to be able to replay years worth of data into a simulation/backtest and we don't want core devs to have to write code for every new data we capture as input into modal/kdb"}]
+
+# Search Hits: yaml
+[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 4, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 11, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 204, 'content': '```yaml'}, {'file': 'docs/archive/examples/design_discussion.md', 'line_number': 703, 'content': '```yaml'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 136, 'content': '# backtest.yaml'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 279, 'content': 'A sample backtest.yaml + CI harness that runs a one-day replay in the pipeline.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 611, 'content': 'Configs: local-dev.yaml (Aeron channels, streams), model.properties (feature flags).'}, {'file': 'docs/archive/history/summary_2025-08-13.md', 'line_number': 20, 'content': '- Confirmed queues are taken from graph.yaml'}, {'file': 'docs/archive/history/summary_2025-08-13.md', 'line_number': 72, 'content': '   - Config: expand graph.yaml to include the pricing graph queues, memories, and nodes; validate side-by-side with the risk graph.'}, {'file': 'docs/archive/history/summary_2025-08-16.md', 'line_number': 21, 'content': '  - Extended graph.yaml:'}, {'file': 'docs/archive/history/summary_2025-08-16.md', 'line_number': 80, 'content': '  - Expose skew and weighting parameters in graph.yaml (per pair and per scheme).'}, {'file': 'docs/archive/plans/generic_executor_plan.md', 'line_number': 152, 'content': '•  Keep current pricing_graph.yaml and risk_graph.yaml compatible by adding a new section and deprecating direct className executors over time.'}]
+
+
+# ROADMAP relevant entry
+
+### [R-003] YAML graph topology loader
+- **Status:** TODO
+- **Feature id:** null
+- **Goal:** Load a graph definition from `graph.yaml` at startup so non-Java operators can deploy pipeline changes without recompiling.
+- **Scope:** `GraphYamlLoader.fromFile(Path)`, schema for nodes/edges/partitions/watermarks, validation against registered node catalog, error messages for unknown node types.
+- **Out of scope:** Hot-reload of YAML (that's R-005), mutation via YAML edit, YAML schema versioning.
+- **Acceptance:** Load test for a 5-node graph from YAML, compare loaded `CompiledPlan` to hand-built plan for byte equivalence, load-time < 100ms.
+- **Depends on:** none.
+- **Notes:** Load path is startup-only — no YAML parsing on hot paths, ever.
+
+# DECISIONS relevant excerpt
+
+_Architectural decisions with enough context that a future agent can tell whether a proposed change is undoing something load-bearing. Schema:_
+**Consequences:** Any allocation introduced into the hot path (new, boxing, autoboxing, lambda capture allocations, non-reusable iterator creation, String concat) that exceeds 0.005 B/op fails CI. Rules out "we'll optimise it later" refactoring of hot paths. Agents implementing dag-framework nodes must include a `Check:` node in their BRAID graph for `jmhSmokeCheck` green before declaring `BRAID_OK`.
+**Context:** Both are candidate low-latency messaging stacks. Chronicle Map/Queue is popular but has licensing friction for commercial use and a different allocation profile than Aeron IPC.
+**Decision:** Use Aeron (IPC and shared-memory transport) for in-process and inter-process event transport. No Chronicle dependency anywhere. Aeron is currently only wired into `examples`, but the decision applies framework-wide when transport is added.
+**Context:** `System.out.println` is synchronous, unbuffered, and allocates for every call. Logging on the hot path without guards allocates even at DEBUG-off because of varargs and boxing.
+**Context:** The toolchain is pinned to Java 21 in every subproject's `build.gradle`. Trying to write Java 17 code "just in case" adds maintenance burden and defeats modern features (records, sealed types, pattern matching) that make zero-alloc code safer.
+
+# Memory digest
+

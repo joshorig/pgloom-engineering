@@ -1,0 +1,1379 @@
+{
+  "accepted_at_iteration": 1,
+  "backend": "claude",
+  "final": {
+    "acceptance_test_matrix": [
+      "ascendingRange on empty store visits zero slots \u2014 all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap)",
+      "ascendingRange with fromKey == toKey on a populated key visits exactly one slot; on absent key visits zero \u2014 all four backends",
+      "ascendingRange over full keyspace returns all populated slots in strictly ascending key order for all four backends",
+      "descendingRange over full keyspace returns all populated slots in strictly descending key order for all four backends",
+      "Early-stop: visitor returning false halts iteration immediately; no further slots are visited",
+      "Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes with no Consumer boxing or hot-path GC allocation",
+      "Sparse-keyspace descending traversal produces correct strictly decreasing key order with no off-by-one on unpopulated slots",
+      "Alloc gate: JMH GC profiler reports zero GC-visible allocations on visitor hot path for all four backends",
+      "qa/smoke.sh exits 0 with alloc-gate green and no regressions on existing direct and mmap store tests",
+      "qa/regression.sh exits 0 with full suite green and no pre-existing test regressions"
+    ],
+    "affected_surfaces": [
+      "store/src/main/java/com/joshorig/ull/lvc/store/",
+      "store/src/test/java/",
+      "store/src/test/",
+      "qa/",
+      "docs/",
+      "repo-memory/"
+    ],
+    "assumptions": [
+      "Store keys are comparable longs; key ordering is the natural long ordering used by existing slot-index arithmetic.",
+      "Seqlock read protocol already guards individual slot reads; range scans compose per-slot seqlock retries without introducing new locks or atomics.",
+      "No secondary index or sorted-by-value structure exists or will be introduced.",
+      "The alloc gate is enforced by the existing JMH GC profiler benchmark surface in qa/smoke.sh.",
+      "Optional key-prefix filtering is expressed as primitive long prefixMask/prefixValue parameters, not a boxed Predicate.",
+      "ROADMAP.md R-003 scope is authoritative: StoreVisitor interface + ascendingRange/descendingRange on SINGLE and DOUBLE store variants, bounds-inclusive semantics.",
+      "qa/smoke.sh and qa/regression.sh are the definitive pass/fail gates for this feature."
+    ],
+    "contract_version": "engineering.contracts.v1",
+    "council_reports": [
+      {
+        "critic": {
+          "findings": [],
+          "model_usage_id": null,
+          "per_check_results": [
+            {
+              "check_id": "check_design_contract_completeness",
+              "findings": [],
+              "name": "Design contract completeness",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_slice_path_coverage",
+              "findings": [],
+              "name": "Slice path coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_forbidden_path_overlap",
+              "findings": [],
+              "name": "Forbidden-path overlap",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_verification_commands",
+              "findings": [],
+              "name": "Verification command coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_lifecycle_coverage",
+              "findings": [],
+              "name": "Acceptance matrix lifecycle coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_topology_consistency",
+              "findings": [],
+              "name": "Implementation topology consistency",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_reviewer_present",
+              "findings": [],
+              "name": "Reviewer slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_author_present",
+              "findings": [],
+              "name": "QA author slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_verify_present",
+              "findings": [],
+              "name": "QA verify slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_paths_disjoint",
+              "findings": [],
+              "name": "QA paths disjoint from source",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_orphan_slices",
+              "findings": [],
+              "name": "Orphan slice detection",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_finalization_policy",
+              "findings": [],
+              "name": "Finalization policy locked to human merge",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_objective_specificity",
+              "findings": [],
+              "name": "Objective specificity",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_risk_register_present",
+              "findings": [],
+              "name": "Risk register present",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_roadmap_dependency_handling",
+              "findings": [],
+              "name": "Roadmap dependency handling",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_hot_path_invariants",
+              "findings": [],
+              "name": "Hot-path invariant preservation",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_small_feature_compactness",
+              "findings": [],
+              "name": "Small-feature compactness",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            }
+          ],
+          "quality_report": {
+            "advisory_check_count": 0,
+            "blocking_check_count": 0,
+            "deterministic_blocking_findings": [],
+            "model_blocking_findings": [],
+            "score": 100,
+            "validator_error_count": 0,
+            "verdict": "accept"
+          },
+          "rationale": "The plan is a well-structured, single-implementer feature addition for R-003. Design contract fully specifies both persistence and concurrency protocols. Slice dependency chain is clean (design \u2192 qa-author \u2192 impl-primary \u2192 review \u2192 qa-verify) with no orphans and no path overlaps. All implementer and QA slices carry verification commands. Topology is SINGLE with exactly one implementer slice. Finalization policy is human-gated. Risk register is explicit with 7 entries and mitigations. One advisory gap: the acceptance matrix omits explicit invalid-input handling for an inverted range (fromKey > toKey) and does not include a concurrent-write/stale-read test scenario; the seqlock stale-read case is addressed architecturally in the concurrency_protocol but never surfaced as a runnable test. The design_contract also does not specify the contract for fromKey > toKey (throw, no-op, or undefined). These are non-blocking for an otherwise tight plan.",
+          "verdict": "accept"
+        },
+        "iteration": 1,
+        "proposals": [
+          {
+            "model_usage_id": null,
+            "panelist_id": "panelist-0",
+            "raw_response": "```json\n{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-003\",\n  \"project\": \"lvc-standard\",\n  \"problem_statement\": \"The store layer has no range-scan API. Callers must load the full keyspace to iterate a subset. R-003 adds a zero-allocation StoreVisitor pattern with inclusive ascending and descending range scans on all four store implementations (SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore), covering empty range, single-key, full-keyspace, and reverse-scan cases without Consumer boxing or hot-path allocation.\",\n  \"assumptions\": [\n    \"Store keys are comparable longs; key ordering is the natural long ordering used by existing slot-index arithmetic.\",\n    \"Seqlock read protocol already guards individual slot reads; range scans compose per-slot seqlock retries.\",\n    \"No secondary index or sorted-by-value structure exists or will be introduced.\",\n    \"The alloc gate is enforced by the existing JMH GC profiler benchmark surface in qa/smoke.sh.\",\n    \"Optional key-prefix filtering is expressed as a long prefix mask/value pair, not a boxed Predicate.\",\n    \"ROADMAP.md R-003 scope is authoritative: StoreVisitor interface + ascendingRange/descendingRange on SINGLE + DOUBLE, bounds-inclusive semantics.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"New interface `com.joshorig.ull.lvc.store.StoreVisitor` with a single primitive callback `boolean visit(long key, long seqNo, DirectBuffer payload)` returning false to stop early. New methods `ascendingRange(long fromKey, long toKey, StoreVisitor visitor)` and `descendingRange(long fromKey, long toKey, StoreVisitor visitor)` added to `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore`. Optional prefix filter overloads accept `(long fromKey, long toKey, long prefixMask, long prefixValue, StoreVisitor visitor)`. No Consumer, no lambda boxing, no varargs.\",\n    \"ownership_boundaries\": \"All new production code lives in `store/src/main/java/com/joshorig/ull/lvc/store/`. The StoreVisitor interface is declared in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`. No changes to `core/`, `signal/`, `guaranteed-inproc/`, or any other module.\",\n    \"concurrency_protocol\": \"Range scans are read-only. Each slot is read under the existing per-slot seqlock retry loop. No cross-slot atomicity is guaranteed; callers observe a snapshot-per-slot view. Writers are not blocked.\",\n    \"persistence_protocol\": \"No persistence changes. Range scans operate on in-memory (direct buffer or mmap) state only. Durability semantics are unchanged.\",\n    \"hard_constraints\": [\n      \"Zero allocations on the visitor hot path: no boxing, no array creation, no lambda capture per visit.\",\n      \"Alloc gate must stay green: existing JMH GC profiler benchmarks must not regress.\",\n      \"Bounds are inclusive on both ends: visit(fromKey) and visit(toKey) are included if populated.\",\n      \"No sorted-by-value queries, composite keys, or secondary indexes introduced.\",\n      \"Optional prefix filter must not allocate a Consumer or Predicate object.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"java.util.function.Consumer or Predicate callbacks as visitor type\",\n      \"Returning a List or Collection of results from range methods\",\n      \"Secondary index structures or sorted auxiliary maps\",\n      \"Composite key encoding beyond the existing long key space\",\n      \"Stream-based APIs (java.util.stream.Stream)\",\n      \"Synchronized or lock-based scan that blocks writers\"\n    ],\n    \"acceptance_tests\": [\n      \"ascendingRange on an empty store visits zero slots\",\n      \"ascendingRange with fromKey == toKey visits exactly one slot when that key is populated, zero when not\",\n      \"ascendingRange over full keyspace visits every populated slot in ascending key order\",\n      \"descendingRange over full keyspace visits every populated slot in descending key order\",\n      \"Early-stop: returning false from visitor halts iteration immediately\",\n      \"Prefix-filter overload skips slots whose (key & prefixMask) != prefixValue without allocating\",\n      \"Both SINGLE and DOUBLE variants pass all cases above for direct and mmap backends\",\n      \"qa/smoke.sh passes with alloc gate green after implementation\",\n      \"qa/regression.sh passes full suite after implementation\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n    \"store/src/test/java/\",\n    \"store/src/test/\",\n    \"qa/\",\n    \"docs/\",\n    \"repo-memory/\"\n  ],\n  \"implementation_topology\": \"single\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define and document the StoreVisitor interface in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`, specify method signatures for `ascendingRange` and `descendingRange` on all four store classes, document prefix-filter overload contract, and update `docs/Stores.md` with the range-scan usage section.\",\n      \"allowed_paths\": [\n        \"docs/Stores.md\",\n        \"docs/\",\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"StoreVisitor.java interface stub with Javadoc\",\n        \"Updated docs/Stores.md range-scan section\",\n        \"DECISIONS.md entry recording the no-Consumer, no-boxing constraint rationale\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing JUnit tests in `store/src/test/java/` covering empty-range, single-key-range, full-keyspace, reverse-scan, early-stop, and prefix-filter cases for both SingleDirectStore and DoubleDirectStore (and mmap variants), plus any required fixtures in `qa/fixtures/`; all tests must compile but fail until impl-primary is complete.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"design\"],\n      \"expected_outputs\": [\n        \"StoreVisitorRangeTest.java with all specified scenario methods\",\n        \"Any required test fixtures in qa/fixtures/\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement `StoreVisitor` interface and `ascendingRange`/`descendingRange` methods (plus prefix-filter overloads) on `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore` using per-slot seqlock reads and zero-allocation iteration; update `repo-memory/ROADMAP.md` to mark R-003 in-progress.\",\n      \"allowed_paths\": [\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\"\n      ],\n      \"depends_on\": [\"qa-author\"],\n      \"expected_outputs\": [\n        \"StoreVisitor.java (final implementation)\",\n        \"ascendingRange/descendingRange methods on all four store classes\",\n        \"Prefix-filter overloads with no Consumer boxing\",\n        \"All qa-author tests now passing\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review `StoreVisitor.java`, all four store implementations' range methods, and test coverage in `store/src/test/java/` for correctness of seqlock interaction, zero-allocation guarantee, bounds-inclusive semantics, early-stop behavior, prefix-filter correctness, and contract compliance against the design slice.\",\n      \"allowed_paths\": [\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"store/src/test/java/\",\n        \"store/src/test/\",\n        \"docs/Stores.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"repo-memory/ROADMAP.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"core/src/main/\",\n        \"signal/src/main/\"\n      ],\n      \"depends_on\": [\"impl-primary\"],\n      \"expected_outputs\": [\n        \"ReviewReport listing any zero-allocation violations, seqlock misuse, or contract gaps\",\n        \"Signed-off confirmation or blocking findings requiring repair before qa-verify\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run `qa/smoke.sh` (including alloc gate) and `qa/regression.sh` after reviewer sign-off; confirm all StoreVisitorRangeTest cases pass for both SINGLE and DOUBLE variants, alloc gate is green, and no existing tests regress.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"review\"],\n      \"expected_outputs\": [\n        \"qa/smoke.sh green with alloc gate passing\",\n        \"qa/regression.sh full-suite pass\",\n        \"QAVerifyReport confirming all acceptance matrix entries satisfied\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"ascendingRange on empty store visits zero slots \u2014 both SINGLE and DOUBLE direct and mmap variants\",\n    \"ascendingRange with fromKey == toKey on a populated key visits exactly one slot; on absent key visits zero\",\n    \"ascendingRange over full keyspace returns all populated slots in strictly ascending key order\",\n    \"descendingRange over full keyspace returns all populated slots in strictly descending key order\",\n    \"Early-stop: visitor returning false halts iteration; no further slots are visited\",\n    \"Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes\",\n    \"Alloc gate: JMH GC profiler reports zero allocations on visitor hot path after range scan methods are added\",\n    \"qa/smoke.sh exits 0 with no alloc-gate regressions\",\n    \"qa/regression.sh exits 0 with full suite green and no pre-existing test regressions\"\n  ],\n  \"risk_register\": [\n    \"Seqlock race during range scan: a writer updating a slot mid-scan may cause per-slot retry storms under high write throughput; mitigate by bounding retry count and documenting scan-under-write behavior.\",\n    \"Alloc gate regression: incorrect use of autoboxing (e.g. Long key in a conditional) silently boxes on hot path; mitigate by running JMH GC profiler in smoke gate and failing build on allocation delta.\",\n    \"Key ordering assumption: ascending iteration assumes natural long ordering matches slot physical layout; if store uses a hash or non-ordered slot map, range semantics break; must be validated against DirectStores/MmapStores slot indexing in the design slice.\",\n    \"Prefix-filter interface creep: a Predicate<Long> overload would box; reviewers must reject any Consumer or functional-interface variant that is not a primitive-friendly StoreVisitor.\",\n    \"Partial keyspace visibility: range scan is not a cross-slot atomic snapshot; callers seeing in-flight updates within a scan window is by design but must be explicitly documented to avoid misuse.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}\n```"
+          },
+          {
+            "model_usage_id": null,
+            "panelist_id": "panelist-1",
+            "raw_response": "```json\n{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-003\",\n  \"project\": \"lvc-standard\",\n  \"problem_statement\": \"The store API has no range-scan capability. Consumers must iterate the full keyspace or apply external filtering, forcing allocations and violating the zero-alloc contract. R-003 adds a StoreVisitor interface with inclusive ascending and descending range scans for SINGLE and DOUBLE store variants, and optional key-prefix filtering that avoids Consumer boxing and any hot-path allocation.\",\n  \"assumptions\": [\n    \"Keys in SINGLE and DOUBLE stores follow natural long/int ordering; range bounds are inclusive on both ends.\",\n    \"Range scan reads slots under the existing per-slot seqlock read discipline; no new locks or atomics are introduced.\",\n    \"Key-prefix filtering is expressed as primitive long prefix/mask parameters, not a functional interface, to avoid boxing.\",\n    \"Conformance-tests and benchmarks are updated for coverage but qa/smoke.sh and qa/regression.sh are the definitive pass/fail gates.\",\n    \"All four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap) must expose the same forEach/forPrefix surface.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"New `StoreVisitor` interface in `core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java` with a single primitive callback (e.g. `boolean visit(long key, ...)`). `LvcStore` gains `forEach(long fromKey, long toKey, boolean ascending, StoreVisitor visitor)` and `forPrefix(long keyPrefix, long prefixMask, StoreVisitor visitor)` without Consumer boxing.\",\n    \"ownership_boundaries\": \"Interface definition owned by `core/src/main/java/com/joshorig/ull/lvc/api/`. Scan implementations owned by `store/src/main/java/` (direct and mmap backends). Tests owned by `store/src/test/java/`.\",\n    \"concurrency_protocol\": \"Range scans complete the full per-slot seqlock read sequence before invoking the visitor callback. Visitors must not mutate store state.\",\n    \"persistence_protocol\": \"Read-only operation; no persistence layer changes. Mmap backend reads from the existing mapped region.\",\n    \"hard_constraints\": [\n      \"Zero allocations on the visitor hot path; alloc gate must stay green.\",\n      \"No sorted-by-value queries, composite keys, or secondary indexes.\",\n      \"No Consumer/lambda boxing in the key-prefix filtering path.\",\n      \"Range bounds inclusive on both ends.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Iterator/Iterable pattern (allocates iterator object per scan)\",\n      \"Stream API (allocates pipeline stages)\",\n      \"Consumer<T> or Predicate<T> functional interface for prefix filter (boxes primitives)\",\n      \"Secondary index or sorted-value index\"\n    ],\n    \"acceptance_tests\": [\n      \"Empty-range scan (fromKey > toKey or no slots in range) returns 0 visits for SINGLE and DOUBLE stores.\",\n      \"Single-key range scan visits exactly one key for SINGLE and DOUBLE stores.\",\n      \"Full-keyspace ascending scan visits all populated keys in monotonically increasing order for all four backends.\",\n      \"Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing order for all four backends.\",\n      \"Key-prefix filter scan visits only matching keys with no Consumer boxing or hot-path allocation.\",\n      \"Alloc gate remains green on visitor hot path.\",\n      \"qa/smoke.sh passes.\",\n      \"qa/regression.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"store/\",\n    \"core/src/main/java/com/joshorig/ull/lvc/api/\",\n    \"conformance-tests/\",\n    \"benchmarks/\",\n    \"store/src/test/\",\n    \"qa/\"\n  ],\n  \"implementation_topology\": \"single\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define StoreVisitor interface in core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java, specify forEach and forPrefix signatures on LvcStore, update docs/Stores.md with zero-alloc range-scan contract, and record the design decision in repo-memory/DECISIONS.md.\",\n      \"allowed_paths\": [\n        \"core/src/main/java/com/joshorig/ull/lvc/api/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"StoreVisitor.java interface stub\",\n        \"docs/Stores.md range-scan section\",\n        \"repo-memory/DECISIONS.md entry for R-003\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing JUnit tests for empty-range, single-key, full-keyspace, and reverse scan in store/src/test/java/com/joshorig/ull/lvc/store/direct/ and store/src/test/java/com/joshorig/ull/lvc/store/mmap/ covering all four backends, and add an alloc-gate fixture in qa/fixtures/.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"design\"],\n      \"expected_outputs\": [\n        \"Failing StoreVisitorRangeScanTest for SingleDirect store\",\n        \"Failing StoreVisitorRangeScanTest for DoubleDirect store\",\n        \"Failing StoreVisitorRangeScanTest for SingleMmap store\",\n        \"Failing StoreVisitorRangeScanTest for DoubleMmap store\",\n        \"Alloc-gate fixture in qa/fixtures/ for visitor hot path\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement StoreVisitor.java in core/src/main/java/com/joshorig/ull/lvc/api/, add forEach and forPrefix to all four store backends in store/src/main/java/, update conformance-tests/ for range-scan coverage, and add a JMH benchmark in benchmarks/ for the visitor hot path.\",\n      \"allowed_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [\"qa-author\"],\n      \"expected_outputs\": [\n        \"StoreVisitor.java interface\",\n        \"forEach/forPrefix implementations in SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore\",\n        \"Conformance-tests update for range-scan\",\n        \"JMH benchmark for visitor hot path\",\n        \"All qa-author failing tests now green\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review StoreVisitor interface, forEach/forPrefix implementations across all four store backends, alloc-gate fixture, and test coverage for correctness, zero-alloc contract adherence, and seqlock read-side safety.\",\n      \"allowed_paths\": [\n        \"store/\",\n        \"core/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \"guaranteed-aeron/\",\n        \"guaranteed-inproc/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [\"impl-primary\"],\n      \"expected_outputs\": [\n        \"Review sign-off or blocking issues list\",\n        \"Confirmed zero-alloc hot-path compliance across all four backends\",\n        \"Confirmed seqlock read discipline (visitor called after sequence validation)\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run qa/smoke.sh and qa/regression.sh after reviewer sign-off and confirm all range-scan tests (empty-range, single-key, full-keyspace, reverse, alloc gate) pass for all four SINGLE/DOUBLE direct/mmap backends.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"review\"],\n      \"expected_outputs\": [\n        \"qa/smoke.sh green\",\n        \"qa/regression.sh green\",\n        \"All StoreVisitorRangeScanTest cases passing for all four store backends\",\n        \"Alloc gate green on visitor hot path\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Empty-range scan (fromKey > toKey or no slots in range) visits zero keys for SingleDirect, DoubleDirect, SingleMmap, and DoubleMmap stores.\",\n    \"Single-key range scan (fromKey == toKey, key present) visits exactly one key for all four backends.\",\n    \"Full-keyspace ascending scan visits all populated keys in monotonically increasing key order for all four backends.\",\n    \"Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing key order for all four backends.\",\n    \"Key-prefix filter scan visits only keys matching primitive prefix/mask with no Consumer boxing or hot-path GC allocation.\",\n    \"Alloc gate is green on visitor hot path: no GC-visible allocations during forEach/forPrefix execution.\",\n    \"Sparse-keyspace descending traversal produces correct ordering with no off-by-one on unpopulated slots.\",\n    \"qa/smoke.sh passes with no regressions on existing direct and mmap store tests.\",\n    \"qa/regression.sh passes including all new range-scan test cases.\"\n  ],\n  \"risk_register\": [\n    \"Seqlock read-side violation: invoking visitor callback between sequence read-start and read-end checks exposes torn slot data; mitigation: complete full seqlock read sequence per slot before visitor dispatch.\",\n    \"Alloc gate regression: forEach implementation using autoboxed key or intermediate collection fails the alloc-gate fixture; mitigation: qa-author alloc-gate fixture enforces this before impl lands.\",\n    \"Ascending/descending ordering divergence between direct and mmap backends: different slot layout traversal could produce inconsistent scan order; mitigation: explicit ordering contract in design and shared ordering tests across all four backends.\",\n    \"Consumer/lambda boxing in prefix filter path: using Predicate<Long> or Consumer<Long> violates zero-alloc contract; mitigation: design contract forbids Consumer-based filter APIs; reviewer checks for boxing.\",\n    \"Sparse-keyspace off-by-one in descending traversal: empty slots between populated slots could cause incorrect bounds in reverse scan; mitigation: sparse-keyspace edge cases included in qa-author test fixtures.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}\n```"
+          }
+        ],
+        "validator_errors": []
+      }
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "ascendingRange on an empty store visits zero slots for all four backends",
+        "ascendingRange with fromKey == toKey visits exactly one slot when that key is populated, zero when absent",
+        "ascendingRange over full keyspace visits every populated slot in strictly ascending key order for all four backends",
+        "descendingRange over full keyspace visits every populated slot in strictly descending key order for all four backends",
+        "Early-stop: returning false from visitor halts iteration immediately with no further slot visits",
+        "Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes with no Consumer boxing",
+        "Sparse-keyspace descending traversal produces correct strictly decreasing key order with no off-by-one on unpopulated slots",
+        "Both SINGLE and DOUBLE variants pass all cases above for direct and mmap backends",
+        "qa/smoke.sh passes with alloc gate green after implementation",
+        "qa/regression.sh passes full suite after implementation"
+      ],
+      "concurrency_protocol": "Range scans are read-only. Each slot is read under the existing per-slot seqlock retry loop; the visitor callback is invoked only after the full seqlock read sequence validates the slot. No cross-slot atomicity is guaranteed; callers observe a snapshot-per-slot view. Writers are not blocked.",
+      "forbidden_alternatives": [
+        "java.util.function.Consumer or Predicate callbacks as visitor type",
+        "Returning a List or Collection of results from range methods",
+        "Secondary index structures or sorted auxiliary maps",
+        "Composite key encoding beyond the existing long key space",
+        "Stream-based APIs (java.util.stream.Stream)",
+        "Synchronized or lock-based scan that blocks writers",
+        "Iterator/Iterable pattern (allocates iterator object per scan)"
+      ],
+      "hard_constraints": [
+        "Zero allocations on the visitor hot path: no boxing, no array creation, no lambda capture per visit.",
+        "Alloc gate must stay green: existing JMH GC profiler benchmarks must not regress.",
+        "Bounds are inclusive on both ends: visit(fromKey) and visit(toKey) are included when those keys are populated.",
+        "No sorted-by-value queries, composite keys, or secondary indexes introduced.",
+        "Prefix filter must not allocate a Consumer or Predicate object."
+      ],
+      "ownership_boundaries": "All new production code lives in `store/src/main/java/com/joshorig/ull/lvc/store/`. The StoreVisitor interface is declared in that package. No changes to `core/`, `signal/`, `guaranteed-inproc/`, or any other module.",
+      "persistence_protocol": "No persistence changes. Range scans operate on in-memory (direct buffer or mmap) state only. Durability semantics are unchanged.",
+      "public_api": "New interface `com.joshorig.ull.lvc.store.StoreVisitor` declared in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java` with a single primitive callback `boolean visit(long key, long seqNo, DirectBuffer payload)` returning false to halt early. New methods `ascendingRange(long fromKey, long toKey, StoreVisitor visitor)` and `descendingRange(long fromKey, long toKey, StoreVisitor visitor)` added to `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore`. Optional prefix-filter overloads: `ascendingRange(long fromKey, long toKey, long prefixMask, long prefixValue, StoreVisitor visitor)` and the equivalent descending form. No Consumer, no Predicate, no lambda capture, no varargs."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "single",
+    "problem_statement": "The store layer has no range-scan API. Callers must iterate the full keyspace to visit a subset, forcing allocations and violating the zero-alloc contract. R-003 adds a zero-allocation StoreVisitor pattern with inclusive ascending and descending range scans on all four store implementations (SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore), covering empty-range, single-key, full-keyspace, sparse-keyspace, and reverse-scan cases, plus key-prefix filtering using primitive mask/value parameters \u2014 no Consumer boxing, no hot-path allocation.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Seqlock read-side violation during range scan: invoking visitor callback before completing the per-slot seqlock read sequence exposes torn slot data; mitigation: complete full seqlock read sequence per slot before visitor dispatch, bound retry count under high write throughput, and document scan-under-write behavior explicitly.",
+      "Alloc gate regression: autoboxing (e.g. Long key in a conditional) or intermediate collections silently box on the hot path; mitigation: qa-author alloc-gate fixture in qa/fixtures/ enforces this before impl lands, and JMH GC profiler runs in qa/smoke.sh gate failing the build on any allocation delta.",
+      "Key ordering assumption: ascending iteration assumes natural long ordering matches slot physical layout; if store uses a hash or non-ordered slot map, range semantics break; mitigation: validate slot indexing against DirectStore and MmapStore layout in the design slice.",
+      "Ascending/descending ordering divergence between direct and mmap backends: different slot-layout traversal could produce inconsistent scan order; mitigation: explicit ordering contract in design and shared ordering test cases across all four backends in qa-author.",
+      "Prefix-filter interface creep: a Predicate<Long> or Consumer<Long> overload would box primitives; mitigation: design contract forbids Consumer-based filter APIs and reviewer must reject any functional-interface variant that is not a primitive-friendly StoreVisitor.",
+      "Sparse-keyspace off-by-one in descending traversal: empty slots between populated slots could cause incorrect bounds in reverse scan; mitigation: sparse-keyspace descending edge cases included in qa-author test fixtures for all four backends.",
+      "Partial keyspace visibility: range scan is not a cross-slot atomic snapshot; callers observing in-flight updates within a scan window is by design but must be explicitly documented in docs/Stores.md to prevent misuse."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "supersedes_plan_id": null,
+    "supersession_rationale": null,
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/Stores.md",
+          "docs/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract documenting the full range-scan API, ownership boundaries, concurrency protocol, and acceptance coverage",
+          "StoreVisitor.java interface stub with full Javadoc in store/src/main/java/com/joshorig/ull/lvc/store/",
+          "Updated docs/Stores.md range-scan section covering ascendingRange, descendingRange, prefix-filter overloads, and scan-under-write behavior",
+          "repo-memory/DECISIONS.md entry recording the no-Consumer, no-boxing constraint rationale for R-003"
+        ],
+        "forbidden_paths": [
+          "store/src/test/",
+          "store/src/test/java/",
+          "tests/",
+          "qa/fixtures/",
+          "signal/src/test/",
+          "signal/src/test/java/",
+          "core/src/main/",
+          "signal/src/main/",
+          "guaranteed-inproc/src/main/"
+        ],
+        "objective": "Define and document the StoreVisitor interface in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`; specify method signatures for `ascendingRange` and `descendingRange` (and prefix-filter overloads) on all four store classes; document the zero-alloc, no-Consumer, no-boxing constraints; update `docs/Stores.md` with the range-scan usage section and concurrency protocol; record the design decision in `repo-memory/DECISIONS.md`.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "signal/src/test/",
+          "signal/src/test/java/",
+          "store/src/test/",
+          "store/src/test/java/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "StoreVisitorRangeTest.java in store/src/test/java/ covering all specified scenario methods for all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap)",
+          "Alloc-gate fixture in qa/fixtures/ for visitor hot path GC profiling",
+          "All test cases compile but fail until impl-primary completes"
+        ],
+        "forbidden_paths": [
+          "store/src/main/",
+          "core/src/main/",
+          "signal/src/main/",
+          "guaranteed-inproc/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Write failing JUnit tests in `store/src/test/java/` covering empty-range, single-key-range, full-keyspace ascending, full-keyspace descending, sparse-keyspace descending, early-stop, and prefix-filter cases for SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore; add an alloc-gate fixture in `qa/fixtures/` for the visitor hot path. All tests must compile but fail until impl-primary is complete.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "qa/smoke.sh"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "StoreVisitor.java (final implementation) in store/src/main/java/com/joshorig/ull/lvc/store/",
+          "ascendingRange/descendingRange methods on SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore",
+          "Prefix-filter overloads using primitive long prefixMask/prefixValue with no Consumer boxing",
+          "repo-memory/ROADMAP.md updated to mark R-003 in-progress",
+          "All qa-author failing tests now passing"
+        ],
+        "forbidden_paths": [
+          "store/src/test/",
+          "store/src/test/java/",
+          "tests/",
+          "qa/fixtures/",
+          "signal/src/test/",
+          "signal/src/test/java/",
+          "core/src/main/",
+          "signal/src/main/",
+          "guaranteed-inproc/src/main/"
+        ],
+        "objective": "Implement the `StoreVisitor` interface and `ascendingRange`/`descendingRange` methods (plus prefix-filter overloads) on `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore` using per-slot seqlock reads and zero-allocation iteration; update `repo-memory/ROADMAP.md` to mark R-003 in-progress.",
+        "role": "implementer",
+        "slice_id": "impl-primary",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/test/java/",
+          "store/src/test/",
+          "docs/Stores.md",
+          "repo-memory/DECISIONS.md",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "impl-primary"
+        ],
+        "expected_outputs": [
+          "ReviewReport listing any zero-allocation violations, seqlock read-side misuse, bounds errors, sparse-keyspace ordering defects, or contract gaps",
+          "Signed-off confirmation or blocking findings requiring repair before qa-verify",
+          "Confirmed zero-alloc hot-path compliance across all four backends",
+          "Confirmed seqlock read discipline: visitor called only after full per-slot sequence validation"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "signal/src/test/",
+          "signal/src/test/java/",
+          "core/src/main/",
+          "signal/src/main/",
+          "guaranteed-inproc/src/main/"
+        ],
+        "objective": "Review `StoreVisitor.java`, all four store implementations' `ascendingRange`/`descendingRange` range methods, and test coverage in `store/src/test/java/` for correctness of seqlock interaction (visitor called only after full sequence validation), zero-allocation guarantee, bounds-inclusive semantics, early-stop behavior, sparse-keyspace descending correctness, prefix-filter primitive safety, and contract compliance against the design slice.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "signal/src/test/",
+          "signal/src/test/java/",
+          "store/src/test/",
+          "store/src/test/java/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "qa/smoke.sh green with alloc gate passing (no GC-visible allocations on visitor hot path for all four backends)",
+          "qa/regression.sh full-suite pass with no pre-existing test regressions",
+          "QAVerifyReport confirming all acceptance matrix entries satisfied for SingleDirect, DoubleDirect, SingleMmap, and DoubleMmap"
+        ],
+        "forbidden_paths": [
+          "store/src/main/",
+          "core/src/main/",
+          "signal/src/main/",
+          "guaranteed-inproc/src/main/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run `qa/smoke.sh` (including alloc gate) and `qa/regression.sh` after reviewer sign-off; confirm all StoreVisitorRangeTest cases pass for all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap) covering empty-range, single-key, full-keyspace ascending/descending, sparse-keyspace descending, early-stop, and prefix-filter scenarios; confirm alloc gate is green with no GC-visible allocations on the visitor hot path.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  },
+  "iterations": [
+    {
+      "consolidated": {
+        "acceptance_test_matrix": [
+          "ascendingRange on empty store visits zero slots \u2014 all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap)",
+          "ascendingRange with fromKey == toKey on a populated key visits exactly one slot; on absent key visits zero \u2014 all four backends",
+          "ascendingRange over full keyspace returns all populated slots in strictly ascending key order for all four backends",
+          "descendingRange over full keyspace returns all populated slots in strictly descending key order for all four backends",
+          "Early-stop: visitor returning false halts iteration immediately; no further slots are visited",
+          "Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes with no Consumer boxing or hot-path GC allocation",
+          "Sparse-keyspace descending traversal produces correct strictly decreasing key order with no off-by-one on unpopulated slots",
+          "Alloc gate: JMH GC profiler reports zero GC-visible allocations on visitor hot path for all four backends",
+          "qa/smoke.sh exits 0 with alloc-gate green and no regressions on existing direct and mmap store tests",
+          "qa/regression.sh exits 0 with full suite green and no pre-existing test regressions"
+        ],
+        "affected_surfaces": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/test/java/",
+          "store/src/test/",
+          "qa/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "assumptions": [
+          "Store keys are comparable longs; key ordering is the natural long ordering used by existing slot-index arithmetic.",
+          "Seqlock read protocol already guards individual slot reads; range scans compose per-slot seqlock retries without introducing new locks or atomics.",
+          "No secondary index or sorted-by-value structure exists or will be introduced.",
+          "The alloc gate is enforced by the existing JMH GC profiler benchmark surface in qa/smoke.sh.",
+          "Optional key-prefix filtering is expressed as primitive long prefixMask/prefixValue parameters, not a boxed Predicate.",
+          "ROADMAP.md R-003 scope is authoritative: StoreVisitor interface + ascendingRange/descendingRange on SINGLE and DOUBLE store variants, bounds-inclusive semantics.",
+          "qa/smoke.sh and qa/regression.sh are the definitive pass/fail gates for this feature."
+        ],
+        "contract_version": "engineering.contracts.v1",
+        "council_reports": [],
+        "design_contract": {
+          "acceptance_tests": [
+            "ascendingRange on an empty store visits zero slots for all four backends",
+            "ascendingRange with fromKey == toKey visits exactly one slot when that key is populated, zero when absent",
+            "ascendingRange over full keyspace visits every populated slot in strictly ascending key order for all four backends",
+            "descendingRange over full keyspace visits every populated slot in strictly descending key order for all four backends",
+            "Early-stop: returning false from visitor halts iteration immediately with no further slot visits",
+            "Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes with no Consumer boxing",
+            "Sparse-keyspace descending traversal produces correct strictly decreasing key order with no off-by-one on unpopulated slots",
+            "Both SINGLE and DOUBLE variants pass all cases above for direct and mmap backends",
+            "qa/smoke.sh passes with alloc gate green after implementation",
+            "qa/regression.sh passes full suite after implementation"
+          ],
+          "concurrency_protocol": "Range scans are read-only. Each slot is read under the existing per-slot seqlock retry loop; the visitor callback is invoked only after the full seqlock read sequence validates the slot. No cross-slot atomicity is guaranteed; callers observe a snapshot-per-slot view. Writers are not blocked.",
+          "forbidden_alternatives": [
+            "java.util.function.Consumer or Predicate callbacks as visitor type",
+            "Returning a List or Collection of results from range methods",
+            "Secondary index structures or sorted auxiliary maps",
+            "Composite key encoding beyond the existing long key space",
+            "Stream-based APIs (java.util.stream.Stream)",
+            "Synchronized or lock-based scan that blocks writers",
+            "Iterator/Iterable pattern (allocates iterator object per scan)"
+          ],
+          "hard_constraints": [
+            "Zero allocations on the visitor hot path: no boxing, no array creation, no lambda capture per visit.",
+            "Alloc gate must stay green: existing JMH GC profiler benchmarks must not regress.",
+            "Bounds are inclusive on both ends: visit(fromKey) and visit(toKey) are included when those keys are populated.",
+            "No sorted-by-value queries, composite keys, or secondary indexes introduced.",
+            "Prefix filter must not allocate a Consumer or Predicate object."
+          ],
+          "ownership_boundaries": "All new production code lives in `store/src/main/java/com/joshorig/ull/lvc/store/`. The StoreVisitor interface is declared in that package. No changes to `core/`, `signal/`, `guaranteed-inproc/`, or any other module.",
+          "persistence_protocol": "No persistence changes. Range scans operate on in-memory (direct buffer or mmap) state only. Durability semantics are unchanged.",
+          "public_api": "New interface `com.joshorig.ull.lvc.store.StoreVisitor` declared in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java` with a single primitive callback `boolean visit(long key, long seqNo, DirectBuffer payload)` returning false to halt early. New methods `ascendingRange(long fromKey, long toKey, StoreVisitor visitor)` and `descendingRange(long fromKey, long toKey, StoreVisitor visitor)` added to `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore`. Optional prefix-filter overloads: `ascendingRange(long fromKey, long toKey, long prefixMask, long prefixValue, StoreVisitor visitor)` and the equivalent descending form. No Consumer, no Predicate, no lambda capture, no varargs."
+        },
+        "feature_id": "R-003",
+        "finalization_policy": "open_final_feature_pr_for_human_merge",
+        "implementation_topology": "single",
+        "problem_statement": "The store layer has no range-scan API. Callers must iterate the full keyspace to visit a subset, forcing allocations and violating the zero-alloc contract. R-003 adds a zero-allocation StoreVisitor pattern with inclusive ascending and descending range scans on all four store implementations (SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore), covering empty-range, single-key, full-keyspace, sparse-keyspace, and reverse-scan cases, plus key-prefix filtering using primitive mask/value parameters \u2014 no Consumer boxing, no hot-path allocation.",
+        "project": "lvc-standard",
+        "risk_register": [
+          "Seqlock read-side violation during range scan: invoking visitor callback before completing the per-slot seqlock read sequence exposes torn slot data; mitigation: complete full seqlock read sequence per slot before visitor dispatch, bound retry count under high write throughput, and document scan-under-write behavior explicitly.",
+          "Alloc gate regression: autoboxing (e.g. Long key in a conditional) or intermediate collections silently box on the hot path; mitigation: qa-author alloc-gate fixture in qa/fixtures/ enforces this before impl lands, and JMH GC profiler runs in qa/smoke.sh gate failing the build on any allocation delta.",
+          "Key ordering assumption: ascending iteration assumes natural long ordering matches slot physical layout; if store uses a hash or non-ordered slot map, range semantics break; mitigation: validate slot indexing against DirectStore and MmapStore layout in the design slice.",
+          "Ascending/descending ordering divergence between direct and mmap backends: different slot-layout traversal could produce inconsistent scan order; mitigation: explicit ordering contract in design and shared ordering test cases across all four backends in qa-author.",
+          "Prefix-filter interface creep: a Predicate<Long> or Consumer<Long> overload would box primitives; mitigation: design contract forbids Consumer-based filter APIs and reviewer must reject any functional-interface variant that is not a primitive-friendly StoreVisitor.",
+          "Sparse-keyspace off-by-one in descending traversal: empty slots between populated slots could cause incorrect bounds in reverse scan; mitigation: sparse-keyspace descending edge cases included in qa-author test fixtures for all four backends.",
+          "Partial keyspace visibility: range scan is not a cross-slot atomic snapshot; callers observing in-flight updates within a scan window is by design but must be explicitly documented in docs/Stores.md to prevent misuse."
+        ],
+        "self_heal_policy": "retry_repair_replan_then_escalate",
+        "supersedes_plan_id": null,
+        "supersession_rationale": null,
+        "task_slices": [
+          {
+            "allowed_paths": [
+              "docs/Stores.md",
+              "docs/",
+              "store/src/main/java/com/joshorig/ull/lvc/store/",
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md"
+            ],
+            "depends_on": [],
+            "expected_outputs": [
+              "DesignContract documenting the full range-scan API, ownership boundaries, concurrency protocol, and acceptance coverage",
+              "StoreVisitor.java interface stub with full Javadoc in store/src/main/java/com/joshorig/ull/lvc/store/",
+              "Updated docs/Stores.md range-scan section covering ascendingRange, descendingRange, prefix-filter overloads, and scan-under-write behavior",
+              "repo-memory/DECISIONS.md entry recording the no-Consumer, no-boxing constraint rationale for R-003"
+            ],
+            "forbidden_paths": [
+              "store/src/test/",
+              "store/src/test/java/",
+              "tests/",
+              "qa/fixtures/",
+              "signal/src/test/",
+              "signal/src/test/java/",
+              "core/src/main/",
+              "signal/src/main/",
+              "guaranteed-inproc/src/main/"
+            ],
+            "objective": "Define and document the StoreVisitor interface in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`; specify method signatures for `ascendingRange` and `descendingRange` (and prefix-filter overloads) on all four store classes; document the zero-alloc, no-Consumer, no-boxing constraints; update `docs/Stores.md` with the range-scan usage section and concurrency protocol; record the design decision in `repo-memory/DECISIONS.md`.",
+            "role": "designer",
+            "slice_id": "design",
+            "task_type": "engineering.design",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "signal/src/test/",
+              "signal/src/test/java/",
+              "store/src/test/",
+              "store/src/test/java/"
+            ],
+            "depends_on": [
+              "design"
+            ],
+            "expected_outputs": [
+              "StoreVisitorRangeTest.java in store/src/test/java/ covering all specified scenario methods for all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap)",
+              "Alloc-gate fixture in qa/fixtures/ for visitor hot path GC profiling",
+              "All test cases compile but fail until impl-primary completes"
+            ],
+            "forbidden_paths": [
+              "store/src/main/",
+              "core/src/main/",
+              "signal/src/main/",
+              "guaranteed-inproc/src/main/",
+              "docs/",
+              "repo-memory/"
+            ],
+            "objective": "Write failing JUnit tests in `store/src/test/java/` covering empty-range, single-key-range, full-keyspace ascending, full-keyspace descending, sparse-keyspace descending, early-stop, and prefix-filter cases for SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore; add an alloc-gate fixture in `qa/fixtures/` for the visitor hot path. All tests must compile but fail until impl-primary is complete.",
+            "role": "qa",
+            "slice_id": "qa-author",
+            "task_type": "engineering.qa.author",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "store/src/main/java/com/joshorig/ull/lvc/store/",
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md",
+              "qa/smoke.sh"
+            ],
+            "depends_on": [
+              "qa-author"
+            ],
+            "expected_outputs": [
+              "StoreVisitor.java (final implementation) in store/src/main/java/com/joshorig/ull/lvc/store/",
+              "ascendingRange/descendingRange methods on SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore",
+              "Prefix-filter overloads using primitive long prefixMask/prefixValue with no Consumer boxing",
+              "repo-memory/ROADMAP.md updated to mark R-003 in-progress",
+              "All qa-author failing tests now passing"
+            ],
+            "forbidden_paths": [
+              "store/src/test/",
+              "store/src/test/java/",
+              "tests/",
+              "qa/fixtures/",
+              "signal/src/test/",
+              "signal/src/test/java/",
+              "core/src/main/",
+              "signal/src/main/",
+              "guaranteed-inproc/src/main/"
+            ],
+            "objective": "Implement the `StoreVisitor` interface and `ascendingRange`/`descendingRange` methods (plus prefix-filter overloads) on `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore` using per-slot seqlock reads and zero-allocation iteration; update `repo-memory/ROADMAP.md` to mark R-003 in-progress.",
+            "role": "implementer",
+            "slice_id": "impl-primary",
+            "task_type": "engineering.implement",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ],
+              [
+                "./qa/regression.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "store/src/main/java/com/joshorig/ull/lvc/store/",
+              "store/src/test/java/",
+              "store/src/test/",
+              "docs/Stores.md",
+              "repo-memory/DECISIONS.md",
+              "repo-memory/ROADMAP.md"
+            ],
+            "depends_on": [
+              "impl-primary"
+            ],
+            "expected_outputs": [
+              "ReviewReport listing any zero-allocation violations, seqlock read-side misuse, bounds errors, sparse-keyspace ordering defects, or contract gaps",
+              "Signed-off confirmation or blocking findings requiring repair before qa-verify",
+              "Confirmed zero-alloc hot-path compliance across all four backends",
+              "Confirmed seqlock read discipline: visitor called only after full per-slot sequence validation"
+            ],
+            "forbidden_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "signal/src/test/",
+              "signal/src/test/java/",
+              "core/src/main/",
+              "signal/src/main/",
+              "guaranteed-inproc/src/main/"
+            ],
+            "objective": "Review `StoreVisitor.java`, all four store implementations' `ascendingRange`/`descendingRange` range methods, and test coverage in `store/src/test/java/` for correctness of seqlock interaction (visitor called only after full sequence validation), zero-allocation guarantee, bounds-inclusive semantics, early-stop behavior, sparse-keyspace descending correctness, prefix-filter primitive safety, and contract compliance against the design slice.",
+            "role": "reviewer",
+            "slice_id": "review",
+            "task_type": "engineering.review",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "signal/src/test/",
+              "signal/src/test/java/",
+              "store/src/test/",
+              "store/src/test/java/"
+            ],
+            "depends_on": [
+              "review"
+            ],
+            "expected_outputs": [
+              "qa/smoke.sh green with alloc gate passing (no GC-visible allocations on visitor hot path for all four backends)",
+              "qa/regression.sh full-suite pass with no pre-existing test regressions",
+              "QAVerifyReport confirming all acceptance matrix entries satisfied for SingleDirect, DoubleDirect, SingleMmap, and DoubleMmap"
+            ],
+            "forbidden_paths": [
+              "store/src/main/",
+              "core/src/main/",
+              "signal/src/main/",
+              "guaranteed-inproc/src/main/",
+              "docs/",
+              "repo-memory/"
+            ],
+            "objective": "Run `qa/smoke.sh` (including alloc gate) and `qa/regression.sh` after reviewer sign-off; confirm all StoreVisitorRangeTest cases pass for all four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap) covering empty-range, single-key, full-keyspace ascending/descending, sparse-keyspace descending, early-stop, and prefix-filter scenarios; confirm alloc gate is green with no GC-visible allocations on the visitor hot path.",
+            "role": "qa",
+            "slice_id": "qa-verify",
+            "task_type": "engineering.qa.verify",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ],
+              [
+                "./qa/regression.sh"
+              ]
+            ]
+          }
+        ]
+      },
+      "critic": {
+        "findings": [],
+        "model_usage_id": null,
+        "per_check_results": [
+          {
+            "check_id": "check_design_contract_completeness",
+            "findings": [],
+            "name": "Design contract completeness",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_slice_path_coverage",
+            "findings": [],
+            "name": "Slice path coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_forbidden_path_overlap",
+            "findings": [],
+            "name": "Forbidden-path overlap",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_verification_commands",
+            "findings": [],
+            "name": "Verification command coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_lifecycle_coverage",
+            "findings": [],
+            "name": "Acceptance matrix lifecycle coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_topology_consistency",
+            "findings": [],
+            "name": "Implementation topology consistency",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_reviewer_present",
+            "findings": [],
+            "name": "Reviewer slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_author_present",
+            "findings": [],
+            "name": "QA author slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_verify_present",
+            "findings": [],
+            "name": "QA verify slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_paths_disjoint",
+            "findings": [],
+            "name": "QA paths disjoint from source",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_orphan_slices",
+            "findings": [],
+            "name": "Orphan slice detection",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_finalization_policy",
+            "findings": [],
+            "name": "Finalization policy locked to human merge",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_objective_specificity",
+            "findings": [],
+            "name": "Objective specificity",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_risk_register_present",
+            "findings": [],
+            "name": "Risk register present",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_roadmap_dependency_handling",
+            "findings": [],
+            "name": "Roadmap dependency handling",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_hot_path_invariants",
+            "findings": [],
+            "name": "Hot-path invariant preservation",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_small_feature_compactness",
+            "findings": [],
+            "name": "Small-feature compactness",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          }
+        ],
+        "quality_report": {
+          "advisory_check_count": 0,
+          "blocking_check_count": 0,
+          "deterministic_blocking_findings": [],
+          "model_blocking_findings": [],
+          "score": 100,
+          "validator_error_count": 0,
+          "verdict": "accept"
+        },
+        "rationale": "The plan is a well-structured, single-implementer feature addition for R-003. Design contract fully specifies both persistence and concurrency protocols. Slice dependency chain is clean (design \u2192 qa-author \u2192 impl-primary \u2192 review \u2192 qa-verify) with no orphans and no path overlaps. All implementer and QA slices carry verification commands. Topology is SINGLE with exactly one implementer slice. Finalization policy is human-gated. Risk register is explicit with 7 entries and mitigations. One advisory gap: the acceptance matrix omits explicit invalid-input handling for an inverted range (fromKey > toKey) and does not include a concurrent-write/stale-read test scenario; the seqlock stale-read case is addressed architecturally in the concurrency_protocol but never surfaced as a runnable test. The design_contract also does not specify the contract for fromKey > toKey (throw, no-op, or undefined). These are non-blocking for an otherwise tight plan.",
+        "verdict": "accept"
+      },
+      "iteration": 1,
+      "proposals": [
+        {
+          "candidate": {
+            "acceptance_test_matrix": [
+              "ascendingRange on empty store visits zero slots \u2014 both SINGLE and DOUBLE direct and mmap variants",
+              "ascendingRange with fromKey == toKey on a populated key visits exactly one slot; on absent key visits zero",
+              "ascendingRange over full keyspace returns all populated slots in strictly ascending key order",
+              "descendingRange over full keyspace returns all populated slots in strictly descending key order",
+              "Early-stop: visitor returning false halts iteration; no further slots are visited",
+              "Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes",
+              "Alloc gate: JMH GC profiler reports zero allocations on visitor hot path after range scan methods are added",
+              "qa/smoke.sh exits 0 with no alloc-gate regressions",
+              "qa/regression.sh exits 0 with full suite green and no pre-existing test regressions"
+            ],
+            "affected_surfaces": [
+              "store/src/main/java/com/joshorig/ull/lvc/store/",
+              "store/src/test/java/",
+              "store/src/test/",
+              "qa/",
+              "docs/",
+              "repo-memory/"
+            ],
+            "assumptions": [
+              "Store keys are comparable longs; key ordering is the natural long ordering used by existing slot-index arithmetic.",
+              "Seqlock read protocol already guards individual slot reads; range scans compose per-slot seqlock retries.",
+              "No secondary index or sorted-by-value structure exists or will be introduced.",
+              "The alloc gate is enforced by the existing JMH GC profiler benchmark surface in qa/smoke.sh.",
+              "Optional key-prefix filtering is expressed as a long prefix mask/value pair, not a boxed Predicate.",
+              "ROADMAP.md R-003 scope is authoritative: StoreVisitor interface + ascendingRange/descendingRange on SINGLE + DOUBLE, bounds-inclusive semantics."
+            ],
+            "contract_version": "engineering.contracts.v1",
+            "council_reports": [],
+            "design_contract": {
+              "acceptance_tests": [
+                "ascendingRange on an empty store visits zero slots",
+                "ascendingRange with fromKey == toKey visits exactly one slot when that key is populated, zero when not",
+                "ascendingRange over full keyspace visits every populated slot in ascending key order",
+                "descendingRange over full keyspace visits every populated slot in descending key order",
+                "Early-stop: returning false from visitor halts iteration immediately",
+                "Prefix-filter overload skips slots whose (key & prefixMask) != prefixValue without allocating",
+                "Both SINGLE and DOUBLE variants pass all cases above for direct and mmap backends",
+                "qa/smoke.sh passes with alloc gate green after implementation",
+                "qa/regression.sh passes full suite after implementation"
+              ],
+              "concurrency_protocol": "Range scans are read-only. Each slot is read under the existing per-slot seqlock retry loop. No cross-slot atomicity is guaranteed; callers observe a snapshot-per-slot view. Writers are not blocked.",
+              "forbidden_alternatives": [
+                "java.util.function.Consumer or Predicate callbacks as visitor type",
+                "Returning a List or Collection of results from range methods",
+                "Secondary index structures or sorted auxiliary maps",
+                "Composite key encoding beyond the existing long key space",
+                "Stream-based APIs (java.util.stream.Stream)",
+                "Synchronized or lock-based scan that blocks writers"
+              ],
+              "hard_constraints": [
+                "Zero allocations on the visitor hot path: no boxing, no array creation, no lambda capture per visit.",
+                "Alloc gate must stay green: existing JMH GC profiler benchmarks must not regress.",
+                "Bounds are inclusive on both ends: visit(fromKey) and visit(toKey) are included if populated.",
+                "No sorted-by-value queries, composite keys, or secondary indexes introduced.",
+                "Optional prefix filter must not allocate a Consumer or Predicate object."
+              ],
+              "ownership_boundaries": "All new production code lives in `store/src/main/java/com/joshorig/ull/lvc/store/`. The StoreVisitor interface is declared in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`. No changes to `core/`, `signal/`, `guaranteed-inproc/`, or any other module.",
+              "persistence_protocol": "No persistence changes. Range scans operate on in-memory (direct buffer or mmap) state only. Durability semantics are unchanged.",
+              "public_api": "New interface `com.joshorig.ull.lvc.store.StoreVisitor` with a single primitive callback `boolean visit(long key, long seqNo, DirectBuffer payload)` returning false to stop early. New methods `ascendingRange(long fromKey, long toKey, StoreVisitor visitor)` and `descendingRange(long fromKey, long toKey, StoreVisitor visitor)` added to `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore`. Optional prefix filter overloads accept `(long fromKey, long toKey, long prefixMask, long prefixValue, StoreVisitor visitor)`. No Consumer, no lambda boxing, no varargs."
+            },
+            "feature_id": "R-003",
+            "finalization_policy": "open_final_feature_pr_for_human_merge",
+            "implementation_topology": "single",
+            "problem_statement": "The store layer has no range-scan API. Callers must load the full keyspace to iterate a subset. R-003 adds a zero-allocation StoreVisitor pattern with inclusive ascending and descending range scans on all four store implementations (SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore), covering empty range, single-key, full-keyspace, and reverse-scan cases without Consumer boxing or hot-path allocation.",
+            "project": "lvc-standard",
+            "risk_register": [
+              "Seqlock race during range scan: a writer updating a slot mid-scan may cause per-slot retry storms under high write throughput; mitigate by bounding retry count and documenting scan-under-write behavior.",
+              "Alloc gate regression: incorrect use of autoboxing (e.g. Long key in a conditional) silently boxes on hot path; mitigate by running JMH GC profiler in smoke gate and failing build on allocation delta.",
+              "Key ordering assumption: ascending iteration assumes natural long ordering matches slot physical layout; if store uses a hash or non-ordered slot map, range semantics break; must be validated against DirectStores/MmapStores slot indexing in the design slice.",
+              "Prefix-filter interface creep: a Predicate<Long> overload would box; reviewers must reject any Consumer or functional-interface variant that is not a primitive-friendly StoreVisitor.",
+              "Partial keyspace visibility: range scan is not a cross-slot atomic snapshot; callers seeing in-flight updates within a scan window is by design but must be explicitly documented to avoid misuse."
+            ],
+            "self_heal_policy": "retry_repair_replan_then_escalate",
+            "supersedes_plan_id": null,
+            "supersession_rationale": null,
+            "task_slices": [
+              {
+                "allowed_paths": [
+                  "docs/Stores.md",
+                  "docs/",
+                  "store/src/main/java/com/joshorig/ull/lvc/store/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md"
+                ],
+                "depends_on": [],
+                "expected_outputs": [
+                  "DesignContract",
+                  "StoreVisitor.java interface stub with Javadoc",
+                  "Updated docs/Stores.md range-scan section",
+                  "DECISIONS.md entry recording the no-Consumer, no-boxing constraint rationale"
+                ],
+                "forbidden_paths": [
+                  "store/src/test/",
+                  "store/src/test/java/",
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/"
+                ],
+                "objective": "Define and document the StoreVisitor interface in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`, specify method signatures for `ascendingRange` and `descendingRange` on all four store classes, document prefix-filter overload contract, and update `docs/Stores.md` with the range-scan usage section.",
+                "role": "designer",
+                "slice_id": "design",
+                "task_type": "engineering.design",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "store/src/test/",
+                  "store/src/test/java/"
+                ],
+                "depends_on": [
+                  "design"
+                ],
+                "expected_outputs": [
+                  "StoreVisitorRangeTest.java with all specified scenario methods",
+                  "Any required test fixtures in qa/fixtures/"
+                ],
+                "forbidden_paths": [
+                  "store/src/main/",
+                  "core/src/main/",
+                  "signal/src/main/",
+                  "guaranteed-inproc/src/main/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "objective": "Write failing JUnit tests in `store/src/test/java/` covering empty-range, single-key-range, full-keyspace, reverse-scan, early-stop, and prefix-filter cases for both SingleDirectStore and DoubleDirectStore (and mmap variants), plus any required fixtures in `qa/fixtures/`; all tests must compile but fail until impl-primary is complete.",
+                "role": "qa",
+                "slice_id": "qa-author",
+                "task_type": "engineering.qa.author",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "store/src/main/java/com/joshorig/ull/lvc/store/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md"
+                ],
+                "depends_on": [
+                  "qa-author"
+                ],
+                "expected_outputs": [
+                  "StoreVisitor.java (final implementation)",
+                  "ascendingRange/descendingRange methods on all four store classes",
+                  "Prefix-filter overloads with no Consumer boxing",
+                  "All qa-author tests now passing"
+                ],
+                "forbidden_paths": [
+                  "store/src/test/",
+                  "store/src/test/java/",
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "core/src/main/",
+                  "signal/src/main/",
+                  "guaranteed-inproc/src/main/"
+                ],
+                "objective": "Implement `StoreVisitor` interface and `ascendingRange`/`descendingRange` methods (plus prefix-filter overloads) on `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore` using per-slot seqlock reads and zero-allocation iteration; update `repo-memory/ROADMAP.md` to mark R-003 in-progress.",
+                "role": "implementer",
+                "slice_id": "impl-primary",
+                "task_type": "engineering.implement",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./qa/regression.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "store/src/main/java/com/joshorig/ull/lvc/store/",
+                  "store/src/test/java/",
+                  "store/src/test/",
+                  "docs/Stores.md",
+                  "repo-memory/DECISIONS.md",
+                  "repo-memory/ROADMAP.md"
+                ],
+                "depends_on": [
+                  "impl-primary"
+                ],
+                "expected_outputs": [
+                  "ReviewReport listing any zero-allocation violations, seqlock misuse, or contract gaps",
+                  "Signed-off confirmation or blocking findings requiring repair before qa-verify"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "core/src/main/",
+                  "signal/src/main/"
+                ],
+                "objective": "Review `StoreVisitor.java`, all four store implementations' range methods, and test coverage in `store/src/test/java/` for correctness of seqlock interaction, zero-allocation guarantee, bounds-inclusive semantics, early-stop behavior, prefix-filter correctness, and contract compliance against the design slice.",
+                "role": "reviewer",
+                "slice_id": "review",
+                "task_type": "engineering.review",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "store/src/test/",
+                  "store/src/test/java/"
+                ],
+                "depends_on": [
+                  "review"
+                ],
+                "expected_outputs": [
+                  "qa/smoke.sh green with alloc gate passing",
+                  "qa/regression.sh full-suite pass",
+                  "QAVerifyReport confirming all acceptance matrix entries satisfied"
+                ],
+                "forbidden_paths": [
+                  "store/src/main/",
+                  "core/src/main/",
+                  "signal/src/main/",
+                  "guaranteed-inproc/src/main/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "objective": "Run `qa/smoke.sh` (including alloc gate) and `qa/regression.sh` after reviewer sign-off; confirm all StoreVisitorRangeTest cases pass for both SINGLE and DOUBLE variants, alloc gate is green, and no existing tests regress.",
+                "role": "qa",
+                "slice_id": "qa-verify",
+                "task_type": "engineering.qa.verify",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./qa/regression.sh"
+                  ]
+                ]
+              }
+            ]
+          },
+          "model_usage_id": null,
+          "panelist_id": "panelist-0",
+          "raw_response": "```json\n{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-003\",\n  \"project\": \"lvc-standard\",\n  \"problem_statement\": \"The store layer has no range-scan API. Callers must load the full keyspace to iterate a subset. R-003 adds a zero-allocation StoreVisitor pattern with inclusive ascending and descending range scans on all four store implementations (SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore), covering empty range, single-key, full-keyspace, and reverse-scan cases without Consumer boxing or hot-path allocation.\",\n  \"assumptions\": [\n    \"Store keys are comparable longs; key ordering is the natural long ordering used by existing slot-index arithmetic.\",\n    \"Seqlock read protocol already guards individual slot reads; range scans compose per-slot seqlock retries.\",\n    \"No secondary index or sorted-by-value structure exists or will be introduced.\",\n    \"The alloc gate is enforced by the existing JMH GC profiler benchmark surface in qa/smoke.sh.\",\n    \"Optional key-prefix filtering is expressed as a long prefix mask/value pair, not a boxed Predicate.\",\n    \"ROADMAP.md R-003 scope is authoritative: StoreVisitor interface + ascendingRange/descendingRange on SINGLE + DOUBLE, bounds-inclusive semantics.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"New interface `com.joshorig.ull.lvc.store.StoreVisitor` with a single primitive callback `boolean visit(long key, long seqNo, DirectBuffer payload)` returning false to stop early. New methods `ascendingRange(long fromKey, long toKey, StoreVisitor visitor)` and `descendingRange(long fromKey, long toKey, StoreVisitor visitor)` added to `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore`. Optional prefix filter overloads accept `(long fromKey, long toKey, long prefixMask, long prefixValue, StoreVisitor visitor)`. No Consumer, no lambda boxing, no varargs.\",\n    \"ownership_boundaries\": \"All new production code lives in `store/src/main/java/com/joshorig/ull/lvc/store/`. The StoreVisitor interface is declared in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`. No changes to `core/`, `signal/`, `guaranteed-inproc/`, or any other module.\",\n    \"concurrency_protocol\": \"Range scans are read-only. Each slot is read under the existing per-slot seqlock retry loop. No cross-slot atomicity is guaranteed; callers observe a snapshot-per-slot view. Writers are not blocked.\",\n    \"persistence_protocol\": \"No persistence changes. Range scans operate on in-memory (direct buffer or mmap) state only. Durability semantics are unchanged.\",\n    \"hard_constraints\": [\n      \"Zero allocations on the visitor hot path: no boxing, no array creation, no lambda capture per visit.\",\n      \"Alloc gate must stay green: existing JMH GC profiler benchmarks must not regress.\",\n      \"Bounds are inclusive on both ends: visit(fromKey) and visit(toKey) are included if populated.\",\n      \"No sorted-by-value queries, composite keys, or secondary indexes introduced.\",\n      \"Optional prefix filter must not allocate a Consumer or Predicate object.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"java.util.function.Consumer or Predicate callbacks as visitor type\",\n      \"Returning a List or Collection of results from range methods\",\n      \"Secondary index structures or sorted auxiliary maps\",\n      \"Composite key encoding beyond the existing long key space\",\n      \"Stream-based APIs (java.util.stream.Stream)\",\n      \"Synchronized or lock-based scan that blocks writers\"\n    ],\n    \"acceptance_tests\": [\n      \"ascendingRange on an empty store visits zero slots\",\n      \"ascendingRange with fromKey == toKey visits exactly one slot when that key is populated, zero when not\",\n      \"ascendingRange over full keyspace visits every populated slot in ascending key order\",\n      \"descendingRange over full keyspace visits every populated slot in descending key order\",\n      \"Early-stop: returning false from visitor halts iteration immediately\",\n      \"Prefix-filter overload skips slots whose (key & prefixMask) != prefixValue without allocating\",\n      \"Both SINGLE and DOUBLE variants pass all cases above for direct and mmap backends\",\n      \"qa/smoke.sh passes with alloc gate green after implementation\",\n      \"qa/regression.sh passes full suite after implementation\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n    \"store/src/test/java/\",\n    \"store/src/test/\",\n    \"qa/\",\n    \"docs/\",\n    \"repo-memory/\"\n  ],\n  \"implementation_topology\": \"single\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define and document the StoreVisitor interface in `store/src/main/java/com/joshorig/ull/lvc/store/StoreVisitor.java`, specify method signatures for `ascendingRange` and `descendingRange` on all four store classes, document prefix-filter overload contract, and update `docs/Stores.md` with the range-scan usage section.\",\n      \"allowed_paths\": [\n        \"docs/Stores.md\",\n        \"docs/\",\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"StoreVisitor.java interface stub with Javadoc\",\n        \"Updated docs/Stores.md range-scan section\",\n        \"DECISIONS.md entry recording the no-Consumer, no-boxing constraint rationale\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing JUnit tests in `store/src/test/java/` covering empty-range, single-key-range, full-keyspace, reverse-scan, early-stop, and prefix-filter cases for both SingleDirectStore and DoubleDirectStore (and mmap variants), plus any required fixtures in `qa/fixtures/`; all tests must compile but fail until impl-primary is complete.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"design\"],\n      \"expected_outputs\": [\n        \"StoreVisitorRangeTest.java with all specified scenario methods\",\n        \"Any required test fixtures in qa/fixtures/\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement `StoreVisitor` interface and `ascendingRange`/`descendingRange` methods (plus prefix-filter overloads) on `SingleDirectStore`, `DoubleDirectStore`, `SingleMmapStore`, and `DoubleMmapStore` using per-slot seqlock reads and zero-allocation iteration; update `repo-memory/ROADMAP.md` to mark R-003 in-progress.\",\n      \"allowed_paths\": [\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\"\n      ],\n      \"depends_on\": [\"qa-author\"],\n      \"expected_outputs\": [\n        \"StoreVisitor.java (final implementation)\",\n        \"ascendingRange/descendingRange methods on all four store classes\",\n        \"Prefix-filter overloads with no Consumer boxing\",\n        \"All qa-author tests now passing\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review `StoreVisitor.java`, all four store implementations' range methods, and test coverage in `store/src/test/java/` for correctness of seqlock interaction, zero-allocation guarantee, bounds-inclusive semantics, early-stop behavior, prefix-filter correctness, and contract compliance against the design slice.\",\n      \"allowed_paths\": [\n        \"store/src/main/java/com/joshorig/ull/lvc/store/\",\n        \"store/src/test/java/\",\n        \"store/src/test/\",\n        \"docs/Stores.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"repo-memory/ROADMAP.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"core/src/main/\",\n        \"signal/src/main/\"\n      ],\n      \"depends_on\": [\"impl-primary\"],\n      \"expected_outputs\": [\n        \"ReviewReport listing any zero-allocation violations, seqlock misuse, or contract gaps\",\n        \"Signed-off confirmation or blocking findings requiring repair before qa-verify\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run `qa/smoke.sh` (including alloc gate) and `qa/regression.sh` after reviewer sign-off; confirm all StoreVisitorRangeTest cases pass for both SINGLE and DOUBLE variants, alloc gate is green, and no existing tests regress.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"signal/src/main/\",\n        \"guaranteed-inproc/src/main/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"review\"],\n      \"expected_outputs\": [\n        \"qa/smoke.sh green with alloc gate passing\",\n        \"qa/regression.sh full-suite pass\",\n        \"QAVerifyReport confirming all acceptance matrix entries satisfied\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"ascendingRange on empty store visits zero slots \u2014 both SINGLE and DOUBLE direct and mmap variants\",\n    \"ascendingRange with fromKey == toKey on a populated key visits exactly one slot; on absent key visits zero\",\n    \"ascendingRange over full keyspace returns all populated slots in strictly ascending key order\",\n    \"descendingRange over full keyspace returns all populated slots in strictly descending key order\",\n    \"Early-stop: visitor returning false halts iteration; no further slots are visited\",\n    \"Prefix-filter overload skips slots where (key & prefixMask) != prefixValue for all four store classes\",\n    \"Alloc gate: JMH GC profiler reports zero allocations on visitor hot path after range scan methods are added\",\n    \"qa/smoke.sh exits 0 with no alloc-gate regressions\",\n    \"qa/regression.sh exits 0 with full suite green and no pre-existing test regressions\"\n  ],\n  \"risk_register\": [\n    \"Seqlock race during range scan: a writer updating a slot mid-scan may cause per-slot retry storms under high write throughput; mitigate by bounding retry count and documenting scan-under-write behavior.\",\n    \"Alloc gate regression: incorrect use of autoboxing (e.g. Long key in a conditional) silently boxes on hot path; mitigate by running JMH GC profiler in smoke gate and failing build on allocation delta.\",\n    \"Key ordering assumption: ascending iteration assumes natural long ordering matches slot physical layout; if store uses a hash or non-ordered slot map, range semantics break; must be validated against DirectStores/MmapStores slot indexing in the design slice.\",\n    \"Prefix-filter interface creep: a Predicate<Long> overload would box; reviewers must reject any Consumer or functional-interface variant that is not a primitive-friendly StoreVisitor.\",\n    \"Partial keyspace visibility: range scan is not a cross-slot atomic snapshot; callers seeing in-flight updates within a scan window is by design but must be explicitly documented to avoid misuse.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}\n```"
+        },
+        {
+          "candidate": {
+            "acceptance_test_matrix": [
+              "Empty-range scan (fromKey > toKey or no slots in range) visits zero keys for SingleDirect, DoubleDirect, SingleMmap, and DoubleMmap stores.",
+              "Single-key range scan (fromKey == toKey, key present) visits exactly one key for all four backends.",
+              "Full-keyspace ascending scan visits all populated keys in monotonically increasing key order for all four backends.",
+              "Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing key order for all four backends.",
+              "Key-prefix filter scan visits only keys matching primitive prefix/mask with no Consumer boxing or hot-path GC allocation.",
+              "Alloc gate is green on visitor hot path: no GC-visible allocations during forEach/forPrefix execution.",
+              "Sparse-keyspace descending traversal produces correct ordering with no off-by-one on unpopulated slots.",
+              "qa/smoke.sh passes with no regressions on existing direct and mmap store tests.",
+              "qa/regression.sh passes including all new range-scan test cases."
+            ],
+            "affected_surfaces": [
+              "store/",
+              "core/src/main/java/com/joshorig/ull/lvc/api/",
+              "conformance-tests/",
+              "benchmarks/",
+              "store/src/test/",
+              "qa/"
+            ],
+            "assumptions": [
+              "Keys in SINGLE and DOUBLE stores follow natural long/int ordering; range bounds are inclusive on both ends.",
+              "Range scan reads slots under the existing per-slot seqlock read discipline; no new locks or atomics are introduced.",
+              "Key-prefix filtering is expressed as primitive long prefix/mask parameters, not a functional interface, to avoid boxing.",
+              "Conformance-tests and benchmarks are updated for coverage but qa/smoke.sh and qa/regression.sh are the definitive pass/fail gates.",
+              "All four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap) must expose the same forEach/forPrefix surface."
+            ],
+            "contract_version": "engineering.contracts.v1",
+            "council_reports": [],
+            "design_contract": {
+              "acceptance_tests": [
+                "Empty-range scan (fromKey > toKey or no slots in range) returns 0 visits for SINGLE and DOUBLE stores.",
+                "Single-key range scan visits exactly one key for SINGLE and DOUBLE stores.",
+                "Full-keyspace ascending scan visits all populated keys in monotonically increasing order for all four backends.",
+                "Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing order for all four backends.",
+                "Key-prefix filter scan visits only matching keys with no Consumer boxing or hot-path allocation.",
+                "Alloc gate remains green on visitor hot path.",
+                "qa/smoke.sh passes.",
+                "qa/regression.sh passes."
+              ],
+              "concurrency_protocol": "Range scans complete the full per-slot seqlock read sequence before invoking the visitor callback. Visitors must not mutate store state.",
+              "forbidden_alternatives": [
+                "Iterator/Iterable pattern (allocates iterator object per scan)",
+                "Stream API (allocates pipeline stages)",
+                "Consumer<T> or Predicate<T> functional interface for prefix filter (boxes primitives)",
+                "Secondary index or sorted-value index"
+              ],
+              "hard_constraints": [
+                "Zero allocations on the visitor hot path; alloc gate must stay green.",
+                "No sorted-by-value queries, composite keys, or secondary indexes.",
+                "No Consumer/lambda boxing in the key-prefix filtering path.",
+                "Range bounds inclusive on both ends."
+              ],
+              "ownership_boundaries": "Interface definition owned by `core/src/main/java/com/joshorig/ull/lvc/api/`. Scan implementations owned by `store/src/main/java/` (direct and mmap backends). Tests owned by `store/src/test/java/`.",
+              "persistence_protocol": "Read-only operation; no persistence layer changes. Mmap backend reads from the existing mapped region.",
+              "public_api": "New `StoreVisitor` interface in `core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java` with a single primitive callback (e.g. `boolean visit(long key, ...)`). `LvcStore` gains `forEach(long fromKey, long toKey, boolean ascending, StoreVisitor visitor)` and `forPrefix(long keyPrefix, long prefixMask, StoreVisitor visitor)` without Consumer boxing."
+            },
+            "feature_id": "R-003",
+            "finalization_policy": "open_final_feature_pr_for_human_merge",
+            "implementation_topology": "single",
+            "problem_statement": "The store API has no range-scan capability. Consumers must iterate the full keyspace or apply external filtering, forcing allocations and violating the zero-alloc contract. R-003 adds a StoreVisitor interface with inclusive ascending and descending range scans for SINGLE and DOUBLE store variants, and optional key-prefix filtering that avoids Consumer boxing and any hot-path allocation.",
+            "project": "lvc-standard",
+            "risk_register": [
+              "Seqlock read-side violation: invoking visitor callback between sequence read-start and read-end checks exposes torn slot data; mitigation: complete full seqlock read sequence per slot before visitor dispatch.",
+              "Alloc gate regression: forEach implementation using autoboxed key or intermediate collection fails the alloc-gate fixture; mitigation: qa-author alloc-gate fixture enforces this before impl lands.",
+              "Ascending/descending ordering divergence between direct and mmap backends: different slot layout traversal could produce inconsistent scan order; mitigation: explicit ordering contract in design and shared ordering tests across all four backends.",
+              "Consumer/lambda boxing in prefix filter path: using Predicate<Long> or Consumer<Long> violates zero-alloc contract; mitigation: design contract forbids Consumer-based filter APIs; reviewer checks for boxing.",
+              "Sparse-keyspace off-by-one in descending traversal: empty slots between populated slots could cause incorrect bounds in reverse scan; mitigation: sparse-keyspace edge cases included in qa-author test fixtures."
+            ],
+            "self_heal_policy": "retry_repair_replan_then_escalate",
+            "supersedes_plan_id": null,
+            "supersession_rationale": null,
+            "task_slices": [
+              {
+                "allowed_paths": [
+                  "core/src/main/java/com/joshorig/ull/lvc/api/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "depends_on": [],
+                "expected_outputs": [
+                  "DesignContract",
+                  "StoreVisitor.java interface stub",
+                  "docs/Stores.md range-scan section",
+                  "repo-memory/DECISIONS.md entry for R-003"
+                ],
+                "forbidden_paths": [
+                  "store/src/test/",
+                  "store/src/test/java/",
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/"
+                ],
+                "objective": "Define StoreVisitor interface in core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java, specify forEach and forPrefix signatures on LvcStore, update docs/Stores.md with zero-alloc range-scan contract, and record the design decision in repo-memory/DECISIONS.md.",
+                "role": "designer",
+                "slice_id": "design",
+                "task_type": "engineering.design",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "store/src/test/",
+                  "store/src/test/java/"
+                ],
+                "depends_on": [
+                  "design"
+                ],
+                "expected_outputs": [
+                  "Failing StoreVisitorRangeScanTest for SingleDirect store",
+                  "Failing StoreVisitorRangeScanTest for DoubleDirect store",
+                  "Failing StoreVisitorRangeScanTest for SingleMmap store",
+                  "Failing StoreVisitorRangeScanTest for DoubleMmap store",
+                  "Alloc-gate fixture in qa/fixtures/ for visitor hot path"
+                ],
+                "forbidden_paths": [
+                  "store/src/main/",
+                  "core/src/main/",
+                  "conformance-tests/",
+                  "benchmarks/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "objective": "Write failing JUnit tests for empty-range, single-key, full-keyspace, and reverse scan in store/src/test/java/com/joshorig/ull/lvc/store/direct/ and store/src/test/java/com/joshorig/ull/lvc/store/mmap/ covering all four backends, and add an alloc-gate fixture in qa/fixtures/.",
+                "role": "qa",
+                "slice_id": "qa-author",
+                "task_type": "engineering.qa.author",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "store/src/main/",
+                  "core/src/main/",
+                  "conformance-tests/",
+                  "benchmarks/",
+                  "docs/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md"
+                ],
+                "depends_on": [
+                  "qa-author"
+                ],
+                "expected_outputs": [
+                  "StoreVisitor.java interface",
+                  "forEach/forPrefix implementations in SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore",
+                  "Conformance-tests update for range-scan",
+                  "JMH benchmark for visitor hot path",
+                  "All qa-author failing tests now green"
+                ],
+                "forbidden_paths": [
+                  "store/src/test/",
+                  "store/src/test/java/",
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/"
+                ],
+                "objective": "Implement StoreVisitor.java in core/src/main/java/com/joshorig/ull/lvc/api/, add forEach and forPrefix to all four store backends in store/src/main/java/, update conformance-tests/ for range-scan coverage, and add a JMH benchmark in benchmarks/ for the visitor hot path.",
+                "role": "implementer",
+                "slice_id": "impl-primary",
+                "task_type": "engineering.implement",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "store/",
+                  "core/",
+                  "conformance-tests/",
+                  "benchmarks/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "depends_on": [
+                  "impl-primary"
+                ],
+                "expected_outputs": [
+                  "Review sign-off or blocking issues list",
+                  "Confirmed zero-alloc hot-path compliance across all four backends",
+                  "Confirmed seqlock read discipline (visitor called after sequence validation)"
+                ],
+                "forbidden_paths": [
+                  "guaranteed-aeron/",
+                  "guaranteed-inproc/",
+                  "signal/src/test/",
+                  "signal/src/test/java/"
+                ],
+                "objective": "Review StoreVisitor interface, forEach/forPrefix implementations across all four store backends, alloc-gate fixture, and test coverage for correctness, zero-alloc contract adherence, and seqlock read-side safety.",
+                "role": "reviewer",
+                "slice_id": "review",
+                "task_type": "engineering.review",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "signal/src/test/",
+                  "signal/src/test/java/",
+                  "store/src/test/",
+                  "store/src/test/java/"
+                ],
+                "depends_on": [
+                  "review"
+                ],
+                "expected_outputs": [
+                  "qa/smoke.sh green",
+                  "qa/regression.sh green",
+                  "All StoreVisitorRangeScanTest cases passing for all four store backends",
+                  "Alloc gate green on visitor hot path"
+                ],
+                "forbidden_paths": [
+                  "store/src/main/",
+                  "core/src/main/",
+                  "conformance-tests/",
+                  "benchmarks/",
+                  "docs/",
+                  "repo-memory/"
+                ],
+                "objective": "Run qa/smoke.sh and qa/regression.sh after reviewer sign-off and confirm all range-scan tests (empty-range, single-key, full-keyspace, reverse, alloc gate) pass for all four SINGLE/DOUBLE direct/mmap backends.",
+                "role": "qa",
+                "slice_id": "qa-verify",
+                "task_type": "engineering.qa.verify",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./qa/regression.sh"
+                  ]
+                ]
+              }
+            ]
+          },
+          "model_usage_id": null,
+          "panelist_id": "panelist-1",
+          "raw_response": "```json\n{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-003\",\n  \"project\": \"lvc-standard\",\n  \"problem_statement\": \"The store API has no range-scan capability. Consumers must iterate the full keyspace or apply external filtering, forcing allocations and violating the zero-alloc contract. R-003 adds a StoreVisitor interface with inclusive ascending and descending range scans for SINGLE and DOUBLE store variants, and optional key-prefix filtering that avoids Consumer boxing and any hot-path allocation.\",\n  \"assumptions\": [\n    \"Keys in SINGLE and DOUBLE stores follow natural long/int ordering; range bounds are inclusive on both ends.\",\n    \"Range scan reads slots under the existing per-slot seqlock read discipline; no new locks or atomics are introduced.\",\n    \"Key-prefix filtering is expressed as primitive long prefix/mask parameters, not a functional interface, to avoid boxing.\",\n    \"Conformance-tests and benchmarks are updated for coverage but qa/smoke.sh and qa/regression.sh are the definitive pass/fail gates.\",\n    \"All four backends (SingleDirect, DoubleDirect, SingleMmap, DoubleMmap) must expose the same forEach/forPrefix surface.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"New `StoreVisitor` interface in `core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java` with a single primitive callback (e.g. `boolean visit(long key, ...)`). `LvcStore` gains `forEach(long fromKey, long toKey, boolean ascending, StoreVisitor visitor)` and `forPrefix(long keyPrefix, long prefixMask, StoreVisitor visitor)` without Consumer boxing.\",\n    \"ownership_boundaries\": \"Interface definition owned by `core/src/main/java/com/joshorig/ull/lvc/api/`. Scan implementations owned by `store/src/main/java/` (direct and mmap backends). Tests owned by `store/src/test/java/`.\",\n    \"concurrency_protocol\": \"Range scans complete the full per-slot seqlock read sequence before invoking the visitor callback. Visitors must not mutate store state.\",\n    \"persistence_protocol\": \"Read-only operation; no persistence layer changes. Mmap backend reads from the existing mapped region.\",\n    \"hard_constraints\": [\n      \"Zero allocations on the visitor hot path; alloc gate must stay green.\",\n      \"No sorted-by-value queries, composite keys, or secondary indexes.\",\n      \"No Consumer/lambda boxing in the key-prefix filtering path.\",\n      \"Range bounds inclusive on both ends.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Iterator/Iterable pattern (allocates iterator object per scan)\",\n      \"Stream API (allocates pipeline stages)\",\n      \"Consumer<T> or Predicate<T> functional interface for prefix filter (boxes primitives)\",\n      \"Secondary index or sorted-value index\"\n    ],\n    \"acceptance_tests\": [\n      \"Empty-range scan (fromKey > toKey or no slots in range) returns 0 visits for SINGLE and DOUBLE stores.\",\n      \"Single-key range scan visits exactly one key for SINGLE and DOUBLE stores.\",\n      \"Full-keyspace ascending scan visits all populated keys in monotonically increasing order for all four backends.\",\n      \"Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing order for all four backends.\",\n      \"Key-prefix filter scan visits only matching keys with no Consumer boxing or hot-path allocation.\",\n      \"Alloc gate remains green on visitor hot path.\",\n      \"qa/smoke.sh passes.\",\n      \"qa/regression.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"store/\",\n    \"core/src/main/java/com/joshorig/ull/lvc/api/\",\n    \"conformance-tests/\",\n    \"benchmarks/\",\n    \"store/src/test/\",\n    \"qa/\"\n  ],\n  \"implementation_topology\": \"single\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define StoreVisitor interface in core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java, specify forEach and forPrefix signatures on LvcStore, update docs/Stores.md with zero-alloc range-scan contract, and record the design decision in repo-memory/DECISIONS.md.\",\n      \"allowed_paths\": [\n        \"core/src/main/java/com/joshorig/ull/lvc/api/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"StoreVisitor.java interface stub\",\n        \"docs/Stores.md range-scan section\",\n        \"repo-memory/DECISIONS.md entry for R-003\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing JUnit tests for empty-range, single-key, full-keyspace, and reverse scan in store/src/test/java/com/joshorig/ull/lvc/store/direct/ and store/src/test/java/com/joshorig/ull/lvc/store/mmap/ covering all four backends, and add an alloc-gate fixture in qa/fixtures/.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"design\"],\n      \"expected_outputs\": [\n        \"Failing StoreVisitorRangeScanTest for SingleDirect store\",\n        \"Failing StoreVisitorRangeScanTest for DoubleDirect store\",\n        \"Failing StoreVisitorRangeScanTest for SingleMmap store\",\n        \"Failing StoreVisitorRangeScanTest for DoubleMmap store\",\n        \"Alloc-gate fixture in qa/fixtures/ for visitor hot path\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement StoreVisitor.java in core/src/main/java/com/joshorig/ull/lvc/api/, add forEach and forPrefix to all four store backends in store/src/main/java/, update conformance-tests/ for range-scan coverage, and add a JMH benchmark in benchmarks/ for the visitor hot path.\",\n      \"allowed_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/test/\",\n        \"store/src/test/java/\",\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [\"qa-author\"],\n      \"expected_outputs\": [\n        \"StoreVisitor.java interface\",\n        \"forEach/forPrefix implementations in SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore\",\n        \"Conformance-tests update for range-scan\",\n        \"JMH benchmark for visitor hot path\",\n        \"All qa-author failing tests now green\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review StoreVisitor interface, forEach/forPrefix implementations across all four store backends, alloc-gate fixture, and test coverage for correctness, zero-alloc contract adherence, and seqlock read-side safety.\",\n      \"allowed_paths\": [\n        \"store/\",\n        \"core/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \"guaranteed-aeron/\",\n        \"guaranteed-inproc/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\"\n      ],\n      \"depends_on\": [\"impl-primary\"],\n      \"expected_outputs\": [\n        \"Review sign-off or blocking issues list\",\n        \"Confirmed zero-alloc hot-path compliance across all four backends\",\n        \"Confirmed seqlock read discipline (visitor called after sequence validation)\"\n      ],\n      \"verification_commands\": [[\"./qa/smoke.sh\"]]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run qa/smoke.sh and qa/regression.sh after reviewer sign-off and confirm all range-scan tests (empty-range, single-key, full-keyspace, reverse, alloc gate) pass for all four SINGLE/DOUBLE direct/mmap backends.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"signal/src/test/\",\n        \"signal/src/test/java/\",\n        \"store/src/test/\",\n        \"store/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"store/src/main/\",\n        \"core/src/main/\",\n        \"conformance-tests/\",\n        \"benchmarks/\",\n        \"docs/\",\n        \"repo-memory/\"\n      ],\n      \"depends_on\": [\"review\"],\n      \"expected_outputs\": [\n        \"qa/smoke.sh green\",\n        \"qa/regression.sh green\",\n        \"All StoreVisitorRangeScanTest cases passing for all four store backends\",\n        \"Alloc gate green on visitor hot path\"\n      ],\n      \"verification_commands\": [\n        [\"./qa/smoke.sh\"],\n        [\"./qa/regression.sh\"]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Empty-range scan (fromKey > toKey or no slots in range) visits zero keys for SingleDirect, DoubleDirect, SingleMmap, and DoubleMmap stores.\",\n    \"Single-key range scan (fromKey == toKey, key present) visits exactly one key for all four backends.\",\n    \"Full-keyspace ascending scan visits all populated keys in monotonically increasing key order for all four backends.\",\n    \"Full-keyspace descending (reverse) scan visits all populated keys in monotonically decreasing key order for all four backends.\",\n    \"Key-prefix filter scan visits only keys matching primitive prefix/mask with no Consumer boxing or hot-path GC allocation.\",\n    \"Alloc gate is green on visitor hot path: no GC-visible allocations during forEach/forPrefix execution.\",\n    \"Sparse-keyspace descending traversal produces correct ordering with no off-by-one on unpopulated slots.\",\n    \"qa/smoke.sh passes with no regressions on existing direct and mmap store tests.\",\n    \"qa/regression.sh passes including all new range-scan test cases.\"\n  ],\n  \"risk_register\": [\n    \"Seqlock read-side violation: invoking visitor callback between sequence read-start and read-end checks exposes torn slot data; mitigation: complete full seqlock read sequence per slot before visitor dispatch.\",\n    \"Alloc gate regression: forEach implementation using autoboxed key or intermediate collection fails the alloc-gate fixture; mitigation: qa-author alloc-gate fixture enforces this before impl lands.\",\n    \"Ascending/descending ordering divergence between direct and mmap backends: different slot layout traversal could produce inconsistent scan order; mitigation: explicit ordering contract in design and shared ordering tests across all four backends.\",\n    \"Consumer/lambda boxing in prefix filter path: using Predicate<Long> or Consumer<Long> violates zero-alloc contract; mitigation: design contract forbids Consumer-based filter APIs; reviewer checks for boxing.\",\n    \"Sparse-keyspace off-by-one in descending traversal: empty slots between populated slots could cause incorrect bounds in reverse scan; mitigation: sparse-keyspace edge cases included in qa-author test fixtures.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}\n```"
+        }
+      ],
+      "validator_errors": []
+    }
+  ],
+  "model": "sonnet",
+  "reasoning": null,
+  "status": "accepted",
+  "token_savior": {
+    "input_tokens_after_savior": 2790,
+    "input_tokens_original": 18405,
+    "method": "token_savior_pack_context",
+    "reduction_ratio": 0.8484107579462102,
+    "tokens_saved": 15615
+  },
+  "validation_errors": []
+}

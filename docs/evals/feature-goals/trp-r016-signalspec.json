@@ -1,0 +1,23 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "trade-research-platform",
+  "goal": "Implement R-016 SignalSpec validator, compiler, and authoring API so declarative signal specs can be validated, compiled, backtested, reviewed, and promoted with operator approval.",
+  "requirements": [
+    "Add platform-dsl/signalspec validator and compiler targeting existing FeatureNode primitives.",
+    "Add propose/catalog/get/promote/archive signal API endpoints.",
+    "Persist one row per SignalSpec plus YAML body.",
+    "Extend explainability envelope with author, signalId, signalVersion, proposalId, and trackRecord.",
+    "Add UI catalog view showing author and track record."
+  ],
+  "constraints": [
+    "Do not add Java code generation for signals.",
+    "Do not allow auto-promotion without human/operator approval.",
+    "Reuse R-015 backtest path."
+  ],
+  "acceptance_criteria": [
+    "LLM-authored equities.relativeVolumeZ.v1 round-trips propose, validate, compile, backtest, promote, and contributes to live ranking.",
+    "Validator rejects unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+    "Promoted signals show author provenance in opportunities.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ]
+}

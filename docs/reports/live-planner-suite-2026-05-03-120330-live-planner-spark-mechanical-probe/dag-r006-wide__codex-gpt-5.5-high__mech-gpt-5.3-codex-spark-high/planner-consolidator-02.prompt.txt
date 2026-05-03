@@ -1,0 +1,873 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as the canonical local expansion baseline.
+  Consolidate candidates back toward its order, role/task_type mapping, and
+  target slice count unless the feature evidence justifies extra implementer
+  slices.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- Use only canonical role/task_type pairs: designer/engineering.design,
+  implementer/engineering.implement, reviewer/engineering.review,
+  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  historian/engineering.history.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Use concrete path prefixes only; remove wildcard paths from candidates.
+- Prefer paths present in candidate context/summaries. Remove invented path
+  prefixes when an equivalent existing path is available.
+- Ensure each slice's own allowed_paths and forbidden_paths do not overlap.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to the QA/test roots shown in
+  candidate project contexts. Implementer write paths must not include those
+  paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
+  redundant QA/review work.
+- Preserve separate implementer slices for wide/system features that span
+  independent ownership surfaces such as DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants.
+- Do not create finalization, merge, PR approval, or human-gate task slices.
+  Human merge is represented only by finalization_policy.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+- Deterministic validator and critic checks are authoritative. If candidates
+  disagree with the deterministic rules, follow the deterministic rules.
+
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-policy-core",
+    "impl-overflow-spill",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "dag-framework-api/ and runtime-core/ backpressure paths",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement policy enum, per-edge config, and runtime policy behavior.",
+      "role": "implementer",
+      "slice_id": "impl-policy-core",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "runtime-core/ and dag-framework-lvc/ spill/journal paths",
+      "depends_on": [
+        "impl-policy-core"
+      ],
+      "purpose": "Implement overflow-to-disk spill/drain behavior and hot-swap invariants.",
+      "role": "implementer",
+      "slice_id": "impl-overflow-spill",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-overflow-spill"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, benchmarks/src/test/, benchmarks/src/test/java/, dag-framework-api/src/test/, dag-framework-api/src/test/java/, dag-framework-lvc/src/test/, dag-framework-lvc/src/test/java/, runtime-core/src/test/, runtime-core/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "DROP_NEW sustained overrun drops incoming records while preserving previously accepted queued records.",
+      "DROP_OLD sustained overrun evicts oldest buffered records and accepts newer records in expected order.",
+      "BLOCK sustained overrun blocks producer progress, resumes after drain capacity, and exits cleanly on shutdown or interruption.",
+      "OVERFLOW_TO_DISK sustained overrun spills excess records through MmapJournal and drains them in FIFO order.",
+      "Overflow spill file reads back correctly during drain and is cleaned up after successful completion.",
+      "Edge-level policy hot-swap changes behavior for subsequent offers without reordering or corrupting buffered or spilled records.",
+      "R-002 snapshot/durability prerequisite is explicitly verified before overflow spill work proceeds.",
+      "Stale or invalid spill journal state triggers invariant failure handling instead of silent reuse.",
+      "Partial overflow acceptance or spill append failure leaves queue, journal, and metrics invariants consistent.",
+      "Configured QA gate coverage includes ./qa/smoke.sh, ./qa/regression.sh, ./gradlew test, and ./gradlew jmhSmokeCheck."
+    ],
+    "affected_surfaces": [
+      "repo-memory/",
+      "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+      "runtime-core/src/main/java/com/joshorig/ull/dag/",
+      "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/",
+      "tests/",
+      "qa/fixtures/",
+      "benchmarks/src/test/",
+      "dag-framework-api/src/test/",
+      "dag-framework-lvc/src/test/",
+      "runtime-core/src/test/",
+      "qa/"
+    ],
+    "assumptions": [
+      "GraphPartitionRunner owns runtime edge buffering and is the correct enforcement boundary for backpressure behavior.",
+      "BackpressurePolicy is a closed enum with exactly DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK.",
+      "Per-edge configuration can use existing graph edge identity already visible to GraphPartitionRunner.Builder.",
+      "Existing R-002 snapshot/durability prerequisite and MmapJournal machinery are present and usable before overflow implementation begins; if unavailable, the implementation slices must stop and replan rather than inventing a spill format.",
+      "Allocation gate expectations are represented by existing smoke, regression, test, and jmhSmokeCheck commands."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "DROP_NEW under sustained overrun drops incoming records while preserving already queued records.",
+        "DROP_OLD under sustained overrun evicts oldest buffered records and accepts newer records in expected order.",
+        "BLOCK under sustained overrun blocks producer progress until drain capacity is available and exits cleanly on shutdown or interruption.",
+        "OVERFLOW_TO_DISK under sustained overrun writes overflow records to MmapJournal spill and drains them back in FIFO order.",
+        "Overflow spill file reads back correctly during drain and cleans up after successful completion.",
+        "Edge-level policy hot-swap affects subsequent offers without reordering buffered or spilled records.",
+        "Stale or invalid spill journal state triggers invariant failure handling instead of silent reuse.",
+        "Partial overflow acceptance or spill append failure leaves queue, journal, and metrics invariants consistent.",
+        "qa/smoke.sh, qa/regression.sh, gradle test, and jmhSmokeCheck pass."
+      ],
+      "concurrency_protocol": "Each edge maintains a thread-safe current BackpressurePolicy visible to producers and consumers; hot-swap is atomic for subsequent offers and does not reorder already accepted records; BLOCK waits only on target-edge capacity and honors shutdown or interruption; DROP_NEW rejects incoming overrun records, DROP_OLD atomically evicts the oldest buffered record before accepting the new one, and OVERFLOW_TO_DISK preserves FIFO order across memory and spill.",
+      "forbidden_alternatives": [
+        "A single global-only backpressure policy with no per-edge override.",
+        "A pluggable custom strategy interface for arbitrary policies.",
+        "Overflow implemented with ad hoc files, ObjectOutputStream, JSON, or bespoke binary framing.",
+        "Treating OVERFLOW_TO_DISK as DROP_NEW or DROP_OLD when spill is available.",
+        "Hot-swap implemented by rebuilding the whole graph partition runner.",
+        "Blocking producers across unrelated partitions or unrelated edges."
+      ],
+      "hard_constraints": [
+        "Do not add custom policies.",
+        "Do not add priority-based shedding.",
+        "Do not add cross-partition backpressure propagation.",
+        "Reuse MmapJournal machinery from lvc-standard or dag-framework-lvc instead of inventing a new spill format.",
+        "Keep allocation gate and jmhSmokeCheck green.",
+        "Explicitly verify the R-002 snapshot/durability prerequisite before implementing overflow-to-disk."
+      ],
+      "ownership_boundaries": "dag-framework-api owns public enum/API symbols if existing runtime public types are exposed there; runtime-core owns GraphPartitionRunner.Builder integration, edge queues, policy state, blocking semantics, and hot-swap behavior; dag-framework-lvc supplies the existing MmapJournal-backed durability machinery reused by runtime-core; QA owns tests and fixtures only under registered QA write roots.",
+      "persistence_protocol": "OVERFLOW_TO_DISK appends overflow records to an mmap-backed MmapJournal spill file using existing R-002/MmapJournal durability machinery, drains records in FIFO order when in-memory capacity is available, validates journal invariants before reads, rejects stale or invalid spill state, and preserves queue/journal invariants on partial append or failed acceptance.",
+      "public_api": "Add BackpressurePolicy enum with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK; expose default and per-edge policy configuration on GraphPartitionRunner.Builder; expose edge-level policy hot-swap on the built runner or an existing edge handle API without adding custom policy extension points."
+    },
+    "feature_id": "R-006",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement a runtime backpressure policy selector for GraphPartitionRunner edges, exposing DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK through GraphPartitionRunner.Builder with per-edge configuration, edge-level hot-swap, and MmapJournal-backed overflow draining.",
+    "project": "dag-framework",
+    "risk_register": [
+      "R-002 snapshot/durability prerequisite may be absent or incompatible with runtime-core, requiring replan before overflow implementation.",
+      "Public API placement may conflict with existing separation between dag-framework-api and runtime-core public runtime types.",
+      "BLOCK can deadlock if implemented with global locks or without shutdown-aware wait semantics.",
+      "DROP_OLD may violate ordering expectations if eviction and offer are not atomic at the edge buffer boundary.",
+      "OVERFLOW_TO_DISK can silently reorder records if memory and spill drains are not coordinated as one FIFO stream.",
+      "MmapJournal reuse may expose serialization, lifecycle, or module dependency constraints not visible from the roadmap excerpt.",
+      "Hot-swap can race with producers unless policy state is atomic or volatile and applied at a documented boundary.",
+      "Spill file cleanup and partial append failure handling can leak files or leave stale journals for later runs.",
+      "Allocation gate may fail if overflow tests allocate large payloads or if spill buffering duplicates records unnecessarily."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+          "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "API surface decision for BackpressurePolicy and GraphPartitionRunner.Builder",
+          "R-002 prerequisite confirmation or explicit replan trigger",
+          "Overflow spill reuse decision referencing MmapJournal"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "docs/archive/"
+        ],
+        "objective": "Confirm the R-006 API and runtime design for BackpressurePolicy, GraphPartitionRunner.Builder per-edge config, hot-swap semantics, R-002 prerequisite handling, and MmapJournal overflow reuse in repo-memory/DECISIONS.md and affected runtime/API class notes.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "Failing four-policy sustained overrun test matrix",
+          "Failing overflow spill drain and readback tests",
+          "Failing hot-swap and spill invariant tests",
+          "Failing R-002 prerequisite coverage if MmapJournal durability support is absent"
+        ],
+        "forbidden_paths": [
+          "repo-memory/",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/",
+          "compiler-core/src/main/",
+          "deployment-core/src/main/",
+          "docs/archive/"
+        ],
+        "objective": "Write failing tests for sustained overrun behavior of DROP_NEW, DROP_OLD, BLOCK, OVERFLOW_TO_DISK, spill readback on drain, stale or invalid spill rejection, partial spill failure invariants, edge-level hot-swap, and the R-002 prerequisite guard.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "BackpressurePolicy enum",
+          "GraphPartitionRunner.Builder policy configuration API",
+          "Runtime edge policy selector implementation",
+          "DROP_NEW DROP_OLD BLOCK behavior",
+          "Atomic edge-level policy hot-swap implementation"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "docs/archive/"
+        ],
+        "objective": "Implement BackpressurePolicy enum, GraphPartitionRunner.Builder default and per-edge policy configuration, runtime edge policy state, hot-swap behavior, and DROP_NEW, DROP_OLD, and BLOCK semantics.",
+        "role": "implementer",
+        "slice_id": "impl-policy-core",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":runtime-core:test"
+          ],
+          [
+            "./gradlew",
+            ":dag-framework-api:test"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+          "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-policy-core"
+        ],
+        "expected_outputs": [
+          "R-002 prerequisite check before spill implementation",
+          "MmapJournal-backed overflow spill adapter",
+          "FIFO spill drain integration in GraphPartitionRunner edges",
+          "Spill invariant and cleanup handling",
+          "No bespoke spill file format"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "docs/archive/"
+        ],
+        "objective": "Implement OVERFLOW_TO_DISK by adapting existing R-002/MmapJournal machinery for runtime edge spill append, FIFO drain, spill readback, cleanup, stale or invalid journal handling, and partial acceptance failure safety.",
+        "role": "implementer",
+        "slice_id": "impl-overflow-spill",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":runtime-core:test"
+          ],
+          [
+            "./gradlew",
+            ":dag-framework-lvc:test"
+          ],
+          [
+            "./gradlew",
+            "jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "repo-memory/",
+          "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/",
+          "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/",
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "impl-overflow-spill"
+        ],
+        "expected_outputs": [
+          "Review findings with file and line references",
+          "Contract compliance assessment",
+          "R-002 prerequisite disposition",
+          "Risk disposition for concurrency spill and allocation behavior"
+        ],
+        "forbidden_paths": [
+          "docs/archive/",
+          "examples/",
+          "sim/",
+          "sim-kdb/",
+          "deployment-core/src/main/"
+        ],
+        "objective": "Review BackpressurePolicy API, GraphPartitionRunner edge behavior, R-002 prerequisite handling, MmapJournal spill reuse, hot-swap concurrency, allocation behavior, and the QA policy matrix for contract compliance.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./gradlew",
+            "jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "dag-framework-lvc/src/test/",
+          "dag-framework-lvc/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "Smoke verification report",
+          "Regression verification report",
+          "Full test and jmhSmokeCheck report",
+          "Acceptance matrix pass/fail evidence",
+          "R-002 prerequisite verification evidence"
+        ],
+        "forbidden_paths": [
+          "repo-memory/",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "dag-framework-lvc/src/main/",
+          "compiler-core/src/main/",
+          "deployment-core/src/main/",
+          "docs/archive/"
+        ],
+        "objective": "Run final verification for the authored backpressure policy matrix, overflow spill readback, R-002 prerequisite coverage, smoke, regression, full tests, and jmhSmokeCheck after reviewer sign-off.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./gradlew",
+            "jmhSmokeCheck"
+          ]
+        ]
+      }
+    ]
+  }
+]
+
+PRIOR_CONSOLIDATED_BASELINE:
+{
+  "acceptance_test_matrix": [
+    "DROP_NEW sustained overrun drops incoming records while preserving previously accepted queued records.",
+    "DROP_OLD sustained overrun evicts oldest buffered records and accepts newer records in expected order.",
+    "BLOCK sustained overrun blocks producer progress, resumes after drain capacity, and exits cleanly on shutdown or interruption.",
+    "OVERFLOW_TO_DISK sustained overrun spills excess records through MmapJournal and drains them in FIFO order.",
+    "Overflow spill file reads back correctly during drain and is cleaned up after successful completion.",
+    "Edge-level policy hot-swap changes behavior for subsequent offers without reordering or corrupting buffered or spilled records.",
+    "Stale or invalid spill journal state triggers invariant failure handling instead of silent reuse.",
+    "Partial overflow acceptance or spill append failure leaves queue, journal, and metrics invariants consistent.",
+    "Configured QA gate coverage includes ./qa/smoke.sh, ./qa/regression.sh, ./gradlew test, and ./gradlew jmhSmokeCheck."
+  ],
+  "affected_surfaces": [
+    "repo-memory/",
+    "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+    "runtime-core/src/main/java/com/joshorig/ull/dag/",
+    "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/",
+    "tests/",
+    "qa/fixtures/",
+    "benchmarks/src/test/",
+    "dag-framework-api/src/test/",
+    "dag-framework-lvc/src/test/",
+    "runtime-core/src/test/",
+    "qa/"
+  ],
+  "assumptions": [
+    "GraphPartitionRunner owns runtime edge buffering and is the correct boundary for policy enforcement.",
+    "BackpressurePolicy should be a closed enum, not a pluggable strategy interface.",
+    "Per-edge configuration can identify edges using the existing graph edge identity model already available to GraphPartitionRunner.Builder.",
+    "Overflow spill payload serialization must reuse existing MmapJournal machinery from dag-framework-lvc or lvc-standard code already present in the repo.",
+    "Allocation gate expectations are represented by existing smoke, regression, and jmhSmokeCheck tasks."
+  ],
+  "design_contract": {
+    "acceptance_tests": [
+      "DROP_NEW under sustained overrun drops incoming records and preserves existing queued records.",
+      "DROP_OLD under sustained overrun evicts the oldest buffered records and accepts newer records.",
+      "BLOCK under sustained overrun blocks producer progress until drain capacity is available and unblocks cleanly on runner shutdown.",
+      "OVERFLOW_TO_DISK under sustained overrun writes to MmapJournal spill, drains records back, and reads the spill file contents correctly.",
+      "Edge-level policy hot-swap affects subsequent offers without corrupting buffered or spilled records.",
+      "Stale or invalid spill journal state is rejected or cleaned up without silent data corruption.",
+      "Partial overflow acceptance or spill append failure leaves edge invariants intact.",
+      "qa/smoke.sh, qa/regression.sh, and jmhSmokeCheck pass."
+    ],
+    "concurrency_protocol": "Each edge keeps a thread-safe current BackpressurePolicy visible to producers and consumers; hot-swap is atomic for subsequent offers and does not reorder already accepted records; BLOCK waits only on the target edge capacity and honors runner shutdown/interruption; DROP_NEW rejects the incoming overrun record, DROP_OLD evicts the oldest buffered record before accepting the new one, and OVERFLOW_TO_DISK preserves FIFO drain order across memory and spill.",
+    "forbidden_alternatives": [
+      "A single global-only policy with no per-edge override.",
+      "Implementing overflow spill with ad hoc files, ObjectOutputStream, JSON, or bespoke binary framing.",
+      "Treating OVERFLOW_TO_DISK as DROP_OLD or DROP_NEW when the spill file is available.",
+      "Hot-swap implemented by rebuilding the whole graph partition runner.",
+      "Blocking producers across unrelated partitions or edges."
+    ],
+    "hard_constraints": [
+      "Do not add custom backpressure policies or public extension points for custom policies.",
+      "Do not add priority-based shedding.",
+      "Do not add cross-partition backpressure propagation.",
+      "Reuse MmapJournal machinery instead of defining a new spill format.",
+      "Keep jmhSmokeCheck and allocation gate green.",
+      "Support sustained overrun behavior for all four policies."
+    ],
+    "ownership_boundaries": "dag-framework-api owns public enum/API symbols if existing runtime public types live there; runtime-core owns GraphPartitionRunner.Builder integration, edge queues, policy state, blocking semantics, and hot-swap behavior; dag-framework-lvc owns or supplies the MmapJournal-backed spill adapter reused by runtime-core; QA owns tests and fixtures only under registered QA write roots.",
+    "persistence_protocol": "OVERFLOW_TO_DISK appends overflow records to an mmap-backed MmapJournal spill file, drains them back in FIFO order when in-memory capacity is available, verifies journal invariants before reads, rejects stale or invalid spill files, and cleans up partial spill state on close or failed acceptance without inventing a new spill format.",
+    "public_api": "Add BackpressurePolicy enum with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK; expose default and per-edge policy configuration on runtime-core GraphPartitionRunner.Builder; expose an edge-level policy hot-swap API on the built runner or edge handle consistent with existing runtime APIs."
+  },
+  "feature_id": "R-006",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "implementation_topology": "split_specialists",
+  "problem_statement": "Implement a backpressure policy selector for runtime edges, exposing DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK through GraphPartitionRunner.Builder with per-edge hot-swap support and mmap-backed overflow draining.",
+  "project": "dag-framework",
+  "risk_register": [
+    "Public API placement may conflict with existing separation between dag-framework-api and runtime-core public runtime types.",
+    "BLOCK can deadlock if implemented with global locks or without shutdown-aware wait semantics.",
+    "DROP_OLD may violate ordering expectations if eviction and offer are not atomic at the edge buffer boundary.",
+    "OVERFLOW_TO_DISK can silently reorder records if memory and spill drains are not coordinated as one FIFO stream.",
+    "MmapJournal reuse may expose serialization, lifecycle, or module dependency constraints not visible from the roadmap excerpt.",
+    "Hot-swap can race with producers unless policy state is atomic or volatile and applied at a clearly documented boundary.",
+    "Spill file cleanup and partial append failure handling can leak files or leave stale journals for later runs.",
+    "Allocation gate may fail if overflow tests allocate large payloads or if spill buffering duplicates records unnecessarily."
+  ],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "task_slices": [
+    {
+      "allowed_paths": [
+        "repo-memory/ROADMAP.md",
+        "repo-memory/DECISIONS.md",
+        "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+        "dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/",
+        "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+        "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/"
+      ],
+      "depends_on": [],
+      "expected_outputs": [
+        "DesignContract",
+        "API surface decision for BackpressurePolicy and GraphPartitionRunner.Builder",
+        "Overflow spill reuse decision referencing MmapJournal"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/",
+        "docs/archive/"
+      ],
+      "objective": "Confirm the R-006 API and runtime design for BackpressurePolicy, GraphPartitionRunner.Builder per-edge config, hot-swap semantics, and MmapJournal overflow reuse in repo-memory/DECISIONS.md and affected runtime/API class notes.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/"
+      ],
+      "depends_on": [
+        "design"
+      ],
+      "expected_outputs": [
+        "Failing policy matrix tests",
+        "Failing overflow spill drain/readback tests",
+        "Failing hot-swap and spill invariant tests"
+      ],
+      "forbidden_paths": [
+        "repo-memory/",
+        "dag-framework-api/src/main/",
+        "runtime-core/src/main/",
+        "dag-framework-lvc/src/main/",
+        "compiler-core/src/main/",
+        "deployment-core/src/main/",
+        "docs/archive/"
+      ],
+      "objective": "Write failing tests for sustained overrun behavior of DROP_NEW, DROP_OLD, BLOCK, OVERFLOW_TO_DISK, spill readback on drain, stale or invalid spill rejection, partial spill failure invariants, and edge-level hot-swap.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./gradlew",
+          "test"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "dag-framework-api/src/main/java/com/joshorig/ull/dag/api/",
+        "dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/",
+        "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+        "runtime-core/src/main/java/com/joshorig/ull/dag/time/"
+      ],
+      "depends_on": [
+        "qa-author"
+      ],
+      "expected_outputs": [
+        "BackpressurePolicy enum",
+        "GraphPartitionRunner.Builder policy configuration API",
+        "Runtime edge policy selector implementation",
+        "DROP_NEW DROP_OLD BLOCK behavior"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/",
+        "docs/archive/"
+      ],
+      "objective": "Implement BackpressurePolicy enum, GraphPartitionRunner.Builder default and per-edge policy configuration, runtime edge policy state, hot-swap behavior, and DROP_NEW, DROP_OLD, and BLOCK semantics.",
+      "role": "implementer",
+      "slice_id": "impl-policy-core",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./gradlew",
+          ":runtime-core:test"
+        ],
+        [
+          "./gradlew",
+          ":dag-framework-api:test"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "runtime-core/src/main/java/com/joshorig/ull/dag/runtime/",
+        "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/"
+      ],
+      "depends_on": [
+        "impl-policy-core"
+      ],
+      "expected_outputs": [
+        "MmapJournal-backed overflow spill adapter",
+        "FIFO spill drain integration in GraphPartitionRunner edges",
+        "Spill invariant and cleanup handling",
+        "No bespoke spill file format"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/",
+        "docs/archive/"
+      ],
+      "objective": "Implement OVERFLOW_TO_DISK by adapting existing MmapJournal machinery for runtime edge spill append, FIFO drain, spill readback, cleanup, stale or invalid journal handling, and partial acceptance failure safety.",
+      "role": "implementer",
+      "slice_id": "impl-overflow-spill",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./gradlew",
+          ":runtime-core:test"
+        ],
+        [
+          "./gradlew",
+          ":dag-framework-lvc:test"
+        ],
+        [
+          "./gradlew",
+          "jmhSmokeCheck"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "repo-memory/",
+        "dag-framework-api/src/main/java/com/joshorig/ull/dag/",
+        "runtime-core/src/main/java/com/joshorig/ull/dag/",
+        "dag-framework-lvc/src/main/java/com/joshorig/ull/dag/",
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/"
+      ],
+      "depends_on": [
+        "impl-overflow-spill"
+      ],
+      "expected_outputs": [
+        "Review findings with file and line references",
+        "Contract compliance assessment",
+        "Risk disposition for concurrency spill and allocation behavior"
+      ],
+      "forbidden_paths": [
+        "docs/archive/",
+        "examples/",
+        "sim/",
+        "sim-kdb/",
+        "deployment-core/src/main/"
+      ],
+      "objective": "Review BackpressurePolicy API, GraphPartitionRunner edge behavior, MmapJournal spill reuse, hot-swap concurrency, allocation behavior, and the QA policy matrix for contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./gradlew",
+          "test"
+        ],
+        [
+          "./gradlew",
+          "jmhSmokeCheck"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/src/test/",
+        "benchmarks/src/test/java/",
+        "dag-framework-api/src/test/",
+        "dag-framework-api/src/test/java/",
+        "dag-framework-lvc/src/test/",
+        "dag-framework-lvc/src/test/java/",
+        "runtime-core/src/test/",
+        "runtime-core/src/test/java/"
+      ],
+      "depends_on": [
+        "review"
+      ],
+      "expected_outputs": [
+        "Smoke verification report",
+        "Regression verification report",
+        "Full test and jmhSmokeCheck report",
+        "Acceptance matrix pass/fail evidence"
+      ],
+      "forbidden_paths": [
+        "repo-memory/",
+        "dag-framework-api/src/main/",
+        "runtime-core/src/main/",
+        "dag-framework-lvc/src/main/",
+        "compiler-core/src/main/",
+        "deployment-core/src/main/",
+        "docs/archive/"
+      ],
+      "objective": "Run final verification for the authored backpressure policy matrix, overflow spill readback, smoke, regression, full tests, and jmhSmokeCheck after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ],
+        [
+          "./gradlew",
+          "test"
+        ],
+        [
+          "./gradlew",
+          "jmhSmokeCheck"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "sources": {
+    "openai": "https://openai.com/api/pricing/ (GPT-5.5: input $5.00/M, cached input $0.50/M, output $30.00/M)",
+    "openai_gpt_5_3_codex": "https://developers.openai.com/api/docs/models/gpt-5.3-codex (GPT-5.3-Codex: input $1.75/M, cached input $0.175/M, output $14.00/M)",
+    "openai_codex_rate_card": "https://help.openai.com/en/articles/20001106-codex-rate-card (GPT-5.3-Codex-Spark is research preview; credit rates are not final, so Spark comparison uses GPT-5.3-Codex rates as a provisional proxy)",
+    "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing (Claude Sonnet 4/4.5: input $3.00/M, 5m cache write $3.75/M, cache hit $0.30/M, output $15.00/M)"
+  },
+  "models": {
+    "codex:gpt-5.5": {
+      "input_per_million": 5.0,
+      "cache_creation_per_million": 5.0,
+      "cache_read_per_million": 0.5,
+      "output_per_million": 30.0
+    },
+    "codex:gpt-5.3-codex": {
+      "input_per_million": 1.75,
+      "cache_creation_per_million": 1.75,
+      "cache_read_per_million": 0.175,
+      "output_per_million": 14.0
+    },
+    "codex:gpt-5.3-codex-spark": {
+      "input_per_million": 1.75,
+      "cache_creation_per_million": 1.75,
+      "cache_read_per_million": 0.175,
+      "output_per_million": 14.0,
+      "provisional": true,
+      "pricing_note": "Spark is research preview with non-final rates in the official Codex rate card; this uses GPT-5.3-Codex rates as a proxy."
+    },
+    "claude:sonnet": {
+      "input_per_million": 3.0,
+      "cache_creation_per_million": 3.75,
+      "cache_read_per_million": 0.3,
+      "output_per_million": 15.0
+    }
+  }
+}

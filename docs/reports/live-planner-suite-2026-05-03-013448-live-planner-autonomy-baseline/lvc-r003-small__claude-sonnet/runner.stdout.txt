@@ -1,0 +1,25 @@
+{
+  "accepted_at_iteration": 1,
+  "backend": "claude",
+  "critic_blocking_findings": 0,
+  "critic_verdict": "accept",
+  "model": "sonnet",
+  "output": "claude/outcome.json",
+  "reasoning": null,
+  "roles": [
+    "designer",
+    "implementer",
+    "qa",
+    "reviewer"
+  ],
+  "slice_count": 5,
+  "status": "accepted",
+  "token_savior": {
+    "input_tokens_after_savior": 2790,
+    "input_tokens_original": 18405,
+    "method": "token_savior_pack_context",
+    "reduction_ratio": 0.8484107579462102,
+    "tokens_saved": 15615
+  },
+  "validation_error_count": 0
+}

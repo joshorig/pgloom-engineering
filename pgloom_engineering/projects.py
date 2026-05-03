@@ -33,6 +33,14 @@ def project_agent_topology(project: ProjectConfig | None = None) -> AgentTopolog
     return project.agent_topology
 
 
+def role_enabled(project: ProjectConfig, role: str) -> bool:
+    gates = project.metadata.get("role_gates")
+    if not isinstance(gates, dict):
+        return True
+    value = gates.get(role, "enabled")
+    return isinstance(value, str) and value == "enabled"
+
+
 def register_project(
     project: ProjectConfig,
     *,

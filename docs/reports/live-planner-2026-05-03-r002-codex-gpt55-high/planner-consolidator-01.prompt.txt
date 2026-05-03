@@ -1,0 +1,901 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to `tests/` and/or
+  `qa/fixtures/`; implementer write paths must not include those paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total and merge redundant QA/review/finalization work.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "Round-trip semantic coverage: SINGLE and DOUBLE direct+mmap write keys, snapshot, simulated JVM/process death, restore, and read exact committed values.",
+      "Journal reconciliation coverage: crash-mid-journal scenario verifies only journal-acknowledged writes after the snapshot cursor are visible and staged unjournaled writes remain absent.",
+      "Invalid/stale snapshot coverage: bad magic, unsupported version, backend/variant mismatch, stale or impossible cursor, and partial/truncated files all fail before live-state mutation.",
+      "Invariant/CRC coverage: one-page corruption aborts restore with structured invariant failure and leaves the previous store readable.",
+      "Atomic visibility coverage: readers never observe mixed pre/post restore pages and publishChecked semantics remain both-or-neither under restore boundaries.",
+      "Configured QA gate coverage: qa/smoke.sh, qa/regression.sh, full Gradle tests, :benchmarks:jmhSmokeCheck allocation gate, and restore-latency-1m-keys p99 < 10ms."
+    ],
+    "affected_surfaces": [
+      "store/",
+      "conformance-tests/",
+      "benchmarks/",
+      "qa/fixtures/",
+      "qa/",
+      "docs/Stores.md"
+    ],
+    "assumptions": [
+      "The store API can be extended with snapshot(Path) and restore(Path) without breaking existing builders.",
+      "Snapshot/restore may allocate because it is outside the publish hot path.",
+      "The guaranteed journal exposes or can expose a durable cursor/tail sufficient to reconcile acknowledged records after restore.",
+      "SINGLE and DOUBLE direct and mmap implementations share enough layout concepts to use one snapshot format helper with backend-specific load/store hooks.",
+      "Final merge is human-gated through a feature PR."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Round-trip integration: write keys, snapshot, kill JVM/process, restore, read keys for SINGLE and DOUBLE.",
+        "Crash-mid-journal: staged-but-unacknowledged writes are absent after restore while journal-acknowledged writes are visible.",
+        "Stale/invalid snapshot: bad magic, unsupported version, backend/variant mismatch, or impossible journal cursor fails restore without mutating live state.",
+        "CRC/invariant failure: corrupting one snapshot page causes restore to abort with structured invariant failure.",
+        "Failure/partial acceptance: temp snapshot write, partial file, failed atomic move, or interrupted restore leaves the previous live store intact.",
+        "Alloc gate: qa/smoke.sh passes with snapshot code present and :benchmarks:jmhSmokeCheck enabled.",
+        "Performance: restore-latency-1m-keys JMH p99 remains below 10ms."
+      ],
+      "concurrency_protocol": "Snapshot observes a stable committed image using existing seqlock/publishChecked visibility rules; restore builds and validates replacement state off to the side, blocks or serializes publication during the final swap, then publishes the restored state atomically so readers never observe partially restored pages or staged unjournaled writes.",
+      "forbidden_alternatives": [
+        "Do not implement restore by replaying the entire journal from the beginning.",
+        "Do not expose partially restored pages to readers or publishers.",
+        "Do not weaken publishChecked atomic commit/abort semantics.",
+        "Do not add allocations to publish/read hot paths to support snapshot metadata.",
+        "Do not silently ignore CRC, magic, version, layout, or cursor mismatches.",
+        "Do not implement incremental snapshots or cross-version migration in this feature."
+      ],
+      "hard_constraints": [
+        "Zero allocation on the publish hot path remains invariant.",
+        "qa/smoke.sh must pass with :benchmarks:jmhSmokeCheck alloc gate enabled.",
+        "Restore latency for a 1M-key snapshot must be below 10ms p99 in the JMH restore-latency-1m-keys benchmark.",
+        "SINGLE and DOUBLE stores must both support snapshot and restore.",
+        "CRC mismatch during restore must abort before live-state mutation with a structured invariant failure.",
+        "Restore must not surface staged-but-unjournaled writes; only journal-acknowledged writes after the snapshot cursor may become visible."
+      ],
+      "ownership_boundaries": "store/ owns public API, snapshot format, validation, restore swap, journal cursor reconciliation, and structured invariant failures; conformance-tests/ owns cross-backend semantic tests; benchmarks/ owns restore latency JMH coverage; qa/ owns smoke/regression gates and fixtures only.",
+      "persistence_protocol": "Write snapshots to a temp file, fsync file and containing directory, then atomically move into place; restore rejects stale or invalid magic/version/layout/cursor combinations, verifies every page CRC before swap, reconciles from the guaranteed journal cursor, and reports structured invariant failures without mutating live state on validation failure.",
+      "public_api": "Add Store.snapshot(Path) and Store.restore(Path) semantics for SINGLE and DOUBLE stores; snapshot writes a complete point-in-time image with magic, version, variant/backend metadata, guaranteed journal cursor, page table, and per-page CRC; restore validates then atomically swaps the live store image and replays/reconciles only journal-acknowledged records after the snapshot cursor."
+    },
+    "feature_id": "R-002-snapshot-restore",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so startup restores from a validated snapshot plus journal cursor reconciliation instead of replaying the full journal, while preserving zero-allocation publish hot path and publishChecked atomicity.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Snapshot format may accidentally encode backend-specific details that prevent shared validation across SINGLE and DOUBLE stores.",
+      "Restore swap could violate reader seqlock assumptions if it mutates live buffers before full validation completes.",
+      "Journal cursor semantics may be insufficiently durable or ambiguous across DirectJournal, MmapJournal, and AeronArchiveJournal.",
+      "CRC validation can add restore latency; benchmark must measure the real 1M-key path and not a warmed shortcut.",
+      "Atomic temp-file persistence can vary by filesystem; tests need partial-write and failed-move coverage without relying on undefined platform behavior.",
+      "Adding API methods may break downstream implementers unless defaults or migration notes are handled deliberately."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/Stores.md",
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "SnapshotFormatSpec",
+          "RestoreStateMachineSpec"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/jmh/java/",
+          "repo-memory/"
+        ],
+        "objective": "Define the snapshot file format, restore state machine, Store API changes, structured invariant failure type, and backend ownership in docs/Stores.md plus design notes adjacent to store snapshot helpers.",
+        "role": "designer",
+        "slice_id": "design-feature-contract",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design-feature-contract"
+        ],
+        "expected_outputs": [
+          "FailingSnapshotRestoreTests",
+          "CorruptSnapshotFixtures",
+          "PartialSnapshotFixtures"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "conformance-tests/",
+          "benchmarks/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Author failing tests and fixtures for round-trip restore, crash-mid-journal reconciliation, stale/invalid snapshot rejection, CRC mismatch invariant failure, and partial snapshot failure behavior.",
+        "role": "qa",
+        "slice_id": "qa-author-snapshot-restore-tests",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/direct/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/mmap/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore-tests"
+        ],
+        "expected_outputs": [
+          "StoreSnapshotApi",
+          "AtomicRestoreImplementation",
+          "SnapshotFormatImplementation",
+          "StructuredInvariantFailure"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "conformance-tests/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Implement Store.snapshot(Path), Store.restore(Path), snapshot format validation, atomic file persistence, structured invariant failures, and SINGLE/DOUBLE direct+mmap backend restore swaps in store/src/main/java.",
+        "role": "implementer",
+        "slice_id": "implement-store-snapshot-restore",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "conformance-tests/src/test/java/",
+          "benchmarks/src/jmh/java/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore-tests",
+          "implement-store-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "SnapshotRestoreConformanceTests",
+          "RestoreLatency1mKeysBenchmark",
+          "QaGateIntegration"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/src/main/java/",
+          "repo-memory/"
+        ],
+        "objective": "Add cross-backend conformance coverage and restore-latency-1m-keys JMH benchmark wiring for SINGLE and DOUBLE snapshot restore behavior.",
+        "role": "implementer",
+        "slice_id": "implement-conformance-and-benchmark",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":conformance-tests:test"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/",
+          "conformance-tests/",
+          "benchmarks/",
+          "qa/",
+          "docs/Stores.md"
+        ],
+        "depends_on": [
+          "implement-conformance-and-benchmark"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "RiskDisposition",
+          "MergeReadinessNotes"
+        ],
+        "forbidden_paths": [
+          "repo-memory/",
+          "build/",
+          "out/"
+        ],
+        "objective": "Review API compatibility, zero-allocation publish path preservation, atomic restore visibility, journal cursor reconciliation, CRC validation, and benchmark methodology across store, conformance-tests, benchmarks, and qa changes.",
+        "role": "reviewer",
+        "slice_id": "review-snapshot-restore",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "git",
+            "diff",
+            "--check"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "QaVerificationReport",
+          "BenchmarkThresholdReport",
+          "FinalFeaturePrReadiness"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "conformance-tests/",
+          "benchmarks/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run smoke, regression, full test suite, allocation gate, restore benchmark threshold, and final PR readiness checks without changing production code.",
+        "role": "qa",
+        "slice_id": "qa-verify-and-finalize",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmh",
+            "-Pjmh.include=restore-latency-1m-keys"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "Round-trip semantic coverage for SINGLE and DOUBLE direct/mmap stores: write keys, snapshot, kill JVM/process boundary, restore, read keys.",
+      "Journal reconciliation coverage: crash-mid-journal and publishChecked abort cases prove only journal-acknowledged writes become visible after restore.",
+      "Durability edge coverage: stale/invalid magic or version, layout mismatch, truncated snapshot, CRC page mismatch, and interrupted temp snapshot fail with structured invariant failure and no partial state swap.",
+      "Concurrency coverage: snapshot observes committed state under seqlock rules and restore remains an exclusive lifecycle operation preserving atomic visibility.",
+      "Configured QA gate coverage: qa/smoke.sh, qa/regression.sh, :store:test, :benchmarks:jmhSmokeCheck, and restore-latency-1m-keys p99 < 10ms."
+    ],
+    "affected_surfaces": [
+      "store/",
+      "tests/",
+      "qa/fixtures/",
+      "benchmarks/",
+      "qa/",
+      "docs/"
+    ],
+    "assumptions": [
+      "The Store public surface can be extended with snapshot(Path) and restore(Path) default or concrete methods without breaking existing builders.",
+      "Snapshot restore is an administrative lifecycle operation and is not on the publish hot path.",
+      "Journal.tail() or an equivalent cursor is the durable acknowledgement boundary used to suppress staged-but-unjournaled writes after restore.",
+      "Direct and mmap SINGLE/DOUBLE stores share enough slot/page layout to justify a common snapshot codec/helper under store/src/main/java.",
+      "Top-level tests/ and qa/fixtures/ are acceptable locations for QA-authored failing specifications or fixtures before implementation."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Round-trip integration: write keys, snapshot, kill JVM/process boundary, restore, read keys for SINGLE and DOUBLE.",
+        "Crash-mid-journal: after restore only journal-acknowledged writes at or before the snapshot cursor are visible.",
+        "CRC mismatch on any page aborts restore with structured invariant failure and preserves prior state.",
+        "Stale/invalid magic, version, layout, or truncated snapshot fails restore before swap.",
+        "Failure/partial acceptance: interrupted snapshot temp file and failed restore leave existing store state intact.",
+        "qa/smoke.sh passes with snapshot enabled and existing allocation gates intact.",
+        "JMH restore-latency-1m-keys reports p99 below 10ms."
+      ],
+      "concurrency_protocol": "snapshot observes committed slots only using existing seqlock/publishChecked visibility rules; restore is an exclusive lifecycle operation that stages decoded pages off to the side, validates CRC and layout invariants, reconciles against the guaranteed journal cursor, then performs one atomic visibility swap with no partially restored state exposed.",
+      "forbidden_alternatives": [
+        "Do not rebuild restored state by full journal replay when a valid snapshot is available.",
+        "Do not make snapshot/restore allocate on publishChecked or regular publish/read paths.",
+        "Do not expose partially decoded pages before CRC and cursor reconciliation complete.",
+        "Do not silently ignore CRC, magic, version, layout, stale cursor, or partial-write failures.",
+        "Do not implement unrelated incremental snapshots, schema evolution, or distributed coordination."
+      ],
+      "hard_constraints": [
+        "Zero allocation on the publish hot path remains invariant.",
+        "qa/smoke.sh including :benchmarks:jmhSmokeCheck allocation gate must pass with snapshot enabled.",
+        "Restore latency for a 1M-key snapshot must be below 10ms p99 in the JMH benchmark.",
+        "CRC mismatch during restore must abort before state swap and surface a structured invariant failure.",
+        "Restore must not expose staged-but-unjournaled writes beyond the guaranteed journal cursor.",
+        "SINGLE and DOUBLE direct/mmap implementations must support the API consistently."
+      ],
+      "ownership_boundaries": "store/ owns the public API, snapshot format, restore swap, CRC/invariant failures, and journal cursor reconciliation; benchmarks/ owns restore-latency-1m-keys; docs/ documents operational semantics; tests/ and qa/fixtures/ hold QA-authored failing specs and fixtures only.",
+      "persistence_protocol": "snapshot writes to a temp file, fsyncs content and containing directory where supported, then atomically moves to the target path; restore rejects stale/invalid magic or version, layout mismatch, truncated pages, CRC mismatch, journal cursor regression, and partial snapshots with structured invariant failure.",
+      "public_api": "Expose Store.snapshot(Path) and Store.restore(Path) for SINGLE and DOUBLE direct/mmap stores; snapshot writes magic, version, store variant/layout metadata, guaranteed journal cursor, page count, and per-page CRC; restore validates invariants and atomically swaps visible state only after journal cursor reconciliation."
+    },
+    "feature_id": "R-002-snapshot-restore-single-double",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so restart can load a CRC-validated snapshot and reconcile only journal-acknowledged writes without violating publishChecked atomicity or hot-path allocation constraints.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Snapshot format may accidentally encode backend-specific layout details that prevent direct/mmap compatibility or future evolution.",
+      "Atomic restore swap may be correct for direct stores but require extra care for mmap file remapping and reader region stability.",
+      "Journal cursor reconciliation could regress publishChecked semantics by exposing staged-but-unjournaled writes after restore.",
+      "CRC validation and structured invariant failure paths may allocate during restore, which is acceptable, but must not leak into publish hot path.",
+      "The 1M-key restore latency target may require mmap-oriented loading and careful benchmark isolation to avoid measuring setup or filesystem cache misses.",
+      "Smoke allocation gates may fail if snapshot hooks are wired into normal publish/read paths instead of lifecycle-only code."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "docs/Stores.md",
+          "docs/migration_from_exchanger.md"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "SnapshotFormatSpec",
+          "RestoreConcurrencyProtocol",
+          "AcceptanceMapping"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "store/src/test/",
+          "conformance-tests/",
+          "benchmarks/src/jmh/",
+          "qa/fixtures/"
+        ],
+        "objective": "Write the snapshot/restore design contract naming Store API changes, snapshot codec structure, restore swap protocol, journal cursor reconciliation, invariant failure type, tests, and benchmark files.",
+        "role": "designer",
+        "slice_id": "design-feature-contract",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design-feature-contract"
+        ],
+        "expected_outputs": [
+          "FailingSnapshotRestoreSpecs",
+          "CorruptSnapshotFixtures",
+          "JournalCursorRecoveryFixtures"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "conformance-tests/",
+          "benchmarks/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Author failing snapshot/restore QA specs and corruption fixtures covering round-trip, crash-mid-journal cursor reconciliation, CRC mismatch, stale/invalid headers, and partial snapshot failure.",
+        "role": "qa",
+        "slice_id": "qa-author-snapshot-restore-specs",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "docs/Stores.md"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore-specs"
+        ],
+        "expected_outputs": [
+          "StoreSnapshotRestoreApi",
+          "SnapshotCodec",
+          "AtomicRestoreImplementation",
+          "StructuredInvariantFailure"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Implement Store.snapshot(Path), Store.restore(Path), shared snapshot codec, CRC validation, structured invariant failures, atomic restore swap, and guaranteed journal cursor reconciliation across SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore.",
+        "role": "implementer",
+        "slice_id": "implement-store-snapshot-restore",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "benchmarks/src/jmh/java/",
+          "benchmarks/build.gradle",
+          "qa/smoke.sh",
+          "qa/regression.sh",
+          "docs/Stores.md"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore-specs",
+          "implement-store-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "RestoreLatencyBenchmark",
+          "SmokeGateUpdate",
+          "RegressionGateUpdate"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/src/test/",
+          "conformance-tests/"
+        ],
+        "objective": "Add the restore-latency-1m-keys JMH benchmark and wire smoke/regression gates so snapshot-enabled allocation checks still include :benchmarks:jmhSmokeCheck.",
+        "role": "implementer",
+        "slice_id": "implement-restore-benchmark-and-gates",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/",
+          "benchmarks/",
+          "qa/",
+          "docs/",
+          "tests/"
+        ],
+        "depends_on": [
+          "implement-store-snapshot-restore",
+          "implement-restore-benchmark-and-gates"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "RequiredFixList",
+          "RiskDisposition"
+        ],
+        "forbidden_paths": [
+          ".git/",
+          "build/",
+          "out/",
+          "target/"
+        ],
+        "objective": "Review Store API compatibility, snapshot format validation, restore atomicity, journal cursor reconciliation, CRC/invariant coverage, hot-path allocation risk, and benchmark validity.",
+        "role": "reviewer",
+        "slice_id": "review-snapshot-restore",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "SmokeReport",
+          "RegressionReport",
+          "RestoreLatencyReport",
+          "HumanMergeReadinessReport"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "benchmarks/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "objective": "Run smoke, full regression, restore latency benchmark, and QA fixture verification; report pass/fail status for human-gated final PR merge.",
+        "role": "qa",
+        "slice_id": "qa-verify-and-finalize",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmh",
+            "-PjmhInclude=restore-latency-1m-keys"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "Round-trip semantic coverage: SINGLE and DOUBLE write keys, snapshot, simulated JVM death, restore, then read the committed values.",
+      "Crash semantics coverage: staged-but-unjournaled writes are absent after restore while journal-acknowledged writes are present.",
+      "Lifecycle invalid-state coverage: stale or invalid header/version, per-page CRC mismatch, and failure or partial snapshot write all abort restore with structured invariant failure.",
+      "Atomicity coverage: restore validates off to the side and only swaps visible state after snapshot and journal cursor reconciliation succeed.",
+      "Performance coverage: restore-latency-1m-keys JMH p99 is below 10ms.",
+      "Configured QA gate coverage: qa/smoke.sh, qa/regression.sh, :store:test, and :benchmarks:jmhSmokeCheck pass."
+    ],
+    "affected_surfaces": [
+      "store/",
+      "tests/",
+      "qa/fixtures/",
+      "benchmarks/",
+      "qa/"
+    ],
+    "assumptions": [
+      "Store-level snapshot and restore are new public API methods or equivalent builder-exposed operations added consistently across direct and mmap SINGLE/DOUBLE implementations.",
+      "Snapshot files are local filesystem artifacts addressed by java.nio.file.Path.",
+      "Guaranteed journal cursor reconciliation can be represented by the existing Journal.tail() or a compatible cursor persisted in the snapshot header.",
+      "Restore is an administrative lifecycle operation and is not part of the publish hot path.",
+      "Benchmark and QA thresholds are evaluated on the repository's existing JMH and qa scripts."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Round-trip integration test writes keys, snapshots, simulates JVM death, restores, and reads keys for SINGLE and DOUBLE.",
+        "Crash-mid-journal test verifies only journal-acknowledged writes are visible after restore.",
+        "Stale or invalid snapshot header/version is rejected with structured invariant failure.",
+        "Per-page CRC mismatch during restore aborts restore with structured invariant failure.",
+        "Failure or partial snapshot write is not accepted as a valid restore source.",
+        "qa/smoke.sh passes with snapshot enabled.",
+        "JMH restore-latency-1m-keys reports p99 below 10ms."
+      ],
+      "concurrency_protocol": "snapshot(Path) captures a stable committed view using the existing seqlock or publish barrier discipline; restore(Path) validates the full snapshot off to the side, reconciles the journal cursor, then atomically swaps visible state so readers never observe a partial restore and staged-but-unjournaled writes remain invisible.",
+      "forbidden_alternatives": [
+        "Do not rebuild state by full journal replay when a valid snapshot is supplied.",
+        "Do not expose staged-but-unjournaled writes during or after restore.",
+        "Do not mutate live store state before full snapshot validation succeeds.",
+        "Do not add allocations to publishChecked, publish, claim, or reader hot paths.",
+        "Do not implement direct-only or mmap-only snapshot support.",
+        "Do not use non-atomic final snapshot publication."
+      ],
+      "hard_constraints": [
+        "Zero allocation on the publish hot path remains invariant.",
+        "qa/smoke.sh must pass including :benchmarks:jmhSmokeCheck allocation gate.",
+        "Restore latency for restore-latency-1m-keys must be below 10ms p99.",
+        "Restore must preserve atomic publishChecked semantics after crash or restart.",
+        "SINGLE and DOUBLE implementations must both support snapshot and restore.",
+        "CRC mismatch during restore must abort restore before any state swap."
+      ],
+      "ownership_boundaries": "store/ owns snapshot format, restore atomicity, CRC validation, journal cursor reconciliation, and structured invariant failures; benchmarks/ owns restore-latency-1m-keys JMH coverage; tests/ and qa/fixtures/ own black-box lifecycle fixtures only; qa/ owns smoke and regression execution only.",
+      "persistence_protocol": "Snapshot writes use temp-file then fsync and atomic move; file format starts with magic and version header, includes store variant metadata, journal cursor, page descriptors, and per-page CRC; restore rejects stale, invalid, truncated, incompatible, or CRC-failing snapshots with structured invariant failure before mutating visible state.",
+      "public_api": "Add Store.snapshot(Path) and Store.restore(Path) semantics for SINGLE and DOUBLE stores, exposed through Stores, DirectStores, MmapStores, SingleDirectStore, DoubleDirectStore, SingleMmapStore, and DoubleMmapStore without changing publishChecked caller semantics."
+    },
+    "feature_id": "R-002-snapshot-restore",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so persisted snapshots restore quickly without exposing staged-but-unjournaled writes or violating publishChecked atomicity.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Adding snapshot hooks could accidentally allocate on publishChecked or publish hot paths.",
+      "Atomic restore could expose partially loaded state if validation and swap are not strictly separated.",
+      "Journal cursor reconciliation may admit staged-but-unjournaled writes if cursor metadata is ambiguous.",
+      "CRC validation may be too slow or too late in the restore path to meet the 10ms p99 target.",
+      "Direct and mmap stores may need different persistence mechanics, increasing behavioral drift risk.",
+      "Atomic file move and fsync behavior can vary by filesystem and may need explicit failure tests."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/",
+          "qa/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "SnapshotFormatSpec",
+          "RestoreConcurrencyProtocol",
+          "JournalCursorReconciliationPlan"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          ".github/",
+          "repo-memory/"
+        ],
+        "objective": "Finalize snapshot format, Store.snapshot(Path)/Store.restore(Path) lifecycle semantics, structured invariant failure type, and journal cursor reconciliation points for Stores.java, direct stores, mmap stores, and guaranteed journal classes.",
+        "role": "designer",
+        "slice_id": "design-feature-contract",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design-feature-contract"
+        ],
+        "expected_outputs": [
+          "FailingRoundTripRestoreTests",
+          "FailingCrashMidJournalTests",
+          "FailingSnapshotInvariantFailureTests",
+          "SnapshotCorruptionFixtures"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "benchmarks/",
+          "conformance-tests/",
+          "docs/",
+          "repo-memory/",
+          ".github/"
+        ],
+        "objective": "Author failing lifecycle fixtures and tests covering round-trip restore, crash-mid-journal visibility, stale or invalid snapshot rejection, CRC mismatch abort, and partial snapshot rejection.",
+        "role": "qa",
+        "slice_id": "qa-author-snapshot-restore",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/direct/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/mmap/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "SnapshotRestorePublicApi",
+          "SnapshotFileFormatImplementation",
+          "AtomicRestoreImplementation",
+          "StructuredInvariantFailureImplementation",
+          "JournalCursorReconciliationImplementation"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/",
+          "docs/",
+          "repo-memory/",
+          ".github/"
+        ],
+        "objective": "Implement Store.snapshot(Path), Store.restore(Path), snapshot header/page CRC validation, atomic state swap, and journal cursor reconciliation across SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore, Stores, DirectStores, MmapStores, and guaranteed journal support classes.",
+        "role": "implementer",
+        "slice_id": "implement-store-snapshot-restore",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":store:test"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/"
+        ],
+        "depends_on": [
+          "qa-author-snapshot-restore",
+          "implement-store-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "RestoreLatency1mKeysBenchmark",
+          "BenchmarkThresholdDocumentationInCode",
+          "JmhSmokeCompatibility"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/",
+          "docs/",
+          "repo-memory/",
+          ".github/"
+        ],
+        "objective": "Add restore-latency-1m-keys JMH benchmark coverage using the implemented snapshot API and keep benchmark execution compatible with qa/smoke.sh allocation gates.",
+        "role": "implementer",
+        "slice_id": "implement-restore-benchmark",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/",
+          "benchmarks/",
+          "tests/",
+          "qa/fixtures/",
+          "qa/"
+        ],
+        "depends_on": [
+          "implement-store-snapshot-restore",
+          "implement-restore-benchmark"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "HotPathAllocationRiskAssessment",
+          "RestoreAtomicityAssessment",
+          "BenchmarkValidityAssessment"
+        ],
+        "forbidden_paths": [
+          ".github/",
+          "repo-memory/"
+        ],
+        "objective": "Review snapshot restore API, direct and mmap implementations, journal reconciliation, CRC/invariant handling, hot-path allocation risk, and benchmark validity before QA verification.",
+        "role": "reviewer",
+        "slice_id": "review-snapshot-restore",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./gradlew",
+            ":benchmarks:jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review-snapshot-restore"
+        ],
+        "expected_outputs": [
+          "SmokeVerificationReport",
+          "RegressionVerificationReport",
+          "RestoreLatencyVerificationReport",
+          "FinalFeaturePrHumanGateChecklist"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "benchmarks/",
+          "conformance-tests/",
+          "docs/",
+          "repo-memory/",
+          ".github/"
+        ],
+        "objective": "Run smoke, full regression, focused lifecycle tests, and restore latency checks, then prepare a human-gated final feature PR readiness report without merging.",
+        "role": "qa",
+        "slice_id": "qa-verify-finalization",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            ":store:test",
+            ":benchmarks:jmhSmokeCheck"
+          ]
+        ]
+      }
+    ]
+  }
+]

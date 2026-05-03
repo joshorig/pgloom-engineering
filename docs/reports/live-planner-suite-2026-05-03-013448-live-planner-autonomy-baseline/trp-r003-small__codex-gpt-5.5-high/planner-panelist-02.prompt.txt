@@ -1,0 +1,245 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Every config endpoint returns correct equities and crypto data.",
+    "Every diagnostics endpoint returns correct equities and crypto data.",
+    "Playwright domain switch covers both domains.",
+    "qa/smoke.sh passes."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Do not add new diagnostics endpoints.",
+    "Do not add config mutation paths.",
+    "Keep this as a compact read-only parity pass."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-003 crypto-domain config and diagnostics parity so /api/config/* and /api/diagnostics/* return crypto-scoped runtime metadata instead of equities identifiers.",
+  "project": "trade-research-platform",
+  "requirements": [
+    "Thread ?domain=crypto through config and diagnostics controllers.",
+    "Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list.",
+    "Preserve equities behavior for domain=equities.",
+    "Add Playwright selector-switch coverage for both domains."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "qa",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "test",
+    "qa",
+    "smoke",
+    "regression",
+    "acceptance",
+    "failure",
+    "fixture",
+    "verify"
+  ],
+  "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+  "qa_regression_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "relevant_paths": [
+    "ui/vitest.config.ts",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaTradeAdapterParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaCanonicalCaptureParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaCryptoTradeAdapterParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaQuoteAdapterParityTest.java",
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nPackages (18): app-api, app-core, config, crypto-extension, docs, kdb, plans, platform-dsl, platform-ingest-crypto-coingecko, platform-ingest-crypto-coinglass, platform-ingest-macro-fred, platform-research, platform-runtime, qa, repo-memory\n# Token Savior Packed Context\nContext pack for 'Implement R-003 crypto-domain config and diagnostics parity so /api/config/* and /api/diagnostics/* return crypto-scoped runtime metadata instead of equities identifiers. Thread ?domain=crypto through config and diagnostics controllers. Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list. Preserve equities behavior for domain=equities. Add Playwright selector-switch coverage for both domains. Every config endpoint returns correct equities and crypto data. Every diagnostics endpoint returns correct equities and crypto data. Playwright domain switch covers both domains. qa/smoke.sh passes.' (55 symbols, ~2940 tokens / 3000 budget)\n# Search Hits: crypto-domain\n[{'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 230, 'content': '- Current config and diagnostics surfaces still present some crypto-domain views using equities-oriented runtime metadata and must be updated when the new seams land.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 69, 'content': '- latest serving progress in that slice includes crypto-domain projection support for positions APIs using cycle/allocation state (still pre-historical-store and intentionally snapshot-oriented)'}, {'file': 'docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md', 'line_number': 126, 'content': '- `GET /api/opportunities?domain=crypto`, `GET /api/opportunities/{id}?domain=crypto`, `GET /api/signals/catalog?domain=crypto`, and `GET /api/cockpit/summary?domain=crypto` now return crypto-domain payloads sourced from live crypto-cycle hot views (instead of falling back to equities-only content).'}, {'file': 'docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md', 'line_number': 147, 'content': '- Opportunities, opportunity detail, cockpit summary, and signals catalog now also expose crypto-domain responses when `domain=crypto` is selected, preventing equities payload leakage into the crypto UI workflow.'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 18, 'content': \"# crypto-domain historical serving so this Track's R-015 acceptance scenario\"}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_B.yaml', 'line_number': 200, 'content': '      - app-api/src/main/java/com/ull/app/api/web/OpportunitiesController.java       # crypto-domain branch'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_B.yaml', 'line_number': 229, 'content': '      - All crypto-domain responses carry the full `TrustPayload`: `freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 34, 'content': '- **Goal:** All crypto-domain responses carry the full `TrustPayload` (`freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`).'}, {'file': 'specs/CYCLE_READINESS.md', 'line_number': 9, 'content': 'Define the calibration regime that every **crypto-domain** SignalSpec must pass before its `status` may transition from `backtested` to `approved` (and subsequently `live`) during the BTC cycle window.'}]\n# Search Hits: parity\n[{'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 189, 'content': '- batch replay parity with direct replay path'}, {'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 190, 'content': '- parity when shared FRED macro events and proxy-equity inputs are present'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 190, 'content': '- config and diagnostics API surfaces are domain-aware for crypto scope selection, but richer crypto telemetry publication and downstream parity remain incomplete'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 271, 'content': '  - smoke tests, parity tests, live probes, and JMH'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 276, 'content': '  - smoke tests, parity tests, live probes, and JMH'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 281, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 285, 'content': '  - parity, boundary, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 289, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 293, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/PHASE1_DATA_CONTRACT.md', 'line_number': 27, 'content': '- Crypto parity.'}, {'file': 'docs/PHASE1_DATA_CONTRACT.md', 'line_number': 29, 'content': '- QuestDB-backed historical UI parity for every route.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 211, 'content': '- continue the Phase 1 explainability slice beyond opportunity detail + signal-catalog availability into runtime-backed signal values and replay-history parity; detail payload now includes derivation metadata and replay-window identifiers'}]\n# Search Hits: api\n[{'file': 'AGENTS.md', 'line_number': 78, 'content': '- Read path is an out-of-process server (QuestDB PGWire / HTTP) accessed by `app-api` and `platform-research` via a thin Java client.'}, {'file': 'README.md', 'line_number': 8, 'content': 'The repository currently contains a real runtime, ingest, replay/research, UI codebase, and the first live serving slice: a separate `app-core` runtime publisher process feeding Redis hot views and an `app-api` Spring Boot process serving UI-facing `/api/*` endpoints from Redis (including opportunities list/detail and a Phase 1 signals catalog contract with derivation + replay-comparability detail payload fields).'}, {'file': 'README.md', 'line_number': 71, 'content': '- `app-api/` \u2014 Spring Boot API process that serves UI-facing `/api/*` routes from Redis hot views and owns the consumer-side QuestDB historical-read layer, including real `/api/opportunities/{id}/history`, `/api/backtests`, `/api/performance/summary`, `/api/decisions`, `/api/risk/summary`, `/api/deployments`, and `/api/admin/*` routes'}, {'file': 'app-api/build.gradle', 'line_number': 14, 'content': \"    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'\"}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 1, 'content': 'package com.ull.app.api;'}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 10, 'content': '@ConfigurationPropertiesScan(basePackages = \"com.ull.app.api\")'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreConfig.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 3, 'content': 'import com.ull.app.api.history.QuestDbHistoricalStoreClient;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 4, 'content': 'import com.ull.app.api.redis.RedisHotViewReader;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}]\n### [R-003] Crypto-domain config + diagnostics parity\n- **Acceptance:** Every config + diagnostics endpoint returns correct data for both `domain=equities` and `domain=crypto`, Playwright selector-switch covers both.\n# DECISIONS relevant excerpt\n**Decision:** Redis is the hot serving layer \u2014 latest snapshots, rankings, short time windows \u2014 written by `app-core` as projections from the runtime graph. A columnar time-series store is the canonical historical and replay store; replay feeds back into the graph for research workflows. `app-api` reads only from Redis and the historical store; it never writes to either.\n# DECISIONS relevant excerpt\n**Context:** The app has many routes and many data surfaces. Unit tests alone do not catch routing bugs, URL-param regressions, or proxy desync between the UI and `app-api`. End-to-end Playwright runs are the only way to know the cockpit actually works.\n# DECISIONS relevant excerpt\n**Decision:** Vitest owns unit tests (28 files, including `api-contract-snapshots.test.ts` as the API contract gate). Playwright owns end-to-end across Chromium + WebKit + iPhone 13 profiles. The golden-path flow `\"cockpit top opportunity launches backtest with the selected symbol\"` is the one test that must never break."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-primary",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "app-api/build.gradle, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the narrow feature slice.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-primary"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "5 slices: design, qa-author, impl-primary, review, qa-verify",
+  "task_class": "small"
+}
+
+PRIOR_ITERATION:
+{}

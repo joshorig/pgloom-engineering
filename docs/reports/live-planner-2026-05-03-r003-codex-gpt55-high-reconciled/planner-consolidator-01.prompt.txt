@@ -1,0 +1,536 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to `tests/` and/or
+  `qa/fixtures/`; implementer write paths must not include those paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total and merge redundant QA/review/finalization work.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "Semantic coverage: inclusive ascendingRange, descendingRange, and forEach(fromKey, toKey, visitor) return only keys within bounds and preserve expected order.",
+      "Edge-case coverage: empty range, single-key range, full-keyspace range, and reverse scan behavior are covered.",
+      "Variant coverage: SINGLE and DOUBLE stores are both covered across direct and mmap implementations where available.",
+      "Allocation coverage: visitor hot path avoids Consumer boxing and per-record heap allocation, with qa/smoke.sh allocation gate green.",
+      "Configured QA gate coverage: ./qa/smoke.sh, ./qa/regression.sh, and ./gradlew test pass before final PR."
+    ],
+    "affected_surfaces": [
+      "store/",
+      "tests/",
+      "qa/fixtures/",
+      "docs/Stores.md",
+      "qa/"
+    ],
+    "assumptions": [
+      "The public store API lives under store/src/main/java/com/joshorig/ull/lvc/store/ and direct/mmap implementations share compatible slot traversal semantics.",
+      "Range bounds are integer keys mapped through the existing IntKeyMapper/slot protocol, and inclusive semantics apply to both fromKey and toKey.",
+      "Reverse range inputs must not throw solely because fromKey is greater than toKey; descendingRange covers reverse traversal explicitly.",
+      "This feature is not lifecycle, durability, or stateful recovery work, so snapshot, CRC, journal, stale-state, and partial-acceptance recovery criteria are intentionally excluded."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Range tests cover empty inclusive range.",
+        "Range tests cover a single-key inclusive range.",
+        "Range tests cover full-keyspace traversal.",
+        "Range tests cover descending/reverse scan behavior.",
+        "The same semantic suite covers SINGLE and DOUBLE variants.",
+        "qa/smoke.sh passes and allocation gate stays green."
+      ],
+      "concurrency_protocol": "Range scans must respect the existing SINGLE/DOUBLE seqlock/read protocol and must not introduce shared mutable iterator state, per-call heap objects, or Consumer/lambda boxing on the visitor hot path.",
+      "forbidden_alternatives": [
+        "Do not implement sorted-by-value queries.",
+        "Do not add composite keys.",
+        "Do not add secondary indexes.",
+        "Do not use java.util.function.Consumer or boxed key/value callbacks on the hot path.",
+        "Do not allocate iterator/list snapshots to serve range scans."
+      ],
+      "hard_constraints": [
+        "Visitor hot path must remain zero-allocation and keep the allocation gate green.",
+        "Bounds are inclusive.",
+        "Cover empty range, single-key range, full-keyspace, reverse scan, SINGLE stores, and DOUBLE stores.",
+        "Optional key-prefix filtering must use primitive/preallocated conventions from com.ull.lvc.pool where applicable.",
+        "Do not change guaranteed messaging durability protocols."
+      ],
+      "ownership_boundaries": "The store module owns API and implementation changes; QA owns failing range tests and fixtures only; docs may describe usage but must not redefine semantics independently of tests.",
+      "persistence_protocol": "Direct and mmap stores must scan current in-place slot contents only; range APIs must not alter mmap layout, journal format, cursor state, snapshots, checkpoints, or recovery metadata.",
+      "public_api": "Add StoreVisitor as a zero-allocation primitive visitor interface and expose forEach(fromKey, toKey, visitor), ascendingRange(fromKey, toKey, visitor), and descendingRange(fromKey, toKey, visitor) on the store-facing APIs used by SINGLE and DOUBLE direct/mmap stores."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement zero-allocation inclusive range-query APIs for SINGLE and DOUBLE stores, including ascending and descending scans and visitor-based optional prefix filtering without Consumer boxing.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Existing store APIs may not have a shared interface, requiring careful placement of default methods or facade methods without widening unrelated modules.",
+      "Inclusive key bounds may conflict with slot-id mapping if IntKeyMapper semantics are mistaken.",
+      "Descending traversal can accidentally duplicate or skip boundary slots, especially for full-keyspace and single-key ranges.",
+      "Mmap and direct implementations may diverge if traversal is copied instead of sharing a small internal primitive helper.",
+      "Allocation gate may fail if tests or implementation use lambdas, boxed integers, streams, iterators, or temporary collections on the scan path."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "docs/Stores.md",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "RangeSemanticsNotes"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/"
+        ],
+        "objective": "Specify the StoreVisitor API, inclusive bounds semantics, direct/mmap traversal contract, and test names for R-003 in docs/Stores.md and design notes.",
+        "role": "designer",
+        "slice_id": "design-feature-contract",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design-feature-contract"
+        ],
+        "expected_outputs": [
+          "FailingRangeQueryTests",
+          "RangeFixtureData"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "docs/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Write failing range API tests and fixtures for empty, single-key, full-keyspace, reverse, SINGLE, DOUBLE, direct, and mmap store variants.",
+        "role": "qa",
+        "slice_id": "qa-author-range-tests",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/direct/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/mmap/",
+          "docs/Stores.md"
+        ],
+        "depends_on": [
+          "qa-author-range-tests"
+        ],
+        "expected_outputs": [
+          "StoreVisitorApi",
+          "SingleRangeImplementation",
+          "DoubleRangeImplementation",
+          "RangeDocsUpdate"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/",
+          "benchmarks/"
+        ],
+        "objective": "Add StoreVisitor and implement forEach, ascendingRange, and descendingRange across Stores, DirectStores, SingleDirectStore, DoubleDirectStore, MmapStores, SingleMmapStore, and DoubleMmapStore.",
+        "role": "implementer",
+        "slice_id": "implement-store-range-api",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/",
+          "docs/Stores.md",
+          "tests/"
+        ],
+        "depends_on": [
+          "implement-store-range-api"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "RequiredFixList",
+          "ApiCompatibilityAssessment"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/",
+          "benchmarks/",
+          "qa/fixtures/"
+        ],
+        "objective": "Review StoreVisitor and range traversal implementation for zero-allocation behavior, inclusive semantics, seqlock correctness, and absence of forbidden query features.",
+        "role": "reviewer",
+        "slice_id": "review-range-api",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review-range-api"
+        ],
+        "expected_outputs": [
+          "SmokeResult",
+          "RegressionResult",
+          "FullSuiteResult",
+          "AllocationGateResult"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "docs/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Run smoke, full regression, full suite, and allocation-gate verification for the completed R-003 range-query implementation.",
+        "role": "qa",
+        "slice_id": "qa-verify-range-regression",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "docs/Stores.md",
+          "repo-memory/ROADMAP.md"
+        ],
+        "depends_on": [
+          "qa-verify-range-regression"
+        ],
+        "expected_outputs": [
+          "FinalFeaturePrSummary",
+          "HumanMergeGateRecord"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/",
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/"
+        ],
+        "objective": "Prepare the final R-003 feature PR summary with implementation scope, acceptance evidence, residual risks, and explicit human merge gate.",
+        "role": "reviewer",
+        "slice_id": "final-human-gate",
+        "task_type": "engineering.finalization",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "Empty inclusive range returns no visitor calls for SINGLE and DOUBLE stores.",
+      "Single-key inclusive range visits exactly the matching key/value once for SINGLE and DOUBLE stores.",
+      "Full-keyspace range visits all populated keys in ascending and descending order without materializing results.",
+      "Reverse scan visits keys high-to-low with inclusive endpoints.",
+      "Prefix-filtered range scans visit only matching key-prefix entries without Consumer boxing or visitor hot-path allocation.",
+      "Direct and mmap-backed SINGLE and DOUBLE store variants remain covered where the store API exposes both backends.",
+      "qa/smoke.sh passes.",
+      "qa/regression.sh passes.",
+      "Allocation gate stays green on the visitor hot path."
+    ],
+    "affected_surfaces": [
+      "store/",
+      "docs/",
+      "tests/",
+      "qa/fixtures/",
+      "qa/"
+    ],
+    "assumptions": [
+      "The range API belongs in the store module public surface and should be documented in docs/Stores.md.",
+      "Existing SINGLE and DOUBLE direct and mmap stores expose enough slot/key iteration state to scan in key order without allocating on the visitor hot path.",
+      "The allocation gate is exercised by qa/smoke.sh and must remain green after adding the visitor range path.",
+      "Prefix filtering is key-prefix based only and must not imply sorted-by-value, composite-key, secondary-index, or materialized result semantics."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Range tests cover empty range, single-key range, full-keyspace range, and reverse scan.",
+        "SINGLE and DOUBLE store variants are both covered.",
+        "Optional key-prefix filter avoids Consumer boxing and allocation on the visitor hot path.",
+        "qa/smoke.sh passes.",
+        "Allocation gate stays green."
+      ],
+      "concurrency_protocol": "Range scans must respect the existing store read/seqlock protocol for SINGLE and DOUBLE variants, present each accepted key/value through the visitor without copying unless existing read APIs require a reusable pooled slice, and avoid retaining mutable buffer views after the visitor callback returns.",
+      "forbidden_alternatives": [
+        "Do not introduce sorted-by-value queries.",
+        "Do not introduce composite keys.",
+        "Do not introduce secondary indexes.",
+        "Do not allocate Consumer wrappers, Iterators, Streams, boxed Integers, boxed Longs, or result collections on the visitor hot path.",
+        "Do not change journal, cursor, checkpoint, snapshot, or mmap file durability formats for this feature."
+      ],
+      "hard_constraints": [
+        "Visitor hot path must be zero-allocation and avoid Consumer, lambda boxing, iterator objects, streams, collections, and materialized result lists.",
+        "Bounds are inclusive for both fromKey and toKey.",
+        "Ascending scans visit keys from low to high and descending scans visit keys from high to low.",
+        "Reverse ranges are accepted and must produce descending traversal when using descendingRange; ascendingRange with fromKey greater than toKey must have explicitly tested empty semantics unless the design contract chooses normalization.",
+        "SINGLE and DOUBLE variants must both be covered for direct and mmap-backed implementations where those APIs exist.",
+        "Reuse existing preallocated-pool conventions from com.ull.lvc.pool where a reusable slice or callback carrier is necessary."
+      ],
+      "ownership_boundaries": "Store API contracts, direct/mmap SINGLE and DOUBLE implementations, and store documentation are owned by the implementation slices; tests and fixtures are owned exclusively by QA author/verify slices; reviewers may inspect all touched areas but should not author feature code.",
+      "persistence_protocol": "R-003 is a read/query feature and does not alter journal, mmap layout, snapshot, cursor, checkpoint, or durability formats; mmap-backed range scans must use the current on-disk slot layout without migration.",
+      "public_api": "Add com.joshorig.ull.lvc.store.StoreVisitor as a primitive, allocation-free visitor callback and expose inclusive range methods on store public surfaces: forEach(fromKey, toKey, visitor), ascendingRange(fromKey, toKey, visitor), descendingRange(fromKey, toKey, visitor), plus optional prefix-filtered overloads or a primitive prefix predicate/filter type if existing key mapping requires it."
+    },
+    "feature_id": "R-003",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "council_decides",
+    "problem_statement": "Implement inclusive, zero-allocation range scans for SINGLE and DOUBLE stores via StoreVisitor-based APIs, covering ascending, descending, full-keyspace, empty, single-key, reverse, and optional key-prefix filtered scans without adding index/query features outside store key order.",
+    "project": "lvc-standard",
+    "risk_register": [
+      "Existing store interfaces may not share a common type for direct and mmap variants, requiring careful API placement to avoid source incompatibility.",
+      "Visitor buffer lifetime can be misused if callbacks receive mutable slices without clear documentation.",
+      "Naive range iteration can allocate via lambdas, boxing, streams, temporary lists, or pooled slice churn.",
+      "Inclusive endpoint semantics and reverse-range semantics can diverge between SINGLE and DOUBLE implementations.",
+      "Prefix filtering could accidentally become a secondary-index-like feature if not kept as a primitive scan predicate."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "docs/Stores.md",
+          "store/src/main/java/com/joshorig/ull/lvc/store/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "API method signatures",
+          "Bounds and prefix-filter semantics"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/",
+          "guaranteed-aeron/",
+          "guaranteed-inproc/"
+        ],
+        "objective": "Finalize the R-003 API contract for StoreVisitor and inclusive ascendingRange/descendingRange/forEach semantics across Stores.java, DirectStores, MmapStores, SingleDirectStore, DoubleDirectStore, SingleMmapStore, DoubleMmapStore, and docs/Stores.md.",
+        "role": "designer",
+        "slice_id": "design-feature-contract",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "design-feature-contract"
+        ],
+        "expected_outputs": [
+          "Failing range-query semantic tests",
+          "Allocation-sensitive visitor hot-path test or fixture",
+          "SINGLE and DOUBLE coverage fixtures"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "docs/",
+          "core/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Author failing range-query tests and fixtures covering empty, single-key, full-keyspace, reverse, prefix-filtered, SINGLE, and DOUBLE cases without editing production code.",
+        "role": "qa",
+        "slice_id": "qa-author-range-tests",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/",
+          "docs/Stores.md"
+        ],
+        "depends_on": [
+          "qa-author-range-tests"
+        ],
+        "expected_outputs": [
+          "StoreVisitor public interface",
+          "Range API implementations for SINGLE and DOUBLE stores",
+          "Documentation for inclusive bounds and visitor lifetime"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/",
+          "guaranteed-aeron/",
+          "guaranteed-inproc/",
+          "benchmarks/"
+        ],
+        "objective": "Implement StoreVisitor and inclusive zero-allocation forEach/ascendingRange/descendingRange support in store public APIs and SINGLE/DOUBLE direct and mmap implementations.",
+        "role": "implementer",
+        "slice_id": "implement-store-range-api",
+        "task_type": "engineering.implementation",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "store/",
+          "docs/",
+          "tests/",
+          "qa/fixtures/",
+          "qa/"
+        ],
+        "depends_on": [
+          "implement-store-range-api"
+        ],
+        "expected_outputs": [
+          "Review findings with file and line references",
+          "Required fixes or explicit approval",
+          "Allocation-risk assessment"
+        ],
+        "forbidden_paths": [
+          "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/",
+          "guaranteed-aeron/",
+          "guaranteed-inproc/"
+        ],
+        "objective": "Review the R-003 store range-query implementation for public API consistency, inclusive bounds correctness, visitor lifetime safety, zero-allocation hot path behavior, and forbidden feature creep.",
+        "role": "reviewer",
+        "slice_id": "review-range-api",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":store:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "review-range-api"
+        ],
+        "expected_outputs": [
+          "Smoke verification result",
+          "Regression verification result",
+          "Full-suite verification result",
+          "Allocation gate result",
+          "Final PR readiness note for human merge"
+        ],
+        "forbidden_paths": [
+          "store/",
+          "docs/",
+          "core/",
+          "benchmarks/",
+          "repo-memory/"
+        ],
+        "objective": "Run smoke, full regression, full-suite verification, and allocation-gate checks for R-003, then prepare the final feature PR for human merge without editing production code.",
+        "role": "qa",
+        "slice_id": "qa-verify-range-api-and-finalize",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ]
+        ]
+      }
+    ]
+  }
+]

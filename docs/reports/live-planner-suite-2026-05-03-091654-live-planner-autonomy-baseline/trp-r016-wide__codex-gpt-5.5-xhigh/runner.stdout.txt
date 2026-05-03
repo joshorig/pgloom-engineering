@@ -1,0 +1,20 @@
+{
+  "accepted_at_iteration": null,
+  "backend": "codex",
+  "critic_blocking_findings": 2,
+  "critic_verdict": "revise",
+  "model": "gpt-5.5",
+  "output": "codex/outcome.json",
+  "reasoning": "xhigh",
+  "roles": [],
+  "slice_count": 0,
+  "status": "exhausted",
+  "token_savior": {
+    "input_tokens_after_savior": 8546,
+    "input_tokens_original": 40576,
+    "method": "token_savior_pack_context",
+    "reduction_ratio": 0.7893828864353313,
+    "tokens_saved": 32030
+  },
+  "validation_error_count": 0
+}

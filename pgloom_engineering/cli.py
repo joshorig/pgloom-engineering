@@ -12,6 +12,7 @@ from pgloom.workflows import create_workflow
 from rich.console import Console
 from rich.table import Table
 
+from pgloom_engineering.config import get_settings
 from pgloom_engineering.contracts import FeatureGoalContract
 from pgloom_engineering.db.migrations import check as check_engineering_schema
 from pgloom_engineering.db.migrations import migrate as migrate_engineering_schema
@@ -21,6 +22,9 @@ from pgloom_engineering.features import (
     get_feature_aggregate,
     list_features,
 )
+from pgloom_engineering.model_provider import EngineeringCLIModelProvider
+from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
+from pgloom_engineering.planner.exceptions import PlannerCouncilExhausted
 from pgloom_engineering.projects import (
     ProjectConfig,
     default_agent_topology,
@@ -47,6 +51,9 @@ app.add_typer(project_app, name="project")
 
 worker_app = typer.Typer(help="Engineering worker commands.")
 app.add_typer(worker_app, name="worker")
+
+plan_app = typer.Typer(help="Planner council commands.")
+app.add_typer(plan_app, name="plan")
 
 console = Console()
 
@@ -455,9 +462,73 @@ def feature_show(
     _print_feature_aggregate(aggregate)
 
 
-@app.command("plan")
-def plan() -> None:
-    console.print("planning handler not implemented yet")
+@plan_app.command("dry-run")
+def plan_dry_run(
+    feature_goal: Annotated[
+        Path,
+        typer.Option(
+            "--feature-goal",
+            exists=True,
+            dir_okay=False,
+            help="FeatureGoalContract JSON.",
+        ),
+    ],
+    project_root: Annotated[
+        Path,
+        typer.Option("--project-root", exists=True, file_okay=False, help="Project root."),
+    ],
+    panelist_profile: Annotated[
+        str,
+        typer.Option("--panelist-profile", help="CLIModelProfile name for panelists."),
+    ] = "planner-panelist",
+    critic_profile: Annotated[
+        str,
+        typer.Option("--critic-profile", help="CLIModelProfile name for critic."),
+    ] = "planner-critic",
+    consolidator_profile: Annotated[
+        str,
+        typer.Option("--consolidator-profile", help="CLIModelProfile name for consolidator."),
+    ] = "planner-consolidator",
+    max_iterations: Annotated[
+        int,
+        typer.Option("--max-iterations", min=1, help="Maximum council iterations."),
+    ] = 3,
+) -> None:
+    goal = FeatureGoalContract.model_validate(json.loads(feature_goal.read_text(encoding="utf-8")))
+    settings = get_settings()
+    config = CouncilConfig(
+        panelist_count=settings.planner_panelist_count,
+        max_iterations=max_iterations,
+        panelist_profile=panelist_profile,
+        critic_profile=critic_profile,
+        consolidator_profile=consolidator_profile,
+        timeout_seconds_per_invocation=settings.planner_invocation_timeout_seconds,
+        command=settings.planner_command,
+        profile_commands=settings.planner_profile_commands,
+    )
+    council = _build_dry_run_council(config)
+    try:
+        outcome = council.run(
+            feature_goal=goal,
+            project_context=ProjectContext(
+                project_root=project_root.resolve(),
+                qa_smoke_path=project_root.resolve().joinpath("qa/smoke.sh"),
+                qa_regression_path=project_root.resolve().joinpath("qa/regression.sh"),
+            ),
+        )
+    except PlannerCouncilExhausted as exc:
+        payload = {
+            "error": "planner_council_exhausted",
+            "iterations": [
+                item.model_dump(mode="json", exclude={"proposals": {"__all__": {"raw_response"}}})
+                if hasattr(item, "model_dump")
+                else item
+                for item in exc.iterations
+            ],
+        }
+        typer.echo(_json(payload))
+        raise typer.Exit(2) from exc
+    typer.echo(_json(outcome.model_dump(mode="json")))
 
 
 @app.command("implement")
@@ -477,6 +548,10 @@ def feature_status() -> None:
 
 def _json(value: object) -> str:
     return json.dumps(value, default=str, indent=2, sort_keys=True)
+
+
+def _build_dry_run_council(config: CouncilConfig) -> PlannerCouncil:
+    return PlannerCouncil(config=config, provider=EngineeringCLIModelProvider())
 
 
 def _project_set_state(

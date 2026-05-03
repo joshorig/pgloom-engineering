@@ -1,0 +1,25 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "dag-framework",
+  "goal": "Implement R-006 backpressure policy selector with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK exposed via GraphPartitionRunner.Builder.",
+  "requirements": [
+    "Add BackpressurePolicy enum and per-edge config.",
+    "Implement overflow-to-disk via mmap spill file.",
+    "Support edge-level policy hot-swap.",
+    "Test all four policies under sustained overrun.",
+    "Assert spill file reads back correctly on drain."
+  ],
+  "constraints": [
+    "Do not add custom policies.",
+    "Do not add priority-based shedding.",
+    "Do not add cross-partition backpressure propagation.",
+    "Reuse MmapJournal machinery from lvc-standard instead of inventing a new spill format.",
+    "Allocation gate must stay green."
+  ],
+  "acceptance_criteria": [
+    "Test matrix covers DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK under sustained overrun.",
+    "Overflow-to-disk spill file drains and reads back correctly.",
+    "jmhSmokeCheck remains green.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ]
+}

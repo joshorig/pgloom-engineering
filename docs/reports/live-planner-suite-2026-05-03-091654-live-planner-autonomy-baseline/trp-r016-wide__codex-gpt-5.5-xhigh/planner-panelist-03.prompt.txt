@@ -1,0 +1,273 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- Prefer concrete paths already present in PROJECT_CONTEXT.relevant_paths or
+  PROJECT_CONTEXT.qa_write_paths. Do not invent conventional Gradle paths such
+  as `benchmarks/src/main/java/` unless they appear in context.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Wide/system features should not be collapsed into one broad implementer.
+  Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants when those concerns exist.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "LLM-authored equities.relativeVolumeZ.v1 round-trips propose, validate, compile, backtest, promote, and contributes to live ranking.",
+    "Validator rejects unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+    "Promoted signals show author provenance in opportunities.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Do not add Java code generation for signals.",
+    "Do not allow auto-promotion without human/operator approval.",
+    "Reuse R-015 backtest path."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-016 SignalSpec validator, compiler, and authoring API so declarative signal specs can be validated, compiled, backtested, reviewed, and promoted with operator approval.",
+  "project": "trade-research-platform",
+  "requirements": [
+    "Add platform-dsl/signalspec validator and compiler targeting existing FeatureNode primitives.",
+    "Add propose/catalog/get/promote/archive signal API endpoints.",
+    "Persist one row per SignalSpec plus YAML body.",
+    "Extend explainability envelope with author, signalId, signalVersion, proposalId, and trackRecord.",
+    "Add UI catalog view showing author and track record."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "risk",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "risk",
+    "constraint",
+    "decision",
+    "memory",
+    "failure",
+    "stale",
+    "security",
+    "concurrency",
+    "migration",
+    "persistence"
+  ],
+  "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+  "qa_regression_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "relevant_paths": [
+    "specs/HISTORICAL_STORE_DECISION.md",
+    "specs/HISTORICAL_STORE_SCHEMA.md",
+    "specs/KDB_SCHEMA.md",
+    "app-api/build.gradle",
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "specs/SIGNAL_SPEC.md",
+    "specs/JAVA_DSL_SPEC.md",
+    "specs/CYCLE_READINESS.md"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nPackages (18): app-api, app-core, config, crypto-extension, docs, kdb, plans, platform-dsl, platform-ingest-crypto-coingecko, platform-ingest-crypto-coinglass, platform-ingest-macro-fred, platform-research, platform-runtime, qa, repo-memory\n# Search Hits: R-016\n[{'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/UI_ROADMAP.md', 'line_number': 218, 'content': '- one LLM-authored signal has been promoted to live via the UI with full provenance rendering, end-to-end (R-016 acceptance scenario)'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 25, 'content': '# defined in repo-memory/ROADMAP.md (R-015, R-016, R-017, R-018) plus'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 225, 'content': '  - id: R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 279, 'content': '    depends_on: [R-015, R-016]'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 325, 'content': '    depends_on: [R-015, R-016, R-018]'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 363, 'content': '      - An MCP-native agent (Claude) given only the MCP server endpoint plus specs/SIGNAL_SPEC.md round-trips the R-016 acceptance scenario end to end without human scaffolding.'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 380, 'content': '  - R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 393, 'content': '  - docs/PHASE1_DATA_CONTRACT.md    # extended in R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 404, 'content': '  - repo-memory/ROADMAP.md shows R-015, R-016, R-017, R-018 in the Completed section; R-008 is permanently marked SUPERSEDED.'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 8, 'content': '| `IMPLEMENTATION_PROMPT.yaml` | **A \u2014 LLM alpha core (original)** | Canonical checkout (repo root) | R-015, R-016, R-018, R-017 \u2014 superseded by the continuation prompt below now that R-015 has merged. |'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 9, 'content': '| `IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml` | **A continuation \u2014 picks up R-016/R-018/R-017** | Canonical checkout (repo root) | R-016, R-018, R-017. Includes a preflight gate that verifies R-015 is already on `main`. |'}]\n# Search Hits: API\n[{'file': 'AGENTS.md', 'line_number': 15, 'content': '- Spring Boot + React/TypeScript are the API/UI layers.'}, {'file': 'AGENTS.md', 'line_number': 16, 'content': '- Live runtime publishers must remain separate non-web processes and should publish Redis read models consumed by the Spring API layer.'}, {'file': 'AGENTS.md', 'line_number': 102, 'content': 'When adding new modules or APIs:'}, {'file': 'AGENTS.md', 'line_number': 110, 'content': '- UI-facing API contract changes must update `docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md` and `docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md`'}, {'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'README.md', 'line_number': 12, 'content': 'The crypto runtime is no longer ingress-only: this repo already contains an implemented BTC/ETH-first cycle graph with local feature extraction, asset aggregation, holder-regime scoring, basis/dislocation discovery, derivatives-reflexivity and leadership-aware cross-asset allocation, refined take-profit candidate and staged band logic, deterministic replay coverage, dedicated crypto JMH node benchmarks, and a minimal Redis/API snapshot seam. The next crypto work is calibration, explainability/serving-surface widening, proxy-equity lane calibration, live-ingest hardening, and broader historical-serving expansion rather than initial bring-up.'}, {'file': 'README.md', 'line_number': 39, 'content': '- `docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md`'}, {'file': 'README.md', 'line_number': 71, 'content': '- `app-api/` \u2014 Spring Boot API process that serves UI-facing `/api/*` routes from Redis hot views and owns the consumer-side QuestDB historical-read layer, including real `/api/opportunities/{id}/history`, `/api/backtests`, `/api/performance/summary`, `/api/decisions`, `/api/risk/summary`, `/api/deployments`, and `/api/admin/*` routes'}, {'file': 'README.md', 'line_number': 97, 'content': '- this repo owns domain events, graph assembly, runtime nodes, vendor ingest, research helpers, serving/API contracts, deployment wiring, and UI'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/ConfigStateService.java', 'line_number': 144, 'content': '            warnings.add(\"Local-slice preview only persists in the API process until runtime-side apply is wired.\");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/PositionsService.java', 'line_number': 201, 'content': '                    .header(\"APCA-API-KEY-ID\", apiKey)'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/PositionsService.java', 'line_number': 202, 'content': '                    .header(\"APCA-API-SECRET-KEY\", apiSecret)'}]\n# ROADMAP relevant entry\n**Theme:** Complete BTC/ETH crypto runtime to parity with equities on the Phase 1 explainability/trust contracts AND pull equities up to crypto's level on source-help/provenance depth; wire macro + proxy-equity input lanes; implement the QuestDB historical store (decision closed 2026-04-23, see `specs/HISTORICAL_STORE_DECISION.md`); stand up the UI-driven backtest runner + LLM-authored signal loop (`specs/SIGNAL_SPEC.md`) so trading alpha can be proposed by an LLM and promoted by a human operator; then extend into altcoins, options, and macro signal graphs.\n### [R-010] Historical storage alternatives evaluation\n- **Outcome:** QuestDB (Apache 2.0) selected as the canonical historical store, paired with a date-partitioned Apache Parquet lake as the authoritative capture substrate and notebook-research surface. Decision and rationale landed in `specs/HISTORICAL_STORE_DECISION.md`; logical schema in `specs/HISTORICAL_STORE_SCHEMA.md`; DDL in `questdb/schema_bootstrap.sql`. `repo-memory/DECISIONS.md` updated. `specs/KDB_SCHEMA.md` marked deprecated; `kdb/*.q` scripts archived under `docs/archive/kdb-legacy/`.\n# DECISIONS relevant excerpt\n_Architectural decisions with enough context that a future agent can tell whether a proposed change is undoing something load-bearing. Schema:_\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n**Decision:** Redis is the hot serving layer \u2014 latest snapshots, rankings, short time windows \u2014 written by `app-core` as projections from the runtime graph. A columnar time-series store is the canonical historical and replay store; replay feeds back into the graph for research workflows. `app-api` reads only from Redis and the historical store; it never writes to either.\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n**Consequences:** `app-api` is allocation-light and read-only. Any change that adds a DB write path in `app-api` or a direct historical-store read from the UI is a boundary violation and needs a new DECISIONS entry. Rules out adding Postgres / SQLite / Prisma / Drizzle as an OLTP layer \u2014 persistence is Redis + the historical store.\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n**Context:** The prior decision named KDB+ as the canonical historical store. KDB+ is proprietary and licensed; the platform requirement is a store that is permanently free, self-hostable, and not subject to BSL / source-available licenses. A three-perspective council review (architect / product-migration / research-strategy) shortlisted four permissive-licensed candidates (QuestDB, ClickHouse, TimescaleDB, DuckDB+Parquet). There is zero Java code coupling to KDB+ today \u2014 the KDB assets are only schema specs, `.q` scripts, YAML entries, and doc references \u2014 so the switch is low-risk.\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n**Decision:** Adopt **QuestDB** (Apache 2.0) as the canonical historical store. Pair it with a date-partitioned **Apache Parquet lake** as the authoritative capture substrate and the research-notebook surface (DuckDB / Polars read from the lake directly). A background bulk-loader moves captured Parquet partitions into QuestDB for replay cursors and API historical reads.\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n- Escape clause: if QuestDB fails on sort stability, Python research ergonomics, or large-window joins within 6 months, reswap to ClickHouse (~3 weeks; Parquet lake unchanged). See `specs/HISTORICAL_STORE_DECISION.md`.\n## (pre-2026-04-13) \u2014 Playwright as the canonical smoke; Vitest for unit\n**Decision:** Vitest owns unit tests (28 files, including `api-contract-snapshots.test.ts` as the API contract gate). Playwright owns end-to-end across Chromium + WebKit + iPhone 13 profiles. The golden-path flow `\"cockpit top opportunity launches backtest with the selected symbol\"` is the one test that must never break."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-dsl-compiler",
+    "impl-api-workflow",
+    "impl-ui-provenance",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "platform-dsl/ and related signal compiler paths",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement validation and compilation for declarative signal specs.",
+      "role": "implementer",
+      "slice_id": "impl-dsl-compiler",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "app-api/ and app-core workflow paths",
+      "depends_on": [
+        "impl-dsl-compiler"
+      ],
+      "purpose": "Implement propose/catalog/get/promote/archive API workflow and persistence.",
+      "role": "implementer",
+      "slice_id": "impl-api-workflow",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "ui/ and explainability/provenance display paths",
+      "depends_on": [
+        "impl-api-workflow"
+      ],
+      "purpose": "Implement UI catalog/provenance surface and explainability envelope wiring.",
+      "role": "implementer",
+      "slice_id": "impl-ui-provenance",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-ui-provenance"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+PRIOR_ITERATION:
+{}

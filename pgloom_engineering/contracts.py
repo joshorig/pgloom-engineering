@@ -7,6 +7,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from pgloom_engineering.path_policy import is_qa_write_path
+
 CONTRACT_VERSION = "engineering.contracts.v1"
 
 
@@ -193,6 +195,8 @@ def validate_plan_contract(
     errors: list[dict[str, Any]] = []
     if not contract.acceptance_test_matrix:
         errors.append(_error("missing_acceptance_matrix", "Plan must define acceptance tests."))
+    if not contract.affected_surfaces:
+        errors.append(_error("missing_affected_surfaces", "Plan must define affected surfaces."))
     if not contract.task_slices:
         errors.append(_error("missing_task_slices", "Plan must emit at least one task slice."))
     if contract.finalization_policy != "open_final_feature_pr_for_human_merge":
@@ -204,6 +208,15 @@ def validate_plan_contract(
     errors.extend(_validate_design_contract_drift(contract, origin_contract=origin_contract))
     errors.extend(_validate_lifecycle_acceptance(contract))
     for task_slice in contract.task_slices:
+        if task_slice.role not in {"designer", "implementer", "reviewer", "qa", "historian"}:
+            errors.append(
+                _error(
+                    "invalid_task_role",
+                    f"{task_slice.slice_id} has unsupported role {task_slice.role}.",
+                )
+            )
+        errors.extend(_validate_role_task_type(task_slice))
+        errors.extend(_validate_role_path_policy(task_slice))
         if not task_slice.allowed_paths:
             errors.append(
                 _error("missing_allowed_paths", f"{task_slice.slice_id} must name allowed paths.")
@@ -225,6 +238,53 @@ def validate_plan_contract(
         if not task_slice.expected_outputs:
             errors.append(
                 _error("missing_expected_outputs", f"{task_slice.slice_id} must define outputs.")
+            )
+    return errors
+
+
+def _validate_role_task_type(task_slice: TaskSliceContract) -> list[dict[str, str]]:
+    allowed = {
+        "designer": {"engineering.design", "engineering.designer"},
+        "implementer": {"engineering.implement", "engineering.implementation"},
+        "reviewer": {"engineering.review"},
+        "qa": {"engineering.qa", "engineering.qa.author", "engineering.qa.verify"},
+        "historian": {"engineering.history", "engineering.historian"},
+    }.get(task_slice.role)
+    if allowed is None or task_slice.task_type in allowed:
+        return []
+    return [
+        _error(
+            "invalid_role_task_type",
+            (
+                f"{task_slice.slice_id} role {task_slice.role} cannot use "
+                f"task_type {task_slice.task_type}."
+            ),
+        )
+    ]
+
+
+def _validate_role_path_policy(task_slice: TaskSliceContract) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    if task_slice.task_type in {"engineering.qa.author", "engineering.qa.verify"}:
+        bad_paths = [path for path in task_slice.allowed_paths if not is_qa_write_path(path)]
+        if bad_paths:
+            errors.append(
+                _error(
+                    "qa_paths_not_restricted",
+                    (
+                        f"{task_slice.slice_id} QA allowed_paths must be restricted "
+                        "to QA/test roots."
+                    ),
+                )
+            )
+    if task_slice.role == "implementer":
+        bad_paths = [path for path in task_slice.allowed_paths if is_qa_write_path(path)]
+        if bad_paths:
+            errors.append(
+                _error(
+                    "implementer_claims_qa_paths",
+                    f"{task_slice.slice_id} implementer slices may not write QA test paths.",
+                )
             )
     return errors
 
@@ -268,11 +328,10 @@ def _validate_design_contract_drift(
 def _validate_lifecycle_acceptance(contract: PlanContract) -> list[dict[str, str]]:
     text = " ".join(
         [
+            contract.problem_statement,
             contract.design_contract.public_api,
-            contract.design_contract.ownership_boundaries,
-            contract.design_contract.concurrency_protocol,
-            contract.design_contract.persistence_protocol,
-            " ".join(contract.design_contract.hard_constraints),
+            " ".join(contract.design_contract.acceptance_tests),
+            " ".join(contract.acceptance_test_matrix),
         ]
     ).lower()
     if not any(
@@ -283,8 +342,6 @@ def _validate_lifecycle_acceptance(contract: PlanContract) -> list[dict[str, str
             "lifecycle",
             "state machine",
             "corruption",
-            "concurrency",
-            "persistence",
             "recovery",
         )
     ):

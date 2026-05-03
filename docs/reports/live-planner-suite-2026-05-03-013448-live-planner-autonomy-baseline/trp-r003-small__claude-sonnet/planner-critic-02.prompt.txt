@@ -1,0 +1,486 @@
+Review the PlanContract against every rubric check.
+
+Emit exactly one JSON object with:
+- rationale: string
+- per_check_results: list of CriticCheckResult objects
+
+Do not decide the final verdict. The runtime computes accept/revise/reject.
+Return exactly one result for every check_id below. Do not omit any check.
+
+### check_design_contract_completeness
+Lifecycle work must define persistence and concurrency protocols.
+
+### check_slice_path_coverage
+Every affected surface must be covered by slice allowed paths and tests.
+
+### check_forbidden_path_overlap
+No task slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+Cross-role boundaries are allowed: for example, a QA slice can forbid source paths
+that an implementer slice allows.
+
+### check_verification_commands
+Implementer and QA slices must define qa or Gradle verification commands.
+
+### check_lifecycle_coverage
+Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+
+### check_topology_consistency
+SINGLE topology is incompatible with multiple implementer slices.
+
+### check_reviewer_present
+Plans must include at least one reviewer slice.
+
+### check_qa_author_present
+Plans must include a test-first engineering.qa.author slice before implementers.
+
+### check_qa_verify_present
+Plans must include an engineering.qa.verify slice after reviewers.
+
+### check_qa_paths_disjoint
+QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+
+### check_orphan_slices
+Non-terminal slices should feed a later reviewer, QA, or historian slice.
+
+### check_finalization_policy
+Final feature PR merge must remain human-gated.
+
+### check_objective_specificity
+Slice objectives should name concrete artifacts, files, tests, or metrics.
+
+### check_risk_register_present
+Lifecycle work should carry an explicit risk register.
+
+### check_roadmap_dependency_handling
+Dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+
+### check_hot_path_invariants
+Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+
+### check_small_feature_compactness
+Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+
+### check_design_contract_completeness
+Name: Design contract completeness
+Severity: blocking
+Rubric: Lifecycle work must define persistence and concurrency protocols.
+### check_slice_path_coverage
+Name: Slice path coverage
+Severity: blocking
+Rubric: Every affected surface must be covered by slice allowed paths and tests.
+### check_forbidden_path_overlap
+Name: Forbidden-path overlap
+Severity: blocking
+Rubric: No slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+### check_verification_commands
+Name: Verification command coverage
+Severity: blocking
+Rubric: Implementer and QA slices must define qa or Gradle verification commands.
+### check_lifecycle_coverage
+Name: Acceptance matrix lifecycle coverage
+Severity: blocking
+Rubric: Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+### check_topology_consistency
+Name: Implementation topology consistency
+Severity: blocking
+Rubric: SINGLE topology is incompatible with multiple implementer slices.
+### check_reviewer_present
+Name: Reviewer slice presence
+Severity: blocking
+Rubric: Plans must include at least one reviewer slice.
+### check_qa_author_present
+Name: QA author slice presence
+Severity: blocking
+Rubric: Plans must include a test-first engineering.qa.author slice before implementers.
+### check_qa_verify_present
+Name: QA verify slice presence
+Severity: blocking
+Rubric: Plans must include an engineering.qa.verify slice after reviewers.
+### check_qa_paths_disjoint
+Name: QA paths disjoint from source
+Severity: blocking
+Rubric: QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+### check_orphan_slices
+Name: Orphan slice detection
+Severity: advisory
+Rubric: Non-terminal slices should feed a later reviewer, QA, or historian slice.
+### check_finalization_policy
+Name: Finalization policy locked to human merge
+Severity: blocking
+Rubric: Final feature PR merge must remain human-gated.
+### check_objective_specificity
+Name: Objective specificity
+Severity: advisory
+Rubric: Slice objectives should name concrete artifacts, files, tests, or metrics.
+### check_risk_register_present
+Name: Risk register present
+Severity: advisory
+Rubric: Lifecycle work should carry an explicit risk register.
+### check_roadmap_dependency_handling
+Name: Roadmap dependency handling
+Severity: blocking
+Rubric: Plans for dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+### check_hot_path_invariants
+Name: Hot-path invariant preservation
+Severity: blocking
+Rubric: Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+### check_small_feature_compactness
+Name: Small-feature compactness
+Severity: blocking
+Rubric: Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+PLAN:
+{
+  "acceptance_test_matrix": [
+    "GET /api/config/*?domain=crypto returns crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList sourced from crypto Redis hot-view keys",
+    "GET /api/config/*?domain=equities returns equities identifiers unchanged with no crypto field leakage",
+    "GET /api/config/* with no domain param defaults to equities behavior (backward compat)",
+    "GET /api/diagnostics/*?domain=crypto returns crypto-scoped diagnostics metadata",
+    "GET /api/diagnostics/*?domain=equities returns equities diagnostics unchanged",
+    "GET /api/diagnostics/* with no domain param defaults to equities behavior",
+    "Missing or null crypto Redis keys yield a safe empty/default value, not a 500 or exception",
+    "Stale or TTL-expired crypto Redis keys are returned as-is with HTTP 200; no exception is thrown and no equities fallback leaks into the crypto-domain response",
+    "Playwright domain selector switch covers domain=equities and domain=crypto for config view on Chromium and WebKit",
+    "Playwright domain selector switch covers domain=equities and domain=crypto for diagnostics view on Chromium and WebKit",
+    "Playwright golden-path flow 'cockpit top opportunity launches backtest with the selected symbol' remains green",
+    "All existing api-contract-snapshots.test.ts equities snapshot assertions continue to pass (zero regressions)",
+    "qa/smoke.sh exits 0",
+    "qa/regression.sh exits 0",
+    "No new /api/config/* or /api/diagnostics/* endpoints introduced",
+    "No config mutation path introduced",
+    "app-api emits no writes to Redis or any persistence layer"
+  ],
+  "affected_surfaces": [
+    "app-api/src/main/java/com/ull/app/api/web/",
+    "app-api/src/main/java/com/ull/app/api/service/",
+    "app-api/src/main/java/com/ull/app/api/config/",
+    "app-api/src/main/java/com/ull/app/api/redis/",
+    "app-api/src/test/java/",
+    "ui/tests/",
+    "qa/fixtures/",
+    "tests/",
+    "qa/",
+    "docs/"
+  ],
+  "assumptions": [
+    "Redis hot views already contain crypto-scoped keys for runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList written by app-core; this feature only adds the read-path dispatch in app-api.",
+    "DerivedDiagnosticsService already accepts a domain parameter for most diagnostics methods per search evidence; config controllers may not yet forward the domain parameter.",
+    "The ?domain query parameter is already parsed by existing Spring infrastructure in app-api; only controller branching logic is missing.",
+    "No new /api/config/* or /api/diagnostics/* endpoint routes are required; only existing handler methods need domain-forwarding wiring.",
+    "Equities Redis key layout and response shapes are stable and must not be modified.",
+    "Playwright tests in ui/tests/ are the canonical E2E gate for domain-switch UI coverage across Chromium and WebKit.",
+    "Redis hot-view keys for crypto projections may be absent (never written) or stale (TTL-expired or written by an older app-core revision); both cases must be handled safely without a 500."
+  ],
+  "design_contract": {
+    "acceptance_tests": [
+      "GET /api/config/*?domain=crypto returns crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList.",
+      "GET /api/config/*?domain=equities or no param returns equities identifiers unchanged with no crypto field leakage.",
+      "GET /api/diagnostics/*?domain=crypto returns crypto-scoped runtime metadata.",
+      "GET /api/diagnostics/*?domain=equities or no param returns equities diagnostics unchanged.",
+      "Missing or null crypto Redis keys yield a safe empty/default value, not a 500.",
+      "Stale or TTL-expired crypto Redis keys are returned as-is with HTTP 200; no exception is thrown and no equities fallback leaks into the response.",
+      "Playwright domain-switch spec asserts domain-correct field values for both equities and crypto on Chromium and WebKit.",
+      "qa/smoke.sh exits 0 after implementation."
+    ],
+    "concurrency_protocol": "Stateless read-only request-scoped domain resolution; no shared mutable state is introduced. Domain selection is a per-request parameter resolved at call time. Existing thread-safe Redis client handles concurrent reads.",
+    "forbidden_alternatives": [
+      "Adding Postgres, SQLite, Prisma, or Drizzle as a persistence layer.",
+      "Writing to Redis from app-api.",
+      "Introducing new API endpoint paths to serve crypto metadata.",
+      "Hardcoding crypto venue lists or config versions in controller logic instead of reading from Redis hot views.",
+      "Introducing a separate CryptoConfigController or CryptoDiagnosticsController; extend existing controllers only.",
+      "Fetching crypto metadata from QuestDB or any store other than Redis.",
+      "Adding feature flags or backwards-compatibility shims; implement the domain branch directly.",
+      "Throwing or propagating exceptions on stale key reads; treat stale values as valid reads."
+    ],
+    "hard_constraints": [
+      "Do not add new /api/diagnostics/* or /api/config/* endpoints.",
+      "Do not add config mutation paths.",
+      "app-api must not write to Redis or any persistence layer.",
+      "Domain param must default to equities behavior when absent to preserve backward compatibility with all existing callers.",
+      "Equities response shape and Redis keys must be preserved byte-for-byte.",
+      "Missing crypto Redis keys must return a safe empty/default value, not a 500.",
+      "Stale or TTL-expired crypto Redis keys must be returned as-is with HTTP 200 and no server error; staleness is a data concern, not an exception condition.",
+      "Do not pin or patch dag-framework locally."
+    ],
+    "ownership_boundaries": "app-api controllers own domain-dispatch logic and Redis reads via HotViewReadService/RedisHotViewReader; DerivedDiagnosticsService and config service resolve domain-keyed Redis hot view keys. app-core owns writing crypto hot-view keys to Redis. No controller may write to Redis or any other store. Domain resolution is stateless and request-scoped.",
+    "persistence_protocol": "Read-only from Redis hot views via HotViewReadService and RedisHotViewReader. No writes from app-api. No new Redis key schemas are introduced by this feature; crypto keys are assumed pre-existing from app-core. QuestDB historical store is not touched by this feature.",
+    "public_api": "GET /api/config/*?domain={equities|crypto} and GET /api/diagnostics/*?domain={equities|crypto} return domain-correct payloads. No new routes. No mutation paths. When domain=crypto: runtimeConfigVersion, graphId, liveConfig, partitionState, and venueList reflect crypto-scoped values from Redis hot views. When domain=equities or param is absent: existing equities behavior is unchanged byte-for-byte."
+  },
+  "feature_id": "R-003",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "implementation_topology": "single",
+  "problem_statement": "The /api/config/* and /api/diagnostics/* endpoints return equities-oriented runtime metadata regardless of the domain query parameter; threading ?domain=crypto must expose crypto runtimeConfigVersion, graphId, liveConfig, partitionState, and domain-correct venueList while preserving equities behavior when domain=equities or the param is absent.",
+  "project": "trade-research-platform",
+  "risk_register": [
+    "Redis hot view keys for crypto config/diagnostics projections may not yet be published by app-core in all environments \u2014 verify projection existence before wiring app-api read paths; mitigate with null-safe defaults and qa/fixtures/ JSON stubs in the test harness.",
+    "Stale crypto Redis keys (present but TTL-expired or written by an older app-core revision) must not trigger a 500 \u2014 pass-through policy must be implemented; stale keys must not trigger equities fallback or an exception; covered by stale-key lifecycle test and fixture in qa-author.",
+    "DerivedDiagnosticsService domain param is partially implemented per BASELINE_STATUS.md \u2014 some methods may still lack domain forwarding; a full method-by-method audit is required to avoid partial crypto exposure.",
+    "Equities backward-compatibility regression: domain=absent defaulting must be validated in both unit and Playwright tests since all existing callers omit the domain param; ConfigController domain dispatch may fall through silently \u2014 default absent domain to equities explicitly and assert no crypto leakage in equities tests.",
+    "Config controller may not currently accept a domain @RequestParam at all \u2014 if adding one, verify no existing integration tests or API contract snapshots (api-contract-snapshots.test.ts) break due to the new optional parameter.",
+    "Playwright golden-path flow 'cockpit top opportunity launches backtest with the selected symbol' must remain green; the new domain selector-switch spec must not interfere with existing cockpit test setup.",
+    "app-api integration tests running against a live Redis instance in CI may be flaky if crypto keys are unseeded \u2014 mitigate with MockRedis or TestContainers backed by qa/fixtures/ stubs including stale-key fixture."
+  ],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "task_slices": [
+    {
+      "allowed_paths": [
+        "docs/",
+        "app-api/src/main/java/com/ull/app/api/web/",
+        "app-api/src/main/java/com/ull/app/api/service/",
+        "app-api/src/main/java/com/ull/app/api/config/",
+        "app-api/src/main/java/com/ull/app/api/redis/",
+        "repo-memory/ROADMAP.md",
+        "repo-memory/DECISIONS.md"
+      ],
+      "depends_on": [],
+      "expected_outputs": [
+        "DesignContract",
+        "docs/R003_DESIGN_CONTRACT.md listing all controller and service methods requiring domain threading, Redis hot-view key names for each crypto field, null-safe default strategy for absent keys, pass-through strategy for stale/TTL-expired keys, and agreed Playwright selector ID for the domain-switch spec"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "objective": "Document the domain-forwarding contract for ConfigController and DiagnosticsController in docs/R003_DESIGN_CONTRACT.md: enumerate all controller methods in app-api/src/main/java/com/ull/app/api/web/ and all service methods in app-api/src/main/java/com/ull/app/api/service/ (including DerivedDiagnosticsService) that require domain param threading; specify exact Redis hot-view key names for crypto-scoped fields (runtimeConfigVersion, graphId, liveConfig, partitionState, venueList); define null-safe default strategy for absent crypto keys and pass-through strategy for stale/TTL-expired keys (return as-is, HTTP 200, no exception); confirm Playwright selector ID for the domain-switch spec; record ...[truncated]",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "depends_on": [
+        "design"
+      ],
+      "expected_outputs": [
+        "Failing JUnit tests asserting crypto and equities config endpoint parity",
+        "Failing JUnit tests asserting crypto and equities diagnostics endpoint parity",
+        "Failing JUnit test asserting stale/TTL-expired crypto Redis key returns HTTP 200 with stale value and no exception",
+        "qa/fixtures/ JSON stubs for equities domain, crypto domain, and stale-key domain responses",
+        "Failing Playwright domain-switch spec in ui/tests/ covering equities-to-crypto and crypto-to-equities on Chromium and WebKit"
+      ],
+      "forbidden_paths": [
+        "app-api/src/main/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "objective": "Write failing JUnit tests in app-api/src/test/java/ asserting domain=crypto and domain=equities response payloads for all config and diagnostics controller endpoints; add qa/fixtures/ JSON stubs for equities, crypto, and stale-key domain responses (including a fixture representing a TTL-expired but non-null Redis value) to enable MockRedis/TestContainers seeding; write a failing Playwright domain-switch spec in ui/tests/ covering equities-to-crypto and crypto-to-equities transitions on Chromium and WebKit using the selector ID locked in the design slice; include a test asserting stale/TTL-expired crypto Redis values are returned HTTP 200 as-is without exception.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author",
+      "verification_commands": [
+        [
+          "./gradlew",
+          ":app-api:test",
+          "--tests",
+          "*Config*Parity*",
+          "--continue"
+        ],
+        [
+          "./gradlew",
+          ":app-api:test",
+          "--tests",
+          "*Diagnostics*Parity*",
+          "--continue"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "app-api/src/main/java/com/ull/app/api/web/",
+        "app-api/src/main/java/com/ull/app/api/service/",
+        "app-api/src/main/java/com/ull/app/api/config/",
+        "app-api/src/main/java/com/ull/app/api/redis/",
+        "app-api/build.gradle",
+        "repo-memory/ROADMAP.md",
+        "repo-memory/DECISIONS.md"
+      ],
+      "depends_on": [
+        "qa-author"
+      ],
+      "expected_outputs": [
+        "Updated ConfigController with domain-dispatch to crypto Redis hot-view keys",
+        "Updated DiagnosticsController with domain-dispatch to crypto Redis hot-view keys",
+        "Updated DerivedDiagnosticsService domain resolution covering all methods",
+        "Null-safe crypto field reads for absent runtimeConfigVersion, graphId, liveConfig, partitionState, venueList keys",
+        "Pass-through reads for stale/TTL-expired crypto Redis keys returning HTTP 200 without exception",
+        "All JUnit tests from qa-author slice now passing"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "objective": "Thread the ?domain=crypto|equities parameter through all config and diagnostics controller methods in app-api/src/main/java/com/ull/app/api/web/; wire domain dispatch into DerivedDiagnosticsService and config service calls covering all methods; add null-safe RedisHotViewReader calls for absent crypto keys (runtimeConfigVersion, graphId, liveConfig, partitionState, venueList) and pass-through reads for stale/TTL-expired keys (return as-is, HTTP 200, no exception); preserve all equities read paths and response shapes unchanged; ensure all JUnit tests from the qa-author slice now pass.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./gradlew",
+          ":app-api:test"
+        ],
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "app-api/src/main/java/com/ull/app/api/web/",
+        "app-api/src/main/java/com/ull/app/api/service/",
+        "app-api/src/main/java/com/ull/app/api/config/",
+        "app-api/src/main/java/com/ull/app/api/redis/",
+        "app-api/src/test/java/",
+        "ui/tests/",
+        "qa/fixtures/",
+        "docs/",
+        "repo-memory/ROADMAP.md",
+        "repo-memory/DECISIONS.md"
+      ],
+      "depends_on": [
+        "impl-primary"
+      ],
+      "expected_outputs": [
+        "ReviewReport",
+        "Review findings confirming no new endpoints or mutation paths",
+        "Confirmed equities backward compatibility for all config and diagnostics methods",
+        "Confirmed Redis read-only boundary is not violated",
+        "Confirmed null-safe defaults for absent crypto Redis keys",
+        "Confirmed stale/TTL-expired crypto Redis keys return HTTP 200 with value as-is and no equities fallback leakage"
+      ],
+      "forbidden_paths": [
+        "platform-runtime/",
+        "app-core/",
+        "platform-ingest-alpaca/",
+        "platform-ingest-crypto-coingecko/",
+        "platform-ingest-crypto-coinglass/"
+      ],
+      "objective": "Review all changes in app-api/src/main/java/com/ull/app/api/web/, service/, config/, and redis/ for domain param correctness across every controller and service method; verify equities backward-compatibility (domain=absent defaults to equities); confirm Redis read-only boundary is not violated; confirm no new endpoints or mutation paths were added; verify null-safety on absent crypto keys and pass-through behavior for stale/TTL-expired keys (no fallback to equities, no exception, HTTP 200); confirm full alignment with docs/R003_DESIGN_CONTRACT.md and repo-memory/DECISIONS.md.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review",
+      "verification_commands": [
+        [
+          "./gradlew",
+          ":app-api:test"
+        ],
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "depends_on": [
+        "review"
+      ],
+      "expected_outputs": [
+        "qa/smoke.sh exit 0",
+        "qa/regression.sh exit 0",
+        "All Playwright domain-switch specs green on Chromium and WebKit",
+        "Playwright golden-path cockpit flow passing",
+        "Zero equities regressions in api-contract-snapshots.test.ts",
+        "Stale-key lifecycle test confirmed green: HTTP 200, stale value returned as-is, no equities fallback, no exception"
+      ],
+      "forbidden_paths": [
+        "app-api/src/main/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "objective": "Run qa/smoke.sh and qa/regression.sh to confirm all config and diagnostics domain-parity JUnit tests pass for both equities and crypto including the stale-key scenario; run Playwright suite in ui/tests/ to confirm all domain-switch specs pass on Chromium and WebKit including the golden-path cockpit flow; assert zero equities regressions in api-contract-snapshots.test.ts.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ],
+        [
+          "npx",
+          "playwright",
+          "test",
+          "ui/tests/"
+        ]
+      ]
+    }
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "shared",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [],
+  "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+  "qa_regression_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "relevant_paths": [
+    "app-api/build.gradle",
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "ui/tailwind.config.ts",
+    "ui/tsconfig.json",
+    "ui/playwright.config.ts",
+    "ui/eslint.config.js",
+    "ui/vite.config.ts",
+    "ui/vitest.config.ts",
+    "ui/postcss.config.js",
+    "platform-runtime/build.gradle",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "docs/UI_TELEMETRY_API.md",
+    "docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md",
+    "docs/RUNTIME_CONFIG.md",
+    ".git/config",
+    "platform-ingest-alpaca/src/main/java/com/ull/trading/ingest/alpaca/AlpacaDiagnosticsListener.java",
+    "platform-ingest-alpaca/src/main/java/com/ull/trading/ingest/alpaca/NoOpAlpacaDiagnosticsListener.java",
+    "platform-ingest-alpaca/src/main/java/com/ull/trading/ingest/alpaca/AlpacaConfig.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaTradeAdapterParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaCanonicalCaptureParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaCryptoTradeAdapterParityTest.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaQuoteAdapterParityTest.java",
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nProject: /Volumes/devssd/repos/apps/trade-research-platform\nFiles: 500, Lines: 56608, Functions: 2216, Classes: 560\nPackages (18): app-api, app-core, config, crypto-extension, docs, kdb, plans, platform-dsl, platform-ingest-crypto-coingecko, platform-ingest-crypto-coinglass, platform-ingest-macro-fred, platform-research, platform-runtime, qa, repo-memory\n  ... and 3 more\nClasses: 560 total\nTop-level functions: 252 total\n\n# Token Savior Packed Context\nContext pack for 'Implement R-003 crypto-domain config and diagnostics parity so /api/config/* and /api/diagnostics/* return crypto-scoped runtime metadata instead of equities identifiers. Thread ?domain=crypto through config and diagnostics controllers. Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list. Preserve equities behavior for domain=equities. Add Playwright selector-switch coverage for both domains. Every config endpoint returns correct equities and crypto data. Every diagnostics endpoint returns correct equities and crypto data. Playwright domain switch covers both domains. qa/smoke.sh passes.' (55 symbols, ~2940 tokens / 3000 budget)\n------------------------------------------------------------\n\n# com.ull.trading.runtime.crypto.CryptoAssetAggregationNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetAggregationNode.java)\n    public void onInit() { }\n\n# com.ull.trading.runtime.crypto.CryptoAssetAggregationNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetAggregationNode.java)\n    public void onClose() { }\n\n# com.ull.trading.runtime.crypto.CryptoAssetAggregationNode.fallbackZero(double)  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetAggregationNode.java)\n    private static double fallbackZero(final double value) {\n        return Double.isNaN(value) ? 0.0d : value;\n    }\n\n# com.ull.trading.runtime.crypto.CryptoAssetAggregationNode.clampSigned(double)  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetAggregationNode.java)\n    private static double clampSigned(final double value) {\n        return clamp(value, -1.0d, 1.0d);\n    }\n\n# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)\n    public void onInit() { }\n\n# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)\n    public void onClose() { }\n\n# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.fallbackZero(double)  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)\n    private static double fallbackZero(final double value) {\n        return Double.isNaN(value) ? 0.0d : value;\n    }\n\n# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.clamp01(double)  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)\n    private static double clamp01(final double value) {\n        return clamp(value, 0.0d, 1.0d);\n    }\n\n# com.ull.trading.runtime.crypto.CryptoLocalFeatureNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoLocalFeatureNode.java)\n    public void onInit() { }\n\n# com.ull.trading.runtime.crypto.CryptoLocalFeatureNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoLocalFeatureNode.java)\n    public void onClose() { }\n\n... (45 more symbols selected, sources omitted)\n\n# Search Hits: R-003\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 41, 'content': '### [R-003] Crypto-domain config + diagnostics parity'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 92, 'content': '- **Depends on:** [R-003].'}]\n\n# Search Hits: crypto-domain\n[{'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 230, 'content': '- Current config and diagnostics surfaces still present some crypto-domain views using equities-oriented runtime metadata and must be updated when the new seams land.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 69, 'content': '- latest serving progress in that slice includes crypto-domain projection support for positions APIs using cycle/allocation state (still pre-historical-store and intentionally snapshot-oriented)'}, {'file': 'docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md', 'line_number': 126, 'content': '- `GET /api/opportunities?domain=crypto`, `GET /api/opportunities/{id}?domain=crypto`, `GET /api/signals/catalog?domain=crypto`, and `GET /api/cockpit/summary?domain=crypto` now return crypto-domain payloads sourced from live crypto-cycle hot views (instead of falling back to equities-only content).'}, {'file': 'docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md', 'line_number': 147, 'content': '- Opportunities, opportunity detail, cockpit summary, and signals catalog now also expose crypto-domain responses when `domain=crypto` is selected, preventing equities payload leakage into the crypto UI workflow.'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 18, 'content': \"# crypto-domain historical serving so this Track's R-015 acceptance scenario\"}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_B.yaml', 'line_number': 200, 'content': '      - app-api/src/main/java/com/ull/app/api/web/OpportunitiesController.java       # crypto-domain branch'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_B.yaml', 'line_number': 229, 'content': '      - All crypto-domain responses carry the full `TrustPayload`: `freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 34, 'content': '- **Goal:** All crypto-domain responses carry the full `TrustPayload` (`freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`).'}, {'file': 'specs/CYCLE_READINESS.md', 'line_number': 9, 'content': 'Define the calibration regime that every **crypto-domain** SignalSpec must pass before its `status` may transition from `backtested` to `approved` (and subsequently `live`) during the BTC cycle window.'}]\n\n# Search Hits: config\n[{'file': 'AGENTS.md', 'line_number': 18, 'content': '- YAML is deployment/runtime configuration only.'}, {'file': 'AGENTS.md', 'line_number': 66, 'content': '  - multiple graph instances/shards from config'}, {'file': 'AGENTS.md', 'line_number': 111, 'content': '- local startup/profile changes must update `docs/UI_LOCAL_PROFILES.md` and any relevant deployment/config docs'}, {'file': 'AGENTS.md', 'line_number': 143, 'content': '- Assume the environment is offline during the agent phase unless explicitly configured otherwise.'}, {'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'README.md', 'line_number': 75, 'content': '- `platform-runtime/` \u2014 runtime nodes, state, config, queries, and benchmarks (including ingress bindings and feature-node wiring for Phase 1 news/market-status/option-OI sources, plus the BTC/ETH crypto-cycle runtime, refined regime-aware allocation and take-profit logic, crypto query state, and dedicated crypto-node JMH coverage)'}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 4, 'content': 'import org.springframework.boot.autoconfigure.SpringBootApplication;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreConfig.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 16, 'content': '    private String configVersion = \"cfg-local-1\";'}]\n\n# Search Hits: diagnostics\n[{'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/AdminShellService.java', 'line_number': 84, 'content': '                    \"Read-only shell access across config, deployments, and diagnostics surfaces.\");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/AdminShellService.java', 'line_number': 89, 'content': '                    \"Read-only shell access across config, deployments, and diagnostics surfaces.\");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 29, 'content': '        return hotViewReadService.diagnosticsAlertsCurrentJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 33, 'content': '        return hotViewReadService.diagnosticsAlertsHistoryJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 38, 'content': '            return hotViewReadService.diagnosticsOverviewJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 45, 'content': '            return hotViewReadService.diagnosticsOverviewHistoryJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 53, 'content': '            return hotViewReadService.diagnosticsServicesJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 55, 'content': '        return filterServicesJson(hotViewReadService.diagnosticsServicesJson(), resolvedDomain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 73, 'content': '                ? hotViewReadService.diagnosticsOverviewHistoryJson()'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 74, 'content': '                : hotViewReadService.diagnosticsOverviewJson());'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 319, 'content': '        return hotViewReadService.diagnosticsGraphsJson(domain);'}]\n\n# Search Hits: parity\n[{'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 189, 'content': '- batch replay parity with direct replay path'}, {'file': 'crypto-extension/docs/CRYPTO_GRAPH_IMPLEMENTATION_PLAN.md', 'line_number': 190, 'content': '- parity when shared FRED macro events and proxy-equity inputs are present'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 190, 'content': '- config and diagnostics API surfaces are domain-aware for crypto scope selection, but richer crypto telemetry publication and downstream parity remain incomplete'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 271, 'content': '  - smoke tests, parity tests, live probes, and JMH'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 276, 'content': '  - smoke tests, parity tests, live probes, and JMH'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 281, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 285, 'content': '  - parity, boundary, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 289, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 293, 'content': '  - decoder, parity, and JMH coverage'}, {'file': 'docs/PHASE1_DATA_CONTRACT.md', 'line_number': 27, 'content': '- Crypto parity.'}, {'file': 'docs/PHASE1_DATA_CONTRACT.md', 'line_number': 29, 'content': '- QuestDB-backed historical UI parity for every route.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 211, 'content': '- continue the Phase 1 explainability slice beyond opportunity detail + signal-catalog availability into runtime-backed signal values and replay-history parity; detail payload now includes derivation metadata and replay-window identifiers'}]\n\n# Search Hits: api\n[{'file': 'AGENTS.md', 'line_number': 78, 'content': '- Read path is an out-of-process server (QuestDB PGWire / HTTP) accessed by `app-api` and `platform-research` via a thin Java client.'}, {'file': 'README.md', 'line_number': 8, 'content': 'The repository currently contains a real runtime, ingest, replay/research, UI codebase, and the first live serving slice: a separate `app-core` runtime publisher process feeding Redis hot views and an `app-api` Spring Boot process serving UI-facing `/api/*` endpoints from Redis (including opportunities list/detail and a Phase 1 signals catalog contract with derivation + replay-comparability detail payload fields).'}, {'file': 'README.md', 'line_number': 71, 'content': '- `app-api/` \u2014 Spring Boot API process that serves UI-facing `/api/*` routes from Redis hot views and owns the consumer-side QuestDB historical-read layer, including real `/api/opportunities/{id}/history`, `/api/backtests`, `/api/performance/summary`, `/api/decisions`, `/api/risk/summary`, `/api/deployments`, and `/api/admin/*` routes'}, {'file': 'app-api/build.gradle', 'line_number': 14, 'content': \"    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'\"}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 1, 'content': 'package com.ull.app.api;'}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 10, 'content': '@ConfigurationPropertiesScan(basePackages = \"com.ull.app.api\")'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreConfig.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 3, 'content': 'import com.ull.app.api.history.QuestDbHistoricalStoreClient;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 4, 'content': 'import com.ull.app.api.redis.RedisHotViewReader;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}]\n\n\n# ROADMAP relevant entry\n\n### [R-003] Crypto-domain config + diagnostics parity\n- **Status:** TODO\n- **Feature id:** null\n- **Goal:** `/api/config/*` and `/api/diagnostics/*` return crypto-scoped runtime metadata instead of falling back to equities identifiers.\n- **Scope:** Thread `?domain=crypto` through config + diagnostics controllers to the crypto runtime's live-config + partition state, expose per-domain `runtimeConfigVersion` + `graphId`, domain-correct venue list.\n- **Out of scope:** New diagnostics endpoints, config mutation (read-only parity pass).\n- **Acceptance:** Every config + diagnostics endpoint returns correct data for both `domain=equities` and `domain=crypto`, Playwright selector-switch covers both.\n- **Depends on:** none.\n- **Notes:** Crypto graph id today comes from `CryptoPartitionedRuntime` \u2014 thread that through instead of hardcoding the equities `runtimeConfigVersion`.\n\n# DECISIONS relevant excerpt\n\n**Decision:** Redis is the hot serving layer \u2014 latest snapshots, rankings, short time windows \u2014 written by `app-core` as projections from the runtime graph. A columnar time-series store is the canonical historical and replay store; replay feeds back into the graph for research workflows. `app-api` reads only from Redis and the historical store; it never writes to either.\n**Consequences:** `app-api` is allocation-light and read-only. Any change that adds a DB write path in `app-api` or a direct historical-store read from the UI is a boundary violation and needs a new DECISIONS entry. Rules out adding Postgres / SQLite / Prisma / Drizzle as an OLTP layer \u2014 persistence is Redis + the historical store.\n**Decision:** Adopt **QuestDB** (Apache 2.0) as the canonical historical store. Pair it with a date-partitioned **Apache Parquet lake** as the authoritative capture substrate and the research-notebook surface (DuckDB / Polars read from the lake directly). A background bulk-loader moves captured Parquet partitions into QuestDB for replay cursors and API historical reads.\n**Context:** The event graph runtime is `dag-framework`, a sibling repo. Early in the project it was tempting to copy nodes into `platform-runtime` for quick iteration, which would fork the allocation invariants and the replay semantics.\n**Decision:** `dag-framework` is a published GitHub-Packages dependency (`com.joshorig.ull.dag:...`), bumped via a coordinated upstream release. `platform-dsl` + `platform-runtime` + `platform-events` layer on top of it but never fork it. Breaking changes originate in `dag-framework` and propagate down.\n**Consequences:** Any API change needed for trade-research-platform's graphs goes to `dag-framework` first. Pinning a local snapshot of dag-framework here is forbidden. Rules out \"we'll patch dag-framework locally and upstream later\" \u2014 those patches rot.\n**Context:** The app has many routes and many data surfaces. Unit tests alone do not catch routing bugs, URL-param regressions, or proxy desync between the UI and `app-api`. End-to-end Playwright runs are the only way to know the cockpit actually works.\n**Decision:** Vitest owns unit tests (28 files, including `api-contract-snapshots.test.ts` as the API contract gate). Playwright owns end-to-end across Chromium + WebKit + iPhone 13 profiles. The golden-path flow `\"cockpit top opportunity launches backtest with the selected symbol\"` is the one test that must never break.\n\n# Memory digest\n\n# Token Savior memory observations\n- [guardrail] Breaking change: com (com)"
+}
+
+VALIDATOR_ERRORS:
+[]

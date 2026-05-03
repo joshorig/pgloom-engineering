@@ -1,0 +1,1 @@
+[token-savior:memory] sqlite-vec not installed; vector search disabled. Install with: pip install 'token-savior-recall[memory-vector]'

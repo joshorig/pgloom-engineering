@@ -1,0 +1,584 @@
+Review the PlanContract against every rubric check.
+
+Emit exactly one JSON object with:
+- rationale: string
+- per_check_results: list of CriticCheckResult objects
+
+Do not decide the final verdict. The runtime computes accept/revise/reject.
+Return exactly one result for every check_id below. Do not omit any check.
+
+### check_design_contract_completeness
+Lifecycle work must define persistence and concurrency protocols.
+
+### check_slice_path_coverage
+Every affected surface must be covered by slice allowed paths and tests.
+
+### check_forbidden_path_overlap
+No task slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+Cross-role boundaries are allowed: for example, a QA slice can forbid source paths
+that an implementer slice allows.
+
+### check_verification_commands
+Implementer and QA slices must define qa or Gradle verification commands.
+
+### check_lifecycle_coverage
+Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+
+### check_topology_consistency
+SINGLE topology is incompatible with multiple implementer slices.
+
+### check_reviewer_present
+Plans must include at least one reviewer slice.
+
+### check_qa_author_present
+Plans must include a test-first engineering.qa.author slice before implementers.
+
+### check_qa_verify_present
+Plans must include an engineering.qa.verify slice after reviewers.
+
+### check_qa_paths_disjoint
+QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+
+### check_orphan_slices
+Non-terminal slices should feed a later reviewer, QA, or historian slice.
+
+### check_finalization_policy
+Final feature PR merge must remain human-gated.
+
+### check_objective_specificity
+Slice objectives should name concrete artifacts, files, tests, or metrics.
+
+### check_risk_register_present
+Lifecycle work should carry an explicit risk register.
+
+### check_roadmap_dependency_handling
+Dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+
+### check_hot_path_invariants
+Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+
+### check_small_feature_compactness
+Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+
+### check_design_contract_completeness
+Name: Design contract completeness
+Severity: blocking
+Rubric: Lifecycle work must define persistence and concurrency protocols.
+### check_slice_path_coverage
+Name: Slice path coverage
+Severity: blocking
+Rubric: Every affected surface must be covered by slice allowed paths and tests.
+### check_forbidden_path_overlap
+Name: Forbidden-path overlap
+Severity: blocking
+Rubric: No slice may include overlapping entries in its own allowed_paths and forbidden_paths.
+### check_verification_commands
+Name: Verification command coverage
+Severity: blocking
+Rubric: Implementer and QA slices must define qa or Gradle verification commands.
+### check_lifecycle_coverage
+Name: Acceptance matrix lifecycle coverage
+Severity: blocking
+Rubric: Lifecycle work must cover stale/invalid, invariant, and failure/partial cases.
+### check_topology_consistency
+Name: Implementation topology consistency
+Severity: blocking
+Rubric: SINGLE topology is incompatible with multiple implementer slices.
+### check_reviewer_present
+Name: Reviewer slice presence
+Severity: blocking
+Rubric: Plans must include at least one reviewer slice.
+### check_qa_author_present
+Name: QA author slice presence
+Severity: blocking
+Rubric: Plans must include a test-first engineering.qa.author slice before implementers.
+### check_qa_verify_present
+Name: QA verify slice presence
+Severity: blocking
+Rubric: Plans must include an engineering.qa.verify slice after reviewers.
+### check_qa_paths_disjoint
+Name: QA paths disjoint from source
+Severity: blocking
+Rubric: QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+### check_orphan_slices
+Name: Orphan slice detection
+Severity: advisory
+Rubric: Non-terminal slices should feed a later reviewer, QA, or historian slice.
+### check_finalization_policy
+Name: Finalization policy locked to human merge
+Severity: blocking
+Rubric: Final feature PR merge must remain human-gated.
+### check_objective_specificity
+Name: Objective specificity
+Severity: advisory
+Rubric: Slice objectives should name concrete artifacts, files, tests, or metrics.
+### check_risk_register_present
+Name: Risk register present
+Severity: advisory
+Rubric: Lifecycle work should carry an explicit risk register.
+### check_roadmap_dependency_handling
+Name: Roadmap dependency handling
+Severity: blocking
+Rubric: Plans for dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites.
+### check_hot_path_invariants
+Name: Hot-path invariant preservation
+Severity: blocking
+Rubric: Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+### check_small_feature_compactness
+Name: Small-feature compactness
+Severity: blocking
+Rubric: Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+PLAN:
+{
+  "acceptance_test_matrix": [
+    "Semantic coverage: equities.relativeVolumeZ.v1 YAML proposes, validates, compiles to existing FeatureNode primitives, invokes the R-015 backtest path, records trackRecord, operator-promotes, appears in catalog/get responses, and contributes to live ranking opportunities.",
+    "Validator failure coverage: unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion each fail with actionable diagnostics containing field paths, operation vocabulary, missing references, cycle participants, or supported-version context.",
+    "Lifecycle and concurrency coverage: missing approval, stale proposal promotion, invalid validation state, failed compilation, partial backtest failure, archived spec promotion, conflicting signalVersion, archive/promote conflicts, duplicate approved promotion, and stale updates are deterministic and idempotent where safe.",
+    "Persistence and invariant coverage: one logical record per SignalSpec version preserves immutable YAML body, author, proposalId, signalId, signalVersion, validation/compile results, compiled graph fingerprint or equivalent invariant identity, lifecycle state, backtest reference, trackRecord, approval/archive metadata, and timestamps across reload.",
+    "Provenance coverage: promoted signals propagate author, signalId, signalVersion, proposalId, and trackRecord through API opportunities, explainability envelopes, catalog responses, and UI opportunity/catalog rendering.",
+    "UI coverage: catalog and review/detail pages render author, lifecycle status, YAML, diagnostics, trackRecord, derived eligibility state, and explicit operator promote/archive confirmation controls.",
+    "Configured QA gate coverage: ./qa/smoke.sh and ./qa/regression.sh pass after implementation and review."
+  ],
+  "affected_surfaces": [
+    "specs/",
+    "docs/",
+    "repo-memory/",
+    "platform-dsl/",
+    "platform-runtime/",
+    "app-core/",
+    "app-api/",
+    "ui/",
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "assumptions": [
+    "specs/SIGNAL_SPEC.md is the frozen source of truth for SignalSpec v1 schema, operation vocabulary, diagnostics, lifecycle rules, and authoring API behavior.",
+    "R-015 deterministic backtest execution already exists and must be reused rather than duplicated.",
+    "Signal promotion requires explicit human/operator approval and must never occur as a side effect of proposal, validation, compilation, or successful backtest.",
+    "Signal persistence must store immutable YAML and workflow metadata through the project-approved catalog/control-plane boundary, without introducing an app-api-local OLTP database or direct UI historical-store access.",
+    "platform-dsl compiles promoted specs into existing FeatureNode primitives; no generated Java source/classes are permitted.",
+    "The UI layer under ui/ consumes app-api routes and owns catalog, review, diagnostics, trackRecord, and provenance rendering."
+  ],
+  "design_contract": {
+    "acceptance_tests": [
+      "A valid equities.relativeVolumeZ.v1 YAML fixture round-trips through propose, validate, compile to FeatureNode primitives, R-015 backtest, operator approval, promote, catalog/get, and live ranking contribution.",
+      "Validator rejects unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics naming the offending field, operation, reference, cycle participants, or supported version context.",
+      "Promotion rejects missing operator approval, stale signalVersion/proposalId, invalid validation state, failed compilation, archived specs, partial backtest failure, and compiled graph fingerprint or equivalent invariant mismatch.",
+      "Archive/promote conflicts and repeated approved promote are deterministic and idempotent where safe.",
+      "Persistence reload preserves one logical record per SignalSpec version with YAML body, author, proposalId, validation/compile result, lifecycle state, backtest reference, trackRecord, timestamps, and approval/archive metadata.",
+      "Promoted opportunities include author, signalId, signalVersion, proposalId, and trackRecord in the explainability envelope.",
+      "Signals catalog/review UI renders author, lifecycle status, YAML body, validation diagnostics, derived state, trackRecord, and explicit operator promotion confirmation.",
+      "./qa/smoke.sh and ./qa/regression.sh pass after implementation and review."
+    ],
+    "concurrency_protocol": "Proposal, promote, and archive operations must be idempotent by stable proposalId, signalId, and signalVersion keys. Promotion must perform optimistic lifecycle and invariant checks so stale proposals, conflicting versions, invalid validation or compilation state, archived specs, missing operator approval, partial backtest failure, and compiled graph fingerprint or trackRecord mismatches fail deterministically with actionable diagnostics. Repeated promotion of the same approved version is idempotent.",
+    "forbidden_alternatives": [
+      "Generating Java source/classes from SignalSpec YAML.",
+      "Promoting a signal as a side effect of proposal, validation, compilation, or successful backtest.",
+      "Adding Postgres, SQLite, Prisma, Drizzle, or another app-api-owned OLTP store for SignalSpec persistence.",
+      "Adding direct UI reads from historical-store or direct app-api writes that violate the canonical Redis/historical-store split.",
+      "Duplicating the R-015 backtest/replay path for SignalSpec evaluation.",
+      "Patching dag-framework locally instead of using existing public primitives.",
+      "Compiling unknown operations or references as no-ops, or allowing cyclic transforms to pass by ordering assumptions."
+    ],
+    "hard_constraints": [
+      "Do not add Java code generation for SignalSpec definitions.",
+      "Do not allow auto-promotion without explicit human/operator approval.",
+      "Reuse the existing R-015 backtest path for SignalSpec evaluation and track-record generation.",
+      "Validator must reject unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+      "Promoted signals must contribute to live ranking only after approval, successful validation, successful compilation, and successful backtest.",
+      "Promoted opportunities and UI views must expose author provenance fields and trackRecord.",
+      "qa/smoke.sh and qa/regression.sh must pass before final PR handoff."
+    ],
+    "ownership_boundaries": "platform-dsl owns SignalSpec parsing, required-field validation, apiVersion/op/ref diagnostics, graph cycle detection, reference resolution, and compilation to existing FeatureNode primitives. platform-runtime/app-core own live ranking consumption and runtime registration for promoted compiled signals. app-api owns HTTP workflow contracts, DTOs, orchestration, persistence adapter usage, R-015 backtest handoff, and operator promotion/archive lifecycle transitions. ui owns catalog, review/detail, diagnostics, trackRecord, operator promote/archive confirmation, and opportunity provenance rendering. tests, qa/fixtures, app-api/src/test, app-api/src/test/java, and ui/tests own conformance evidence only.",
+    "persistence_protocol": "Persist one durable logical record per SignalSpec version/proposal with immutable canonical YAML body, author, proposalId, signalId, signalVersion, lifecycle status, validation diagnostics, compile result, compiled graph fingerprint or equivalent invariant identity, backtest run reference, trackRecord summary, approval/archive metadata, and created/updated/promoted/archived timestamps. Do not mutate stored YAML after proposal creation, do not persist generated Java code, and do not bypass the approved Redis hot-view and historical-store boundary without a documented decision.",
+    "public_api": "Expose POST /api/signals/propose, GET /api/signals/catalog, GET /api/signals/{signalId}, POST /api/signals/{signalId}/promote, and POST /api/signals/{signalId}/archive under the existing /api surface. Requests and responses carry apiVersion, signalId, signalVersion, proposalId, author, YAML body, validation diagnostics, compile status, lifecycle state, promotion metadata, backtest/trackRecord summary, and archive state. Opportunity/explainability responses for promoted signals include author, signalId, signalVersion, proposalId, and trackRecord."
+  },
+  "feature_id": "R-016",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "implementation_topology": "split_specialists",
+  "problem_statement": "Implement declarative SignalSpec v1 validation, compilation, authoring workflow, provenance propagation, and UI catalog/review surfaces so an LLM-authored equities.relativeVolumeZ.v1 signal can be proposed, validated, compiled to existing FeatureNode primitives, backtested through the existing R-015 path, promoted only with explicit operator approval, and reflected in live ranking opportunities without Java code generation or auto-promotion.",
+  "project": "trade-research-platform",
+  "risk_register": [
+    "Persistence boundary risk: implementing direct app-api writes or a new local OLTP store could violate the Redis/historical-store architecture decision.",
+    "Promotion safety risk: validation or backtest success could be mistaken for approval; promotion must require explicit operator action.",
+    "Compiler semantic risk: SignalSpec transforms may compile to FeatureNode graphs that differ from validator assumptions unless references, cycles, and graph invariants are checked consistently.",
+    "Backtest duplication risk: introducing a SignalSpec-only replay path could diverge from R-015 deterministic results.",
+    "Diagnostics quality risk: validator failures may be correct but not actionable enough for LLM-authored repair loops.",
+    "Concurrency risk: simultaneous promote/archive or version replacement can create stale lifecycle state without version-checked transitions.",
+    "Durability and invariant risk: YAML body, compiled graph identity, signalVersion, and trackRecord can diverge or be partially accepted after failure unless promotion verifies persisted invariants.",
+    "Provenance drift risk: API opportunity envelopes or UI views may omit author, proposalId, signalVersion, or trackRecord even if catalog data is complete.",
+    "Runtime risk: promoted SignalSpecs may affect ranking latency or allocation behavior if compiled nodes bypass existing primitives.",
+    "Security risk: author/proposal fields and YAML diagnostics must be rendered safely and must not enable path access or arbitrary code execution."
+  ],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "task_slices": [
+    {
+      "allowed_paths": [
+        "specs/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "depends_on": [],
+      "expected_outputs": [
+        "DesignContract",
+        "APIContractDelta",
+        "PersistenceBoundaryDecision",
+        "AcceptanceCoverageMap",
+        "LifecycleAndApprovalRules"
+      ],
+      "forbidden_paths": [
+        "platform-dsl/",
+        "platform-runtime/",
+        "app-core/",
+        "app-api/",
+        "ui/",
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "objective": "Lock the R-016 SignalSpec v1 API, validator diagnostics, persistence boundary, approval lifecycle, provenance envelope, UI/API contract, and acceptance coverage against specs/SIGNAL_SPEC.md and related docs/repo-memory notes.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "depends_on": [
+        "design"
+      ],
+      "expected_outputs": [
+        "FailingSignalSpecFixtures",
+        "ValidatorConformanceTests",
+        "SignalWorkflowApiTests",
+        "UiCatalogProvenanceTests",
+        "NoAutoPromotionRegressionTests",
+        "LifecycleInvariantFailureTests"
+      ],
+      "forbidden_paths": [
+        "specs/",
+        "docs/",
+        "repo-memory/",
+        "platform-dsl/src/main/",
+        "platform-runtime/src/main/",
+        "app-core/src/main/",
+        "app-api/src/main/",
+        "ui/src/"
+      ],
+      "objective": "Author failing fixtures and tests for the equities.relativeVolumeZ.v1 end-to-end workflow, validator rejection matrix, lifecycle and stale transition handling, no-auto-promotion guarantees, persistence/invariant failures, provenance fields, and UI catalog/review rendering.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "platform-dsl/",
+        "platform-runtime/",
+        "specs/SIGNAL_SPEC.md",
+        "specs/JAVA_DSL_SPEC.md",
+        "docs/"
+      ],
+      "depends_on": [
+        "qa-author"
+      ],
+      "expected_outputs": [
+        "SignalSpecModel",
+        "SignalSpecParser",
+        "SignalSpecValidator",
+        "ActionableDiagnosticModel",
+        "SignalSpecCompiler",
+        "FeatureNodeCompilationAdapter"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/",
+        "app-api/src/main/",
+        "app-core/",
+        "ui/src/"
+      ],
+      "objective": "Implement SignalSpec v1 model parsing, YAML handling, required-field validation, apiVersion/op/ref checks, transform cycle detection, actionable diagnostics, and compilation to existing FeatureNode primitives without Java code generation.",
+      "role": "implementer",
+      "slice_id": "impl-dsl-compiler",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./gradlew",
+          ":platform-dsl:test"
+        ],
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "app-api/src/main/",
+        "app-api/build.gradle",
+        "app-core/",
+        "platform-runtime/",
+        "docs/",
+        "specs/HISTORICAL_STORE_DECISION.md",
+        "specs/HISTORICAL_STORE_SCHEMA.md"
+      ],
+      "depends_on": [
+        "qa-author",
+        "impl-dsl-compiler"
+      ],
+      "expected_outputs": [
+        "SignalWorkflowController",
+        "SignalCatalogService",
+        "SignalSpecPersistenceAdapter",
+        "SignalSpecPersistenceRecord",
+        "OperatorPromotionGuard",
+        "BacktestWorkflowIntegration",
+        "LiveRankingPromotionBridge",
+        "OpportunityProvenanceEnvelope"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/",
+        "platform-dsl/src/test/",
+        "ui/src/"
+      ],
+      "objective": "Implement SignalSpec propose, catalog, get, promote, and archive workflow with durable catalog persistence adapter, immutable YAML records, operator approval state machine, R-015 backtest reuse, version-checked lifecycle transitions, invariant checks, and runtime publication for promoted compiled signals.",
+      "role": "implementer",
+      "slice_id": "impl-api-workflow",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "./gradlew",
+          ":app-api:test"
+        ],
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "ui/src/",
+        "docs/UI_ROADMAP.md",
+        "docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md",
+        "docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md"
+      ],
+      "depends_on": [
+        "qa-author",
+        "impl-api-workflow"
+      ],
+      "expected_outputs": [
+        "SignalCatalogView",
+        "SignalDetailView",
+        "PromotionArchiveControls",
+        "ValidationDiagnosticRendering",
+        "OpportunityProvenanceRendering",
+        "UiApiContractUpdate"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/",
+        "platform-dsl/",
+        "platform-runtime/",
+        "app-core/",
+        "app-api/src/main/"
+      ],
+      "objective": "Implement UI SignalSpec catalog and review/detail views plus opportunity provenance rendering for author, signalId, signalVersion, proposalId, diagnostics, lifecycle state, approval status, promote/archive confirmation, and trackRecord.",
+      "role": "implementer",
+      "slice_id": "impl-ui-provenance",
+      "task_type": "engineering.implement",
+      "verification_commands": [
+        [
+          "npm",
+          "--prefix",
+          "ui",
+          "test"
+        ],
+        [
+          "./qa/smoke.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "specs/",
+        "docs/",
+        "repo-memory/",
+        "platform-dsl/",
+        "platform-runtime/",
+        "app-core/",
+        "app-api/",
+        "ui/",
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "depends_on": [
+        "impl-ui-provenance"
+      ],
+      "expected_outputs": [
+        "ReviewFindings",
+        "ContractComplianceReport",
+        "BoundaryComplianceReport",
+        "SecurityAndConcurrencyReview",
+        "RiskDisposition",
+        "RequiredFixListOrApproval"
+      ],
+      "forbidden_paths": [
+        "build/",
+        ".gradle/",
+        "node_modules/",
+        "dist/"
+      ],
+      "objective": "Review R-016 source, API, persistence, lifecycle, runtime, UI, specs, docs, and tests for contract compliance, forbidden alternatives, persistence boundary safety, approval gating, concurrency handling, invariant checks, diagnostics quality, provenance correctness, security, and acceptance coverage.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ]
+      ]
+    },
+    {
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "app-api/src/test/",
+        "app-api/src/test/java/",
+        "ui/tests/"
+      ],
+      "depends_on": [
+        "review"
+      ],
+      "expected_outputs": [
+        "QaVerificationReport",
+        "SmokePassEvidence",
+        "RegressionPassEvidence",
+        "AcceptanceMatrixResult",
+        "ResidualRiskReport"
+      ],
+      "forbidden_paths": [
+        "specs/",
+        "docs/",
+        "repo-memory/",
+        "platform-dsl/src/main/",
+        "platform-runtime/src/main/",
+        "app-core/src/main/",
+        "app-api/src/main/",
+        "ui/src/"
+      ],
+      "objective": "Run final QA verification for SignalSpec round-trip, validator rejection matrix, stale transition handling, partial failure and invariant rejection, provenance rendering, UI catalog/review behavior, smoke, and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify",
+      "verification_commands": [
+        [
+          "./qa/smoke.sh"
+        ],
+        [
+          "./qa/regression.sh"
+        ],
+        [
+          "npm",
+          "--prefix",
+          "ui",
+          "test"
+        ]
+      ]
+    }
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "shared",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [],
+  "project_root": "/Volumes/devssd/repos/apps/trade-research-platform",
+  "qa_regression_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/apps/trade-research-platform/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/",
+    "app-api/src/test/java/",
+    "ui/tests/"
+  ],
+  "relevant_paths": [
+    "app-api/build.gradle",
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "specs/SIGNAL_SPEC.md",
+    "specs/HISTORICAL_STORE_DECISION.md",
+    "specs/HISTORICAL_STORE_SCHEMA.md",
+    "specs/JAVA_DSL_SPEC.md",
+    "specs/CYCLE_READINESS.md",
+    "specs/REPLAY_DETERMINISM_SPEC.md",
+    "specs/KDB_SCHEMA.md",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "docs/UI_TELEMETRY_API.md",
+    "docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md",
+    "platform-events/src/main/java/com/ull/trading/events/signals/MutableCompositeSignalInput.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/SignalKinds.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/DarkPoolZScoreSignal.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/MicropriceSignal.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/CompositeSignalInput.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/OptionFlowImbalanceSignal.java",
+    "platform-events/src/main/java/com/ull/trading/events/signals/TradeImbalanceSignal.java",
+    "platform-ingest-alpaca/src/test/java/com/ull/trading/ingest/alpaca/AlpacaCanonicalCaptureParityTest.java",
+    "platform-ingest-core/src/main/java/com/ull/trading/ingest/core/capture/CanonicalEventCapture.java",
+    "platform-ingest-core/src/main/java/com/ull/trading/ingest/core/capture/BinaryCanonicalEventWriter.java",
+    "platform-dsl/src/main/",
+    "platform-dsl/src/test/",
+    "app-api/src/main/",
+    "app-api/src/test/",
+    "ui/src/",
+    "ui/tests/",
+    "tests/",
+    "qa/fixtures/",
+    "app-api/src/test/java/"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nProject: /Volumes/devssd/repos/apps/trade-research-platform\nFiles: 500, Lines: 56608, Functions: 2216, Classes: 560\nPackages (18): app-api, app-core, config, crypto-extension, docs, kdb, plans, platform-dsl, platform-ingest-crypto-coingecko, platform-ingest-crypto-coinglass, platform-ingest-macro-fred, platform-research, platform-runtime, qa, repo-memory\n  ... and 3 more\nClasses: 560 total\nTop-level functions: 252 total\n\n# Token Savior Packed Context\nContext pack for 'Implement R-016 SignalSpec validator, compiler, and authoring API so declarative signal specs can be validated, compiled, backtested, reviewed, and promoted with operator approval. Add platform-dsl/signalspec validator and compiler targeting existing FeatureNode primitives. Add propose/catalog/get/promote/archive signal API endpoints. Persist one row per SignalSpec plus YAML body. Extend explainability envelope with author, signalId, signalVersion, proposalId, and trackRecord. Add UI catalog view showing author and track record. LLM-authored equities.relativeVolumeZ.v1 round-trips propose, validate, compile, backtest, promote, and contributes to live ranking. Validator rejects unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics. Promoted signals show author provenance in opportunities. qa/smoke.sh and qa/regression.sh pass.' (64 symbols, ~2856 tokens / 3000 budget)\n------------------------------------------------------------\n\n# com.ull.app.api.TradeResearchApiApplication.main(String[])  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java)\n    public static void main(final String[] args) {\n        SpringApplication.run(TradeResearchApiApplication.class, args);\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.getRedisUrl()  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public String getRedisUrl() {\n        return redisUrl;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.setRedisUrl(String)  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public void setRedisUrl(final String redisUrl) {\n        this.redisUrl = redisUrl;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.getRedisNamespace()  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public String getRedisNamespace() {\n        return redisNamespace;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.setRedisNamespace(String)  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public void setRedisNamespace(final String redisNamespace) {\n        this.redisNamespace = redisNamespace;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.getEnvironment()  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public String getEnvironment() {\n        return environment;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.setEnvironment(String)  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public void setEnvironment(final String environment) {\n        this.environment = environment;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.getDeploymentId()  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public String getDeploymentId() {\n        return deploymentId;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.setDeploymentId(String)  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public void setDeploymentId(final String deploymentId) {\n        this.deploymentId = deploymentId;\n    }\n\n# com.ull.app.api.config.TradeResearchApiProperties.getDomain()  (value=0.20, cost=20t, app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java)\n    public String getDomain() {\n        return domain;\n    }\n\n... (54 more symbols selected, sources omitted)\n\n# Search Hits: R-016\n[{'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/UI_ROADMAP.md', 'line_number': 218, 'content': '- one LLM-authored signal has been promoted to live via the UI with full provenance rendering, end-to-end (R-016 acceptance scenario)'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 25, 'content': '# defined in repo-memory/ROADMAP.md (R-015, R-016, R-017, R-018) plus'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 225, 'content': '  - id: R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 279, 'content': '    depends_on: [R-015, R-016]'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 325, 'content': '    depends_on: [R-015, R-016, R-018]'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 363, 'content': '      - An MCP-native agent (Claude) given only the MCP server endpoint plus specs/SIGNAL_SPEC.md round-trips the R-016 acceptance scenario end to end without human scaffolding.'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 380, 'content': '  - R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 393, 'content': '  - docs/PHASE1_DATA_CONTRACT.md    # extended in R-016'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 404, 'content': '  - repo-memory/ROADMAP.md shows R-015, R-016, R-017, R-018 in the Completed section; R-008 is permanently marked SUPERSEDED.'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 8, 'content': '| `IMPLEMENTATION_PROMPT.yaml` | **A \u2014 LLM alpha core (original)** | Canonical checkout (repo root) | R-015, R-016, R-018, R-017 \u2014 superseded by the continuation prompt below now that R-015 has merged. |'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 9, 'content': '| `IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml` | **A continuation \u2014 picks up R-016/R-018/R-017** | Canonical checkout (repo root) | R-016, R-018, R-017. Includes a preflight gate that verifies R-015 is already on `main`. |'}]\n\n# Search Hits: SignalSpec\n[{'file': 'config/deploy/local.yaml', 'line_number': 57, 'content': '  # Authors declare per-signal cadence in their SignalSpec; the runtime clamps'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 259, 'content': '- `specs/SIGNAL_SPEC.md` \u2014 declarative SignalSpec v1 (op vocabulary, validator rules, lifecycle, authoring API).'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 262, 'content': '- implement the SignalSpec validator and compiler in `platform-dsl/signalspec/` targeting existing `FeatureNode` primitives in `platform-runtime`'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 278, 'content': '    VALID[SignalSpec validator + compiler]'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 297, 'content': '- one LLM-proposed SignalSpec round-trips end-to-end: propose \u2192 validate \u2192 compile \u2192 backtest (deterministic) \u2192 review \u2192 promote \u2192 contributes to live ranking with visible provenance'}, {'file': 'docs/UI_ROADMAP.md', 'line_number': 212, 'content': '- add a Signal Review UI \u2014 read the SignalSpec YAML, show validator diagnostics, render the derived feature-node graph, expose a \"promote to live\" button gated on `lifecycle.promoteToLiveRequires` being satisfied plus operator confirmation'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 42, 'content': '    agent can propose a SignalSpec, have it validated and compiled,'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 52, 'content': '    - Code-gen Java signals authored by an LLM (deferred to v2; v1 is declarative SignalSpec only)'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 53, 'content': '    - Cross-asset aggregator ops, regime-classifier ops, HMM ops in the SignalSpec op vocabulary'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 226, 'content': '    title: SignalSpec validator, compiler, authoring API, and provenance envelope extension'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 230, 'content': '      - platform-dsl/src/main/java/com/ull/trading/signalspec/SignalSpec.java'}]\n\n# Search Hits: validator\n[{'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 259, 'content': '- `specs/SIGNAL_SPEC.md` \u2014 declarative SignalSpec v1 (op vocabulary, validator rules, lifecycle, authoring API).'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 262, 'content': '- implement the SignalSpec validator and compiler in `platform-dsl/signalspec/` targeting existing `FeatureNode` primitives in `platform-runtime`'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 278, 'content': '    VALID[SignalSpec validator + compiler]'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 298, 'content': '- validator rejects unknown op names, malformed input refs, cyclic transforms, and missing required fields'}, {'file': 'docs/UI_ROADMAP.md', 'line_number': 212, 'content': '- add a Signal Review UI \u2014 read the SignalSpec YAML, show validator diagnostics, render the derived feature-node graph, expose a \"promote to live\" button gated on `lifecycle.promoteToLiveRequires` being satisfied plus operator confirmation'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 226, 'content': '    title: SignalSpec validator, compiler, authoring API, and provenance envelope extension'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 263, 'content': '      - 5 canonical malformed SignalSpec inputs produce actionable validator diagnostics with file/line context (unknown op, unknown ref, cyclic transform, missing required field, unknown apiVersion).'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 268, 'content': '      - SignalsCatalog UI renders authors, statuses, and trackRecord summaries; clicking a row opens a Signal Review page with the spec body and validator diagnostics.'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 67, 'content': '        A016[R-016 SignalSpec validator + API]'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 8, 'content': '#   - R-016 (SignalSpec validator/compiler/authoring API) \u2014 NOT STARTED.'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 28, 'content': '    (SignalSpec validator + compiler + authoring API + Phase 1 envelope'}]\n\n# Search Hits: compiler\n[{'file': 'AGENTS.md', 'line_number': 11, 'content': '- `dag_framework` owns graph/runtime/replay semantics and exposes neutral builder/compiler/runtime SPIs (no domain DSL).'}, {'file': 'AGENTS.md', 'line_number': 22, 'content': 'Policy: `dag_framework` may provide builder/compiler/runtime extension points for domain DSLs, but must not contain trading-domain DSL constructs, trading event taxonomies, trading feature nodes, or strategy-specific graph definitions.'}, {'file': 'README.md', 'line_number': 96, 'content': '- `dag_framework` owns neutral graph semantics: builder/compiler/runtime/replay seams'}, {'file': 'build.gradle', 'line_number': 77, 'content': \"        options.compilerArgs += ['-Xlint:all', '-Werror']\"}, {'file': 'docs/ARCHITECTURE.md', 'line_number': 54, 'content': '- `dag_framework` provides graph semantics and neutral builder/compiler/runtime SPIs (no domain DSL): compilation, scheduling, replay, watermarks, joins, timers'}, {'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/MODULE_BOUNDARIES.md', 'line_number': 39, 'content': '- builder/compiler/runtime/journal only'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 262, 'content': '- implement the SignalSpec validator and compiler in `platform-dsl/signalspec/` targeting existing `FeatureNode` primitives in `platform-runtime`'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 278, 'content': '    VALID[SignalSpec validator + compiler]'}, {'file': 'plans/ENGINEERING_BACKLOG.md', 'line_number': 11, 'content': '## Epic B - Graph compiler and runtime'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 226, 'content': '    title: SignalSpec validator, compiler, authoring API, and provenance envelope extension'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 8, 'content': '#   - R-016 (SignalSpec validator/compiler/authoring API) \u2014 NOT STARTED.'}]\n\n# Search Hits: authoring\n[{'file': 'docs/BASELINE_STATUS.md', 'line_number': 377, 'content': '- SignalSpec authoring surface (validator, compiler, `/api/signals/*` endpoints, provenance envelope extension). Tracked as R-016; spec frozen in `specs/SIGNAL_SPEC.md`.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 253, 'content': '- close the authoring/evaluation/promotion loop so new signals can be proposed by an LLM (or a human via the UI), backtested deterministically against QuestDB history, and promoted to live ranking under human approval'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 256, 'content': '- a trader operating the UI, with an LLM assistant as the signal-authoring counterpart. Python notebook workflows are explicitly out of scope for this platform.'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 259, 'content': '- `specs/SIGNAL_SPEC.md` \u2014 declarative SignalSpec v1 (op vocabulary, validator rules, lifecycle, authoring API).'}, {'file': 'docs/PLATFORM_ROADMAP.md', 'line_number': 266, 'content': '- implement `GET /api/history/events` as a constrained SQL query surface over QuestDB for LLM ad-hoc exploration while authoring a spec (parameterized, read-only, scoped by allowlisted event families)'}, {'file': 'docs/PRD.md', 'line_number': 52, 'content': '- end-user no-code workflow authoring'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 226, 'content': '    title: SignalSpec validator, compiler, authoring API, and provenance envelope extension'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 429, 'content': '  signal_authoring: specs/SIGNAL_SPEC.md'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 8, 'content': '#   - R-016 (SignalSpec validator/compiler/authoring API) \u2014 NOT STARTED.'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 28, 'content': '    (SignalSpec validator + compiler + authoring API + Phase 1 envelope'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 203, 'content': '    title: SignalSpec validator, compiler, authoring API, and provenance envelope extension'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 391, 'content': '  - Each PR title: `<task.id>: <task.title>` (e.g. `R-016: SignalSpec validator + compiler + authoring API`).'}]\n\n# Search Hits: API\n[{'file': 'AGENTS.md', 'line_number': 15, 'content': '- Spring Boot + React/TypeScript are the API/UI layers.'}, {'file': 'AGENTS.md', 'line_number': 16, 'content': '- Live runtime publishers must remain separate non-web processes and should publish Redis read models consumed by the Spring API layer.'}, {'file': 'AGENTS.md', 'line_number': 102, 'content': 'When adding new modules or APIs:'}, {'file': 'AGENTS.md', 'line_number': 110, 'content': '- UI-facing API contract changes must update `docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md` and `docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md`'}, {'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'README.md', 'line_number': 12, 'content': 'The crypto runtime is no longer ingress-only: this repo already contains an implemented BTC/ETH-first cycle graph with local feature extraction, asset aggregation, holder-regime scoring, basis/dislocation discovery, derivatives-reflexivity and leadership-aware cross-asset allocation, refined take-profit candidate and staged band logic, deterministic replay coverage, dedicated crypto JMH node benchmarks, and a minimal Redis/API snapshot seam. The next crypto work is calibration, explainability/serving-surface widening, proxy-equity lane calibration, live-ingest hardening, and broader historical-serving expansion rather than initial bring-up.'}, {'file': 'README.md', 'line_number': 39, 'content': '- `docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md`'}, {'file': 'README.md', 'line_number': 71, 'content': '- `app-api/` \u2014 Spring Boot API process that serves UI-facing `/api/*` routes from Redis hot views and owns the consumer-side QuestDB historical-read layer, including real `/api/opportunities/{id}/history`, `/api/backtests`, `/api/performance/summary`, `/api/decisions`, `/api/risk/summary`, `/api/deployments`, and `/api/admin/*` routes'}, {'file': 'README.md', 'line_number': 97, 'content': '- this repo owns domain events, graph assembly, runtime nodes, vendor ingest, research helpers, serving/API contracts, deployment wiring, and UI'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/ConfigStateService.java', 'line_number': 144, 'content': '            warnings.add(\"Local-slice preview only persists in the API process until runtime-side apply is wired.\");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/PositionsService.java', 'line_number': 201, 'content': '                    .header(\"APCA-API-KEY-ID\", apiKey)'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/PositionsService.java', 'line_number': 202, 'content': '                    .header(\"APCA-API-SECRET-KEY\", apiSecret)'}]\n\n\n# ROADMAP relevant entry\n\n_Append-only. Top-to-bottom is priority order. Status mutates in place; entries are never deleted. DONE/ABANDONED stay for history and are skipped by the planner._\n**Theme:** Complete BTC/ETH crypto runtime to parity with equities on the Phase 1 explainability/trust contracts AND pull equities up to crypto's level on source-help/provenance depth; wire macro + proxy-equity input lanes; implement the QuestDB historical store (decision closed 2026-04-23, see `specs/HISTORICAL_STORE_DECISION.md`); stand up the UI-driven backtest runner + LLM-authored signal loop (`specs/SIGNAL_SPEC.md`) so trading alpha can be proposed by an LLM and promoted by a human operator; then extend into altcoins, options, and macro signal graphs.\n**Primary users:** trader operating the UI, with an LLM assistant as the signal-authoring counterpart. Python notebook / quant-researcher workflows are explicitly **not** a target.\n**Critical path (cycle-deadline framing, April 2026):** the BTC cycle window is the practical deadline for any crypto work. Critical path is therefore:\n  **Track A (in flight, canonical checkout):** R-015 (DONE) \u2192 R-016 \u2192 R-018 \u2192 R-017.\n  **Track B (parallel, separate worktree):** R-001, R-002, R-007, R-011-first-slice (cycle blockers) \u2192 R-019 (ingress backpressure) \u2192 R-020 (venue tie-break) \u2192 R-021 (Glassnode reserve + Tardis depth ingest).\n  **Track C (UI, parallel worktree, dependent on A+B):** Backtests live wiring \u2192 Signal Review page \u2192 Cycle Precedent button \u2192 trust + author provenance UI on Opportunities.\n  **Deferred to post-cycle (late August 2026 onward):** R-012 (altcoin expansion), R-013 (options signal graph), R-014 (macro signal graph), any unification of equities/crypto event hierarchy, any pluggable IngressRegistry refactor of LiveIngressCoordinator. See per-entry `DEFERRED \u2014 post-cycle` status.\n### [R-001] Crypto explainability contract parity with Phase 1 equities\n- **Status:** TODO  \u2014 **cycle-blocker** (Track B)\n- **Goal:** `/api/crypto/cycle` + `/api/markets/summary?domain=crypto` carry the full Phase 1 explainability payload with identical schema to equities opportunities.\n- **Scope:** `CryptoController` response widening, `HotViewPublisher.publishCryptoCycleExplainability`, crypto-specific signals (`holderRegimeScore`, `basisDislocation`, `reflexivityScore`, `stablecoinFlow`, `macroOverlay`, `proxyEquityConfirmation`, `leadershipBias`) projected into the Phase 1 shape, UI type update, contract snapshot.\n- **Out of scope:** Trust payload (R-002), historical explainability (R-011), new runtime nodes.\n- **Acceptance:** All Phase 1 fields present when state exists, contract snapshot matches equities schema field-for-field, `UI_API_CONTRACT_PROVENANCE_MATRIX.md` crypto column flipped to `implemented`.\n- **Depends on:** none.\n- **Notes:** Template: `docs/PHASE1_DATA_CONTRACT.md \u00a7A/B`. Reuse `contractVersion: \"2026-04-phase1-v1\"`, `signalSetVersion: \"phase1-v1\"` verbatim. All signals are already computed by existing runtime nodes; this is projection widening, not new graph logic.\n### [R-002] Crypto trust payload parity\n- **Status:** TODO  \u2014 **cycle-blocker** (Track B)\n- **Goal:** All crypto-domain responses carry the full `TrustPayload` (`freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`).\n- **Scope:** Crypto hot-view projections populate every trust field, `freshnessMs` sourced from `LiveIngressCoordinator`, `UI_TRUST_PAYLOAD_COVERAGE_AUDIT.md` crypto rows flipped to `Full`.\n- **Out of scope:** Alert rules engine, historical trust snapshots.\n- **Acceptance:** Crypto + equities cockpit responses share identical trust schema in snapshot diff, POST-003 audit matrix all-green for crypto.\n- **Notes:** Provenance matrix in `docs/UI_TRUST_PAYLOAD_COVERAGE_AUDIT.md` is the enforcement record.\n### [R-003] Crypto-domain config + diagnostics parity\n- **Status:** TODO\n- **Goal:** `/api/config/*` and `/api/diagnostics/*` return crypto-scoped runtime metadata instead of falling back to equities identifiers.\n- **Scope:** Thread `?domain=crypto` through config + diagnostics controllers to the crypto runtime's live-config + partition state, expose per-domain `runtimeConfigVersion` + `graphId`, domain-correct venue list.\n- **Out of scope:** New diagnostics endpoints, config mutation (read-only parity pass).\n- **Acceptance:** Every config + diagnostics endpoint returns correct data for both `domain=equities` and `domain=crypto`, Playwright selector-switch covers both.\n- **Depends on:** none.\n- **Notes:** Crypto graph id today comes from `CryptoPartitionedRuntime` \u2014 thread that through instead of hardcoding the equities `runtimeConfigVersion`.\n### [R-004] Equities visibility + source-help catch-up\n- **Status:** TODO\n- **Goal:** Equities cockpit/opportunities/markets surfaces expose the same source-help, per-venue breakdown, and provenance depth the crypto runtime has \u2014 closing the \"equities is behind crypto on visibility\" gap.\n  - Add `sourceAttribution[]` to the Phase 1 explainability payload: per-signal vendor source id, per-source latest `eventTimeNanos`, per-source `freshnessMs`, per-source health state. Populate for equities opportunities + cockpit using the same projection machinery that drives crypto's richer cycle endpoint.\n  - Extend `/api/signals/catalog` entries with `vendorSources[]` (e.g. `microprice \u2190 alpaca.quotes`, `optionFlowImbalance \u2190 unusualwhales.option_trades`, `darkPoolZscore \u2190 unusualwhales.darkpool_prints`).\n  - New `/api/markets/summary?domain=equities` per-venue breakdown matching the depth of the crypto variant: per-vendor last event, freshness, health, warning count.\n  - UI: `SignalDerivationPanel` renders `sourceAttribution` rows per signal (vendor + freshness + health dot); `SignalGlossaryPopover` renders the expanded `vendorSources` list; cockpit `ServicesPanel` shows equities vendor health with the same structure as crypto.\n- **Out of scope:** New signals, new vendor ingests, admin/config write surfaces.\n- **Acceptance:** Equities + crypto cockpit responses share identical `sourceAttribution` schema in snapshot diff; `/api/signals/catalog` entries for equities signals all have `vendorSources` populated; UI screens walk shows no missing-field fallback on equities markets detail; `qa/smoke.sh` green.\n- **Depends on:** [R-001] (needs the contract carrier before adding fields to it).\n- **Notes:** Intent is strict two-way parity \u2014 whatever depth crypto has on source-help, equities must match, and the shared schema is the enforcement mechanism. The provenance matrix stays the system of record.\n### [R-005] Proxy-equity lane calibration + allocation wiring\n- **Status:** TODO\n- **Goal:** MSTR/RIOT/MARA/COIN proxy-equity signals fully integrated into Layer C crypto allocation with calibrated weights, replay parity, deterministic attribution.\n- **Scope:** Calibrate `proxyMomentumNode`, `proxyStressNode`, `proxyBreadthNode` weights; expand default `TRADE_RESEARCH_CRYPTO_PROXY_SYMBOLS`; wire proxy-confirmation / proxy-dislocation into Layer C allocation; land `docs/PROXY_EQUITY_LANE_CALIBRATION.md`; extend `CryptoCycleReplayTest` with proxy-event fixture; surface `proxyEquityConfirmation` contribution.\n- **Out of scope:** New proxy symbols beyond the 4 listed, proxy-driven execution, historical proxy backfill.\n- **Acceptance:** Replay fixture asserts deterministic allocation shift under proxy stress spike, explainability shows non-zero `proxyEquityConfirmation` contribution, JMH smoke unaffected.\n- **Notes:** Layer A2 (proxy-equity feature lane) already exists in `CryptoCycleGraphs`; this entry is calibration + Layer C wiring, not a new graph.\n### [R-006] FRED macro shared-input attribution + replay determinism\n- **Status:** TODO\n- **Goal:** FRED macro metrics appear as explicit `macroOverlay` contributions in both equities + crypto explainability with deterministic replay parity under interleaved events.\n- **Scope:** Wire `macroOverlay` contribution for both domains, shared-FRED interleaved fixture in `CryptoCycleReplayTest` + `FeaturePipelineReplayTest`, byte-identical output assertion, cross-domain macro appendix in `docs/REPLAY_DETERMINISM_SPEC.md`.\n- **Out of scope:** New FRED series, production polling rate tuning, macro-only signal graph (that's R-014).\n- **Acceptance:** Determinism test passes under interleaved FRED events; `macroOverlay` contribution non-zero on fixture.\n- **Notes:** FRED is shared input, not a standalone graph at this stage \u2014 R-014 is the dedicated macro graph.\n### [R-007] Crypto live ingest production posture\n- **Status:** TODO  \u2014 **cycle-blocker** (Track B)\n- **Goal:** Per-venue rate-limit policy, circuit-breaker health state machine, venue-level failover routing, structured health semantics surfaced via `/api/diagnostics/services?domain=crypto`.\n- **Scope:** Per-venue rate-limit config, state machine (`HEALTHY`/`DEGRADED`/`FAILED`/`RECOVERING`), failover routing, integration test for venue drop + failover timing.\n- **Out of scope:** New venue sources, cross-venue arbitrage, live execution, vendor-SDK-level enforcement.\n- **Acceptance:** Diagnostics returns all 5 venues with health, failover integration test green, JMH smoke unaffected.\n- **Notes:** Applies to Binance, Coinbase, Coinglass, CryptoQuant, Deribit. CoinGecko is historical/batch and stays outside the live state machine.\n### [R-008] Backtest execution surface \u2014 deterministic replay harness\n- **Status:** SUPERSEDED by R-015 \u2014 2026-04-23\n- **Note:** The strategic direction shift to UI-driven backtests + LLM-authored signals subsumes this entry. R-015 carries forward the `POST /api/backtest/run` scope against the QuestDB-backed historical store instead of capture windows, and ties directly into R-016 (signal authoring) and R-017 (LLM tool-call surface). Original scope preserved below for history.\n- **Original goal:** `POST /api/backtests` triggers a deterministic replay over a canonical capture window for a chosen domain, records the run, `GET /api/backtests/<id>` returns the full Phase 1 explainability + trust payload.\n### [R-009] Backtest golden snapshots + diff view\n- **Status:** TODO\n- **Goal:** `/backtests` UI lifecycle \u2014 trigger, run list, side-by-side diff against golden or previous run; regression-tier check flags drift.\n- **Scope:** UI page, trigger form, run list, two-run selector, diff view, golden snapshot fixtures under `platform-research/fixtures/backtest-golden/<domain>-<window>.json`, regression-tier golden drift check, `compose-stack` regression coverage for the full end-to-end path.\n- **Out of scope:** Golden refresh automation, production scheduling, PnL/return metrics, artifact download.\n- **Acceptance:** UI trigger\u2192diff flow green in Playwright for both domains; drift check catches a deliberate weight perturbation; `qa/regression.sh` covers the flow.\n- **Notes:** First entry where the deferred TRP `compose-stack` regression (CURRENT_STATE \"Known concerns\") becomes load-bearing \u2014 this roadmap entry is the forcing function for finishing that QA work.\n### [R-010] Historical storage alternatives evaluation\n- **Status:** DONE \u2014 2026-04-23\n- **Goal:** Decide the historical storage backend for TRP via structured comparison.\n- **Outcome:** QuestDB (Apache 2.0) selected as the canonical historical store, paired with a date-partitioned Apache Parquet lake as the authoritative capture substrate and notebook-research surface. Decision and rationale landed in `specs/HISTORICAL_STORE_DECISION.md`; logical schema in `specs/HISTORICAL_STORE_SCHEMA.md`; DDL in `questdb/schema_bootstrap.sql`. `repo-memory/DECISIONS.md` updated. `specs/KDB_SCHEMA.md` marked deprecated; `kdb/*.q` scripts archived under `docs/archive/kdb-legacy/`.\n- **Escape clause:** Reswap to ClickHouse if QuestDB fails on sort stability, Python/Polars ergonomics, or large-window joins within 6 months (budget ~3 weeks; Parquet lake unchanged).\n### [R-011] Historical crypto serving \u2014 first historical slice (QuestDB)\n\n# DECISIONS relevant excerpt\n\n_Architectural decisions with enough context that a future agent can tell whether a proposed change is undoing something load-bearing. Schema:_\n## (pre-2026-04-13) \u2014 Redis hot-view / historical-store canonical split\n**Decision:** Redis is the hot serving layer \u2014 latest snapshots, rankings, short time windows \u2014 written by `app-core` as projections from the runtime graph. A columnar time-series store is the canonical historical and replay store; replay feeds back into the graph for research workflows. `app-api` reads only from Redis and the historical store; it never writes to either.\n**Consequences:** `app-api` is allocation-light and read-only. Any change that adds a DB write path in `app-api` or a direct historical-store read from the UI is a boundary violation and needs a new DECISIONS entry. Rules out adding Postgres / SQLite / Prisma / Drizzle as an OLTP layer \u2014 persistence is Redis + the historical store.\n**Context:** The prior decision named KDB+ as the canonical historical store. KDB+ is proprietary and licensed; the platform requirement is a store that is permanently free, self-hostable, and not subject to BSL / source-available licenses. A three-perspective council review (architect / product-migration / research-strategy) shortlisted four permissive-licensed candidates (QuestDB, ClickHouse, TimescaleDB, DuckDB+Parquet). There is zero Java code coupling to KDB+ today \u2014 the KDB assets are only schema specs, `.q` scripts, YAML entries, and doc references \u2014 so the switch is low-risk.\n**Decision:** Adopt **QuestDB** (Apache 2.0) as the canonical historical store. Pair it with a date-partitioned **Apache Parquet lake** as the authoritative capture substrate and the research-notebook surface (DuckDB / Polars read from the lake directly). A background bulk-loader moves captured Parquet partitions into QuestDB for replay cursors and API historical reads.\n- `specs/KDB_SCHEMA.md` is deprecated; active schema is `specs/HISTORICAL_STORE_SCHEMA.md` + `questdb/schema_bootstrap.sql`.\n- Escape clause: if QuestDB fails on sort stability, Python research ergonomics, or large-window joins within 6 months, reswap to ClickHouse (~3 weeks; Parquet lake unchanged). See `specs/HISTORICAL_STORE_DECISION.md`.\n**Consequences:** Any API change needed for trade-research-platform's graphs goes to `dag-framework` first. Pinning a local snapshot of dag-framework here is forbidden. Rules out \"we'll patch dag-framework locally and upstream later\" \u2014 those patches rot.\n## (pre-2026-04-13) \u2014 Playwright as the canonical smoke; Vitest for unit\n**Context:** The app has many routes and many data surfaces. Unit tests alone do not catch routing bugs, URL-param regressions, or proxy desync between the UI and `app-api`. End-to-end Playwright runs are the only way to know the cockpit actually works.\n**Decision:** Vitest owns unit tests (28 files, including `api-contract-snapshots.test.ts` as the API contract gate). Playwright owns end-to-end across Chromium + WebKit + iPhone 13 profiles. The golden-path flow `\"cockpit top opportunity launches backtest with the selected symbol\"` is the one test that must never break.\n**Consequences:** Playwright is a hard dependency of the orchestrator's QA slot for this project. The QA contract (pass-2 pending) will wrap `npm run test:e2e` against the three `.spec.ts` files. Adding a new top-level UI flow should add a Playwright spec alongside. Rules out \"unit tests only\" as a QA signal for UI changes.\n\n# Memory digest\n\n# Token Savior memory observations\n- [guardrail] Breaking change: com (com)"
+}
+
+VALIDATOR_ERRORS:
+[]

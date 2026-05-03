@@ -1,0 +1,1249 @@
+Merge the candidate PlanContract summaries into one complete PlanContract.
+
+Prefer slices that multiple panelists agree on. Preserve concrete paths,
+verification commands, lifecycle acceptance coverage, and human finalization.
+Emit exactly one JSON object matching PlanContract.
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as the canonical local expansion baseline.
+  Consolidate candidates back toward its order, role/task_type mapping, and
+  target slice count unless the feature evidence justifies extra implementer
+  slices.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Convert candidate terms like `worker` or `developer` to
+  `implementer`.
+- Use only canonical role/task_type pairs: designer/engineering.design,
+  implementer/engineering.implement, reviewer/engineering.review,
+  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  historian/engineering.history.
+- `affected_surfaces` must be non-empty and should include every repo area the
+  final plan will touch.
+- Use concrete path prefixes only; remove wildcard paths from candidates.
+- Prefer paths present in candidate context/summaries. Remove invented path
+  prefixes when an equivalent existing path is available.
+- Ensure each slice's own allowed_paths and forbidden_paths do not overlap.
+- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
+  slices. If candidates use generic QA slices, split them into test-first
+  authoring before implementers and verification after reviewers.
+- QA author/verify write paths must be restricted to the QA/test roots shown in
+  candidate project contexts. Implementer write paths must not include those
+  paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
+  redundant QA/review work.
+- Preserve separate implementer slices for wide/system features that span
+  independent ownership surfaces such as DSL/compiler, API/workflow, UI, and
+  lifecycle/overflow/invariants.
+- Do not create finalization, merge, PR approval, or human-gate task slices.
+  Human merge is represented only by finalization_policy.
+- Preserve stale/invalid, invariant/CRC or equivalent invariant-failure, and
+  failure/partial lifecycle coverage only when the feature is lifecycle,
+  durability, recovery, or state-machine work. Do not add snapshot/CRC/journal
+  acceptance entries for unrelated features.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use `open_final_feature_pr_for_human_merge` for finalization_policy.
+- The input is summarized to save tokens; do not treat omitted raw JSON as omitted
+  requirements. Reconstruct a complete valid PlanContract from the summaries.
+- Deterministic validator and critic checks are authoritative. If candidates
+  disagree with the deterministic rules, follow the deterministic rules.
+
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-dsl-compiler",
+    "impl-api-workflow",
+    "impl-ui-provenance",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "platform-dsl/ and related signal compiler paths",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement validation and compilation for declarative signal specs.",
+      "role": "implementer",
+      "slice_id": "impl-dsl-compiler",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "app-api/ and app-core workflow paths",
+      "depends_on": [
+        "impl-dsl-compiler"
+      ],
+      "purpose": "Implement propose/catalog/get/promote/archive API workflow and persistence.",
+      "role": "implementer",
+      "slice_id": "impl-api-workflow",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "ui/ and explainability/provenance display paths",
+      "depends_on": [
+        "impl-api-workflow"
+      ],
+      "purpose": "Implement UI catalog/provenance surface and explainability envelope wiring.",
+      "role": "implementer",
+      "slice_id": "impl-ui-provenance",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-ui-provenance"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, app-api/src/test/, app-api/src/test/java/, ui/tests/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+CANDIDATE_PLAN_SUMMARIES:
+[
+  {
+    "acceptance_test_matrix": [
+      "Valid equities.relativeVolumeZ.v1 semantic coverage: propose, validate, compile to FeatureNode primitives, run through R-015 backtest, operator-promote, catalog/get, and live ranking contribution.",
+      "Validator edge-case coverage: unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion each fail with actionable diagnostics that identify the offending field or reference.",
+      "Lifecycle and concurrency coverage: unapproved promotion rejected, stale signalVersion promotion rejected, archive/promote conflicts handled deterministically, and repeated approved promote is idempotent.",
+      "Persistence coverage: one logical record per SignalSpec version includes YAML body, author, proposalId, validation/compile result, lifecycle state, backtest reference, trackRecord, and timestamps.",
+      "Provenance coverage: promoted opportunities include author, signalId, signalVersion, proposalId, and trackRecord in the explainability envelope.",
+      "UI coverage: catalog renders author/status/trackRecord and review page renders YAML, diagnostics, derived lifecycle state, and explicit operator promotion confirmation.",
+      "Configured QA gate coverage: ./qa/smoke.sh and ./qa/regression.sh pass after implementation and review."
+    ],
+    "affected_surfaces": [
+      "specs/",
+      "docs/",
+      "repo-memory/",
+      "platform-dsl/",
+      "platform-runtime/",
+      "app-core/",
+      "app-api/",
+      "ui/",
+      "tests/",
+      "qa/fixtures/",
+      "app-api/src/test/",
+      "app-api/src/test/java/",
+      "ui/tests/",
+      "qa/"
+    ],
+    "assumptions": [
+      "R-015 backtest API and deterministic replay path already exist and must be reused rather than duplicated.",
+      "specs/SIGNAL_SPEC.md is the frozen source of truth for SignalSpec v1 syntax, op vocabulary, diagnostics, lifecycle, and authoring API behavior.",
+      "Signal persistence must respect the existing Redis hot-view and historical-store boundary; app-api may expose workflow endpoints but must not become an ad hoc OLTP database writer.",
+      "The UI layer exists under ui/ and already consumes app-api /api/* routes.",
+      "Operator approval is mandatory before any promoted SignalSpec contributes to live ranking."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "A valid equities.relativeVolumeZ.v1 YAML fixture round-trips through propose, validate, compile, backtest, promote, catalog/get, and appears in live ranking explainability.",
+        "Malformed fixtures cover unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+        "Promotion requires an operator approval request and rejects unapproved or stale promotion attempts.",
+        "Opportunity responses for promoted signals include author, signalId, signalVersion, proposalId, and trackRecord.",
+        "Signals catalog and review UI render author, lifecycle status, YAML body, validator diagnostics, and trackRecord."
+      ],
+      "concurrency_protocol": "Signal lifecycle transitions must be compare-and-set or otherwise version-checked by signalId and signalVersion so concurrent promote/archive/re-propose requests cannot silently overwrite state; promotion must be idempotent for the same approved version and must reject stale proposal versions with actionable errors.",
+      "forbidden_alternatives": [
+        "Generating Java source from SignalSpec YAML.",
+        "Promoting a signal as a side effect of proposal, validation, compilation, or successful backtest.",
+        "Adding Postgres, SQLite, Prisma, Drizzle, or another app-api-owned OLTP store for SignalSpec persistence.",
+        "Duplicating the R-015 backtest/replay path for SignalSpec evaluation.",
+        "Patching dag-framework locally instead of using existing public primitives."
+      ],
+      "hard_constraints": [
+        "Do not add Java code generation for signals.",
+        "Do not allow auto-promotion without explicit human/operator approval.",
+        "Reuse the R-015 backtest execution path.",
+        "Validator must reject unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+        "Promoted signals must expose author provenance in opportunities and live ranking explainability.",
+        "qa/smoke.sh and qa/regression.sh must pass."
+      ],
+      "ownership_boundaries": "platform-dsl owns SignalSpec model parsing, validation, graph cycle detection, actionable diagnostics, and compilation to existing FeatureNode primitives. platform-runtime/app-core own live graph integration and ranking contribution for promoted compiled signals. app-api owns HTTP workflow contracts and orchestration only. ui owns catalog, review, diagnostics, trackRecord, and operator promotion confirmation surfaces. docs/specs/repo-memory own contract documentation.",
+      "persistence_protocol": "Persist one logical SignalSpec record per signal version with immutable YAML body, author/proposal metadata, lifecycle status, validation result, compile result, backtest run reference, trackRecord summary, timestamps, and archived/promoted state using the project-approved persistence/control-plane path; do not introduce a new app-api-local database or direct UI historical-store writes.",
+      "public_api": "Expose /api/signals/propose, /api/signals/catalog, /api/signals/{signalId}, /api/signals/{signalId}/promote, and /api/signals/{signalId}/archive with SignalSpec YAML body, validation diagnostics, lifecycle status, proposalId, author, signalId, signalVersion, backtest/trackRecord summary, and promotion eligibility. Extend opportunity/explainability responses with author, signalId, signalVersion, proposalId, and trackRecord for promoted signals."
+    },
+    "feature_id": "R-016",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement declarative SignalSpec v1 validation, compilation, authoring workflow, provenance, and UI catalog so an LLM-authored equities.relativeVolumeZ.v1 signal can move through propose, validate, compile, deterministic backtest, operator-reviewed promotion, and live ranking contribution without Java code generation or auto-promotion.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Persistence boundary risk: implementing writes directly in app-api could violate the Redis/historical-store architectural decision.",
+      "Promotion safety risk: accidentally promoting on successful validation or backtest would violate operator approval constraints.",
+      "Compiler semantic risk: SignalSpec transforms may compile to FeatureNode graphs that differ from validator assumptions unless graph references and cycles are checked consistently.",
+      "Backtest duplication risk: building a new replay path instead of reusing R-015 could create divergent deterministic results.",
+      "Provenance drift risk: UI/API opportunity envelopes may omit author or trackRecord on live promoted signals even if catalog data is complete.",
+      "Concurrency risk: simultaneous promote/archive or version replacement can produce stale lifecycle state without version-checked transitions.",
+      "Diagnostics quality risk: validator failures may be technically correct but not actionable for LLM-authored repair loops."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "plans/",
+          "app-api/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "ui/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "APIContractDelta",
+          "PersistenceBoundaryDecision",
+          "AcceptanceCoverageMap"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "objective": "Update specs/SIGNAL_SPEC.md and related repo-memory/docs contract notes to lock SignalSpec v1 API, lifecycle, diagnostics, persistence ownership, provenance fields, and R-015 backtest reuse.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "FailingSignalSpecFixtures",
+          "ValidatorContractTests",
+          "AuthoringApiContractTests",
+          "UiCatalogReviewTests"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Add failing SignalSpec fixtures and contract tests for valid equities.relativeVolumeZ.v1, five validator rejection cases, promotion gating, provenance fields, and UI catalog/review rendering.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "platform-dsl/",
+          "platform-runtime/",
+          "specs/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "SignalSpecModel",
+          "SignalSpecValidator",
+          "SignalSpecCompiler",
+          "ActionableDiagnostics",
+          "FeatureNodeCompilationAdapter"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Implement platform-dsl SignalSpec model, YAML parsing, validator diagnostics, transform cycle detection, reference resolution, and compiler targeting existing platform-runtime FeatureNode primitives.",
+        "role": "implementer",
+        "slice_id": "impl-dsl-compiler",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":platform-dsl:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/",
+          "app-core/",
+          "platform-runtime/",
+          "config/",
+          "specs/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-dsl-compiler"
+        ],
+        "expected_outputs": [
+          "SignalAuthoringEndpoints",
+          "SignalSpecPersistenceRecord",
+          "OperatorPromotionGate",
+          "BacktestWorkflowReuse",
+          "LiveRankingSignalRegistration"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "platform-dsl/src/test/"
+        ],
+        "objective": "Implement app-api/app-core SignalSpec propose, catalog, get, promote, and archive workflow with persisted YAML records, operator promotion approval, R-015 backtest reuse, and live ranking integration for promoted compiled signals.",
+        "role": "implementer",
+        "slice_id": "impl-api-workflow",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "ui/",
+          "docs/",
+          "specs/"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-api-workflow"
+        ],
+        "expected_outputs": [
+          "SignalsCatalogView",
+          "SignalReviewView",
+          "PromotionConfirmationControl",
+          "OpportunityProvenanceRendering"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "app-api/src/main/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/"
+        ],
+        "objective": "Implement ui SignalSpec catalog and review views plus opportunity provenance rendering for author, signalId, signalVersion, proposalId, diagnostics, approval status, and trackRecord.",
+        "role": "implementer",
+        "slice_id": "impl-ui-provenance",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "npm",
+            "--prefix",
+            "ui",
+            "test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/",
+          "ui/",
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "qa/"
+        ],
+        "depends_on": [
+          "impl-ui-provenance"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "ContractComplianceReport",
+          "RiskDisposition",
+          "RequiredFixesOrApproval"
+        ],
+        "forbidden_paths": [
+          "build/",
+          ".gradle/",
+          "node_modules/",
+          "dist/"
+        ],
+        "objective": "Review platform-dsl, app-api, app-core, platform-runtime, ui, specs, and docs changes for contract compliance, lifecycle safety, persistence boundaries, promotion gating, diagnostics quality, and test adequacy.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "SmokeGateResult",
+          "RegressionGateResult",
+          "AcceptanceMatrixResult",
+          "ResidualRiskNotes"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Run final smoke and regression gates, confirm all authored SignalSpec fixtures and UI/API workflows pass, and record any residual failures for repair or escalation.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "npm",
+            "--prefix",
+            "ui",
+            "test"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "Semantic coverage: equities.relativeVolumeZ.v1 YAML fixture proposes, validates, compiles to FeatureNode primitives, invokes the R-015 backtest path, records trackRecord, operator-promotes, appears in catalog/get responses, and contributes to live ranking opportunities.",
+      "Validator failure coverage: unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion each fail with actionable diagnostics containing field paths or graph references.",
+      "Lifecycle and durability coverage: stale proposal promotion, invalid validation state, archived spec promotion, missing operator approval, conflicting signalVersion, partial backtest failure, persistence reload, immutable YAML body, compiled graph fingerprint/invariant mismatch, and archive/get/catalog state transitions are covered.",
+      "Provenance coverage: promoted signals propagate author, signalId, signalVersion, proposalId, and trackRecord through API opportunities and UI catalog/opportunity rendering.",
+      "Configured QA gate coverage: qa/smoke.sh and qa/regression.sh pass after implementation and review."
+    ],
+    "affected_surfaces": [
+      "specs/",
+      "docs/",
+      "platform-dsl/",
+      "platform-runtime/",
+      "app-core/",
+      "app-api/",
+      "ui/",
+      "tests/",
+      "qa/",
+      "qa/fixtures/",
+      "app-api/src/test/",
+      "app-api/src/test/java/",
+      "ui/tests/"
+    ],
+    "assumptions": [
+      "specs/SIGNAL_SPEC.md is the frozen source of truth for SignalSpec v1 schema, operation vocabulary, lifecycle rules, and authoring API behavior.",
+      "R-015 backtest execution is already available and must be reused rather than replaced.",
+      "Signal promotion requires explicit human/operator approval and must never auto-promote from validation or backtest success alone.",
+      "The API layer owns SignalSpec persistence and workflow endpoints, while runtime/live ranking consumes only promoted compiled signals.",
+      "QA owns tests and fixtures before implementation and final regression verification after review."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "LLM-authored equities.relativeVolumeZ.v1 fixture round-trips propose, validate, compile, backtest, operator promote, archive/get/catalog, and contributes to live ranking after promotion.",
+        "Validator rejects unknown op with a diagnostic naming the invalid operation and allowed vocabulary context.",
+        "Validator rejects unknown ref with a diagnostic naming the missing reference and source path.",
+        "Validator rejects cyclic transform graphs with a diagnostic identifying the cycle participants.",
+        "Validator rejects missing required fields with field-path diagnostics.",
+        "Validator rejects unknown apiVersion with supported-version diagnostics.",
+        "Promoted opportunity payloads and UI opportunity/catalog views show author, signalId, signalVersion, proposalId, and trackRecord.",
+        "qa/smoke.sh and qa/regression.sh pass."
+      ],
+      "concurrency_protocol": "Treat proposal, promote, and archive as idempotent state transitions keyed by signalId, signalVersion, and proposalId; promotion must perform optimistic lifecycle checks so stale proposals, archived specs, conflicting versions, or missing operator approval fail with actionable diagnostics.",
+      "forbidden_alternatives": [
+        "Generating Java source/classes from SignalSpec YAML.",
+        "Bypassing validation or backtest before promotion.",
+        "Promoting a signal automatically based only on validator or backtest success.",
+        "Adding a parallel backtest runner instead of integrating with R-015.",
+        "Persisting only derived compiled state without the original YAML body.",
+        "Hiding author/proposal provenance from opportunities or UI catalog entries."
+      ],
+      "hard_constraints": [
+        "Do not add Java code generation for authored signals.",
+        "Do not allow auto-promotion without human/operator approval.",
+        "Reuse the existing R-015 backtest path for SignalSpec evaluation.",
+        "Validator diagnostics must be actionable for unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion.",
+        "Promoted signal provenance must be visible in opportunity explainability envelopes and UI views.",
+        "qa/smoke.sh and qa/regression.sh must pass before final PR handoff."
+      ],
+      "ownership_boundaries": "platform-dsl owns SignalSpec parsing, validation, cycle detection, required-field checks, operation/reference diagnostics, and compilation to existing FeatureNode primitives; app-api owns persistence, workflow endpoints, R-015 backtest orchestration, operator promotion/archive state transitions, and DTO contracts; app-core/platform-runtime own live ranking consumption of promoted compiled signals; ui owns catalog, review, provenance, and track-record display.",
+      "persistence_protocol": "Persist one row per SignalSpec version/proposal with immutable YAML body, author metadata, proposalId, lifecycle status, validation diagnostics, compiled graph fingerprint, backtest trackRecord, created/updated/promoted/archived timestamps, and operator approval metadata; do not mutate the stored YAML body after proposal creation.",
+      "public_api": "Expose /api/signals propose, catalog, get, promote, and archive workflow endpoints with stable request/response DTOs carrying apiVersion, signalId, signalVersion, proposalId, author, YAML body, validator diagnostics, compile status, backtest/trackRecord, lifecycle state, and promotion metadata; opportunities must include author provenance fields signalId, signalVersion, proposalId, author, and trackRecord for promoted signals."
+    },
+    "feature_id": "R-016",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement SignalSpec v1 validation, compilation, authoring workflow, provenance propagation, and UI catalog so an LLM-authored equities.relativeVolumeZ.v1 signal can be proposed, validated, backtested via the existing R-015 path, operator-promoted, and reflected in live ranking opportunities.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "SignalSpec compiler may drift from existing FeatureNode semantics unless tests assert compiled graph behavior instead of only DTO shape.",
+      "Promotion workflow can accidentally bypass operator approval if validate/backtest success and promote state are conflated.",
+      "Persistence may store derived state without immutable YAML, making audit and replay impossible.",
+      "Validator diagnostics can be technically correct but not actionable enough for LLM repair loops.",
+      "Live ranking integration may expose promoted signals without provenance fields in opportunity envelopes.",
+      "UI catalog can pass unit checks while Playwright misses routing or proxy contract regressions unless smoke/regression includes the full flow.",
+      "Concurrent promote/archive requests may create stale or conflicting lifecycle states without optimistic transition checks.",
+      "R-015 backtest reuse may be weakened by accidental introduction of a separate SignalSpec-only replay path."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "APIContractDelta",
+          "AcceptanceCoverageMap"
+        ],
+        "forbidden_paths": [
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/",
+          "ui/",
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "objective": "Lock the R-016 API, validator, persistence, promotion lifecycle, provenance envelope, and QA acceptance contract against specs/SIGNAL_SPEC.md and docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "FailingValidatorFixtures",
+          "FailingApiWorkflowTests",
+          "FailingUiCatalogTests",
+          "SmokeRegressionFixturePlan"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/src/main/",
+          "platform-runtime/src/main/",
+          "app-core/src/main/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Author failing fixtures and tests for SignalSpec validation failures, equities.relativeVolumeZ.v1 round-trip workflow, operator-gated promotion, provenance in opportunities, and UI catalog track-record rendering.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "platform-dsl/src/main/",
+          "platform-runtime/src/main/",
+          "specs/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "SignalSpecModel",
+          "SignalSpecValidator",
+          "SignalSpecCompiler",
+          "ActionableDiagnostics",
+          "FeatureNodeCompilationAdapter"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Implement platform-dsl SignalSpec v1 model, YAML parsing, validator diagnostics, transform cycle detection, and compiler output targeting existing FeatureNode primitives without Java code generation.",
+        "role": "implementer",
+        "slice_id": "impl-dsl-compiler",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/",
+          "app-api/build.gradle",
+          "app-core/src/main/",
+          "platform-runtime/src/main/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-dsl-compiler"
+        ],
+        "expected_outputs": [
+          "SignalsApiController",
+          "SignalSpecPersistenceRepository",
+          "BacktestWorkflowIntegration",
+          "OperatorPromotionGuard",
+          "OpportunityProvenanceEnvelope"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "platform-dsl/src/test/",
+          "ui/src/"
+        ],
+        "objective": "Implement app-api SignalSpec persistence and propose/catalog/get/promote/archive endpoints wired to R-015 backtests and operator-approved lifecycle transitions.",
+        "role": "implementer",
+        "slice_id": "impl-api-workflow",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "ui/src/",
+          "docs/"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-api-workflow"
+        ],
+        "expected_outputs": [
+          "SignalCatalogView",
+          "SignalReviewActions",
+          "OpportunityAuthorProvenanceRendering",
+          "UiApiContractUpdate"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/src/main/"
+        ],
+        "objective": "Implement the UI signal catalog/review view and opportunity provenance rendering for author, signalId, signalVersion, proposalId, and trackRecord using the new /api/signals contract.",
+        "role": "implementer",
+        "slice_id": "impl-ui-provenance",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "platform-dsl/",
+          "platform-runtime/",
+          "app-core/",
+          "app-api/",
+          "ui/",
+          "tests/",
+          "qa/",
+          "qa/fixtures/"
+        ],
+        "depends_on": [
+          "impl-ui-provenance"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "ContractComplianceReport",
+          "RiskDisposition",
+          "RequiredFixList"
+        ],
+        "forbidden_paths": [
+          "repo-memory/"
+        ],
+        "objective": "Review R-016 source, API, persistence, lifecycle, UI, and test changes for contract compliance, forbidden alternatives, race conditions, and missing acceptance coverage.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "SmokePassReport",
+          "RegressionPassReport",
+          "AcceptanceMatrixEvidence",
+          "ResidualRiskReport"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/src/main/",
+          "platform-runtime/src/main/",
+          "app-core/src/main/",
+          "app-api/src/main/",
+          "ui/src/"
+        ],
+        "objective": "Run final smoke and full regression verification for SignalSpec validator errors, end-to-end equities.relativeVolumeZ.v1 workflow, provenance rendering, and operator-gated promotion.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "acceptance_test_matrix": [
+      "SignalSpec semantic coverage: equities.relativeVolumeZ.v1 YAML proposes, validates, compiles to existing FeatureNode primitives, backtests through R-015, promotes with operator approval, and contributes to live ranking.",
+      "Validator negative coverage: unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion all fail with actionable diagnostics.",
+      "Workflow state coverage: proposed, validated, backtested, promoted, archived, stale transition, duplicate promotion, failed validation, failed compilation, and partial backtest cannot bypass approval rules.",
+      "Persistence coverage: one row per SignalSpec version plus canonical YAML body, author, proposalId, approval/archive metadata, signalId, signalVersion, and trackRecord reference survive service restart or reload.",
+      "Concurrency coverage: conflicting promote/archive/version updates are deterministic, idempotent where safe, and reject stale requests without corrupting catalog state.",
+      "Provenance coverage: promoted opportunities include author, signalId, signalVersion, proposalId, and trackRecord in the explainability envelope and UI rendering.",
+      "Configured QA gate coverage: ./qa/smoke.sh and ./qa/regression.sh pass."
+    ],
+    "affected_surfaces": [
+      "specs/",
+      "platform-dsl/",
+      "app-api/",
+      "app-core/",
+      "platform-runtime/",
+      "ui/",
+      "tests/",
+      "qa/fixtures/",
+      "qa/"
+    ],
+    "assumptions": [
+      "R-015 backtest infrastructure is already present and must be reused rather than duplicated.",
+      "SignalSpec semantics are frozen in specs/SIGNAL_SPEC.md and Java DSL constraints are documented in specs/JAVA_DSL_SPEC.md.",
+      "app-api may expose workflow endpoints but must not become a direct Redis or historical-store writer without an explicit architectural decision.",
+      "Persistence must store one catalog row per SignalSpec plus the exact YAML body and enough workflow metadata to audit proposal, promotion, archive, author, and track record.",
+      "Live ranking integration must compile promoted specs into existing runtime FeatureNode primitives without Java source generation.",
+      "Promotion is a human/operator approval action and no validator, compiler, scheduler, or API path may auto-promote a proposed signal."
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "LLM-authored equities.relativeVolumeZ.v1 round-trips propose, validate, compile, backtest, promote, and contributes to live ranking.",
+        "Validator rejects unknown op with an actionable diagnostic.",
+        "Validator rejects unknown ref with an actionable diagnostic.",
+        "Validator rejects cyclic transform with an actionable diagnostic.",
+        "Validator rejects missing required field with an actionable diagnostic.",
+        "Validator rejects unknown apiVersion with an actionable diagnostic.",
+        "Promoted signal opportunities expose author, signalId, signalVersion, proposalId, and trackRecord.",
+        "Stale promote/archive transitions and conflicting version updates are rejected deterministically.",
+        "Partial backtest, failed validation, or failed compilation cannot be promoted.",
+        "qa/smoke.sh and qa/regression.sh pass."
+      ],
+      "concurrency_protocol": "Proposal, promote, and archive operations must be idempotent by stable proposalId/signalId/version keys and must reject stale state transitions, double-promotion races, archived-signal promotion, and conflicting version updates with deterministic diagnostics suitable for UI display.",
+      "forbidden_alternatives": [
+        "Adding Postgres, SQLite, Prisma, Drizzle, or another OLTP layer for SignalSpec catalog storage without a new DECISIONS entry.",
+        "Adding direct UI reads from the historical store.",
+        "Adding app-api writes to Redis hot views or historical store tables in violation of the canonical split.",
+        "Generating Java source files from SignalSpec definitions.",
+        "Treating validation success or backtest success as implicit promotion.",
+        "Compiling unknown operations or references as no-ops.",
+        "Allowing cyclic transforms to be accepted by ordering assumptions."
+      ],
+      "hard_constraints": [
+        "Do not add Java code generation for signals.",
+        "Do not allow auto-promotion without human/operator approval.",
+        "Reuse the R-015 backtest path for candidate track-record generation.",
+        "Validator must reject unknown op, unknown ref, cyclic transform, missing required field, and unknown apiVersion with actionable diagnostics.",
+        "Promoted signals must contribute to live ranking only after approval and successful compilation.",
+        "Promoted opportunities must include author provenance fields in the explainability envelope.",
+        "qa/smoke.sh and qa/regression.sh must pass before final PR handoff."
+      ],
+      "ownership_boundaries": "platform-dsl owns SignalSpec parsing, validation, cycle detection, reference resolution, and compilation to existing FeatureNode primitives; app-api owns HTTP workflow contracts, DTOs, operator approval boundaries, and catalog reads/writes through the approved signal catalog persistence adapter; app-core/platform-runtime own live ranking consumption of promoted compiled specs; ui owns catalog, approval/archive actions, track-record display, and provenance rendering; tests and QA fixtures own conformance evidence only.",
+      "persistence_protocol": "Persist exactly one durable metadata row per SignalSpec version plus the canonical YAML body, author provenance, proposalId, validation status, promotion/archive state, approval actor/time, and backtest trackRecord reference; do not persist generated Java code; do not bypass the Redis hot-view and QuestDB historical-store split without a documented decision.",
+      "public_api": "Add SignalSpec authoring endpoints for propose, catalog, get, promote, and archive under the existing /api surface; accept declarative YAML SignalSpec bodies, return actionable validation diagnostics, expose proposalId/signalId/signalVersion/state/author/trackRecord, and extend opportunity explainability envelopes with author, signalId, signalVersion, proposalId, and trackRecord for promoted signals."
+    },
+    "feature_id": "R-016",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement SignalSpec validation, compilation, authoring workflow, provenance, and catalog UI so an LLM-authored equities.relativeVolumeZ.v1 signal can be proposed, validated, compiled to existing FeatureNode primitives, backtested through the R-015 path, promoted only with operator approval, and shown in live opportunities with author provenance.",
+    "project": "trade-research-platform",
+    "risk_register": [
+      "Architectural boundary risk: R-016 persistence can accidentally violate the app-api read-only Redis/historical-store decision; implementation must use an approved catalog adapter and document any new write boundary.",
+      "Safety risk: validation or backtest success could be mistaken for approval; promotion must require explicit operator action.",
+      "Compiler risk: accepting unknown ops, unknown refs, or cyclic transforms can create silent ranking errors; validator diagnostics must be deterministic and actionable.",
+      "Stale state risk: concurrent promote/archive/version requests can create duplicate live signals or promote archived proposals; state transitions must be idempotent and reject stale updates.",
+      "Durability risk: catalog metadata and YAML body can diverge or be partially accepted after failure; persistence must treat metadata plus YAML as one invariant and block promotion on invalid or partial records.",
+      "Invariant failure risk: compiled graph identity, signalVersion, and trackRecord may mismatch persisted YAML; promotion must verify equivalent invariants before live ranking use.",
+      "Runtime risk: promoted SignalSpecs may degrade ranking latency or allocation behavior if compiled nodes bypass existing primitives.",
+      "UI/API contract risk: provenance fields can be omitted or renamed without contract snapshot coverage, breaking trust surfaces.",
+      "Security risk: author/proposal fields and YAML diagnostics must not allow unsafe rendering, path access, or arbitrary code execution.",
+      "Regression risk: adding workflow APIs and UI surfaces can break the canonical Playwright smoke flow for cockpit-to-backtest."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "app-api/",
+          "app-core/",
+          "platform-runtime/",
+          "ui/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "EndpointContract",
+          "PersistenceStateMachine",
+          "ValidationDiagnosticCatalog",
+          "ConcurrencyAndApprovalRules"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "questdb/",
+          "kdb/"
+        ],
+        "objective": "Finalize the R-016 SignalSpec contract across specs/SIGNAL_SPEC.md, specs/JAVA_DSL_SPEC.md, docs UI/API contract notes, and source ownership boundaries for validator, compiler, workflow API, runtime ranking, and UI provenance.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "FailingSignalSpecFixtures",
+          "ValidatorConformanceTests",
+          "SignalWorkflowApiTests",
+          "UiCatalogProvenanceTests",
+          "NoAutoPromotionRegressionTests"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "app-api/src/main/",
+          "app-core/",
+          "platform-runtime/",
+          "ui/src/",
+          "questdb/",
+          "kdb/"
+        ],
+        "objective": "Author failing conformance, API, UI, and fixture coverage for equities.relativeVolumeZ.v1 round-trip plus validator rejection, stale transition, provenance, and no-auto-promotion cases.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "platform-dsl/",
+          "specs/SIGNAL_SPEC.md",
+          "specs/JAVA_DSL_SPEC.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "SignalSpecParser",
+          "SignalSpecValidator",
+          "SignalSpecCompiler",
+          "ActionableDiagnosticModel",
+          "FeatureNodeCompilationAdapter"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "app-api/src/main/",
+          "app-core/",
+          "platform-runtime/",
+          "ui/",
+          "questdb/",
+          "kdb/"
+        ],
+        "objective": "Implement platform-dsl SignalSpec YAML parsing, required-field validation, apiVersion/op/ref checks, transform cycle detection, actionable diagnostics, and compilation to existing FeatureNode primitives.",
+        "role": "implementer",
+        "slice_id": "impl-dsl-compiler",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":platform-dsl:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "app-api/src/main/",
+          "app-api/build.gradle",
+          "app-core/",
+          "platform-runtime/",
+          "docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md",
+          "docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md",
+          "specs/HISTORICAL_STORE_DECISION.md",
+          "specs/HISTORICAL_STORE_SCHEMA.md"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-dsl-compiler"
+        ],
+        "expected_outputs": [
+          "SignalWorkflowController",
+          "SignalCatalogService",
+          "SignalSpecPersistenceAdapter",
+          "PromotionApprovalStateMachine",
+          "BacktestReuseIntegration",
+          "LiveRankingPromotionBridge"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "platform-dsl/",
+          "ui/src/",
+          "questdb/schema_bootstrap.sql",
+          "kdb/"
+        ],
+        "objective": "Implement app-api SignalSpec propose/catalog/get/promote/archive endpoints, durable catalog persistence adapter, operator approval state machine, R-015 backtest handoff, and runtime publication hooks without direct Redis or historical-store writes from app-api.",
+        "role": "implementer",
+        "slice_id": "impl-api-workflow",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":app-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "ui/",
+          "docs/UI_ROADMAP.md",
+          "docs/UI_API_CONTRACT_PROVENANCE_MATRIX.md",
+          "docs/UI_BACKEND_CONTRACT_GAP_HANDOFF.md"
+        ],
+        "depends_on": [
+          "qa-author",
+          "impl-api-workflow"
+        ],
+        "expected_outputs": [
+          "SignalCatalogView",
+          "SignalDetailView",
+          "PromotionArchiveControls",
+          "ValidationDiagnosticRendering",
+          "OpportunityProvenanceRendering"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/",
+          "platform-dsl/",
+          "app-api/src/main/",
+          "app-core/",
+          "platform-runtime/",
+          "questdb/",
+          "kdb/"
+        ],
+        "objective": "Implement the UI SignalSpec catalog and detail views with author and track-record display, operator promote/archive actions, validation diagnostics, and opportunity provenance rendering.",
+        "role": "implementer",
+        "slice_id": "impl-ui-provenance",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "npm",
+            "--prefix",
+            "ui",
+            "test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "app-api/",
+          "app-core/",
+          "platform-runtime/",
+          "ui/",
+          "tests/",
+          "qa/fixtures/",
+          "qa/"
+        ],
+        "depends_on": [
+          "impl-ui-provenance"
+        ],
+        "expected_outputs": [
+          "ReviewFindings",
+          "BoundaryComplianceReport",
+          "SecurityAndConcurrencyReview",
+          "RequiredFixListOrApproval"
+        ],
+        "forbidden_paths": [
+          "questdb/",
+          "kdb/",
+          "docs/archive/"
+        ],
+        "objective": "Review R-016 changes for contract compliance, app-api persistence boundary safety, approval gating, validator completeness, runtime ranking behavior, UI provenance correctness, and regression coverage.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "app-api/src/test/",
+          "app-api/src/test/java/",
+          "ui/tests/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "QaVerificationReport",
+          "SmokePassEvidence",
+          "RegressionPassEvidence",
+          "AcceptanceMatrixResult"
+        ],
+        "forbidden_paths": [
+          "specs/",
+          "docs/",
+          "repo-memory/",
+          "platform-dsl/",
+          "app-api/src/main/",
+          "app-core/",
+          "platform-runtime/",
+          "ui/src/",
+          "questdb/",
+          "kdb/"
+        ],
+        "objective": "Run final QA verification for SignalSpec round-trip, validator rejection matrix, stale transition handling, provenance rendering, smoke, and full regression after reviewer sign-off.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ]
+        ]
+      }
+    ]
+  }
+]

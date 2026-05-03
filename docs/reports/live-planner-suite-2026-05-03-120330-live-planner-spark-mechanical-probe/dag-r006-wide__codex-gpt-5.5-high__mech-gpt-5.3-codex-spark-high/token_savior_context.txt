@@ -1,0 +1,86 @@
+# Token Savior Project Summary
+
+Project: /Volumes/devssd/repos/ull/dag_framework
+Files: 274, Lines: 20394, Functions: 1314, Classes: 416
+Packages (14): .github, benchmarks, compiler-core, dag-framework-api, dag-framework-lvc, deployment-core, docs, examples, qa, repo-memory, runtime-core, scripts, sim, sim-kdb
+Classes: 416 total
+Top-level functions: 4 total
+
+# Packed Context
+
+Context pack for 'Implement R-006 backpressure policy selector with DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK exposed via GraphPartitionRunner.Builder. Add BackpressurePolicy enum and per-edge config. Implement overflow-to-disk via mmap spill file. Support edge-level policy hot-swap. Test all four policies under sustained overrun. Assert spill file reads back correctly on drain. Test matrix covers DROP_NEW, DROP_OLD, BLOCK, and OVERFLOW_TO_DISK under sustained overrun. Overflow-to-disk spill file drains and reads back correctly. jmhSmokeCheck remains green. qa/smoke.sh and qa/regression.sh pass.' (71 symbols, ~2952 tokens / 3000 budget)
+------------------------------------------------------------
+
+# com.joshorig.ull.dag.bench.JoinAllocationBenchmark.join_all_epoch_fanout(BenchState)  (value=0.21, cost=20t, benchmarks/src/test/java/com/joshorig/ull/dag/bench/JoinAllocationBenchmark.java)
+    public void join_all_epoch_fanout(BenchState s) { long ts = s.t += 1L; s.runnerAll.onSourceEventIndexed(0, ts, ts); }
+
+# com.joshorig.ull.dag.bench.JoinWideAllAllocationBenchmark.join_all_wide_epoch(BenchState)  (value=0.21, cost=20t, benchmarks/src/test/java/com/joshorig/ull/dag/bench/JoinWideAllAllocationBenchmark.java)
+public void join_all_wide_epoch(BenchState s) { long ts = s.t += 1L; s.runner.onSourceEventIndexed(0, ts, ts); }
+
+# com.joshorig.ull.dag.lvc.BoundaryIdentityConfigs.BoundaryIdentityConfigs()  (value=0.20, cost=20t, dag-framework-lvc/src/main/java/com/joshorig/ull/dag/lvc/BoundaryIdentityConfigs.java)
+    private BoundaryIdentityConfigs() {}
+
+# com.joshorig.ull.dag.compiler.SimpleGraphCompilerInvalidInputsTest.dm(int)  (value=0.20, cost=20t, compiler-core/src/test/java/com/joshorig/ull/dag/compiler/SimpleGraphCompilerInvalidInputsTest.java)
+    private static DeploymentModel dm(int p) { return () -> p; }
+
+# com.joshorig.ull.dag.compiler.SimpleGraphCompilerInvalidInputsTest.clocks()  (value=0.20, cost=20t, compiler-core/src/test/java/com/joshorig/ull/dag/compiler/SimpleGraphCompilerInvalidInputsTest.java)
+    private static Clocks.ClockSet clocks() { return new Clocks.ClockSet(() -> 0L, () -> 0L); }
+
+# com.joshorig.ull.dag.trace.NoOpTraceRecorder.NoOpTraceRecorder()  (value=0.20, cost=20t, dag-framework-api/src/main/java/com/joshorig/ull/dag/trace/NoOpTraceRecorder.java)
+    private NoOpTraceRecorder() {
+    }
+
+# com.joshorig.ull.dag.lvc.BoundaryIdResolvers.BoundaryIdResolvers()  (value=0.20, cost=20t, dag-framework-lvc/src/main/java/com/joshorig/ull/dag/lvc/BoundaryIdResolvers.java)
+    private BoundaryIdResolvers() {}
+
+# com.joshorig.ull.dag.runtime.PartitionPolicy.partitionOf(T,int)  (value=0.20, cost=20t, dag-framework-api/src/main/java/com/joshorig/ull/dag/runtime/PartitionPolicy.java)
+    int partitionOf(T key, int partitionCount);
+
+# com.joshorig.ull.dag.compiler.SimpleGraphCompilerJoinPolicyValidationTest.dm(int)  (value=0.20, cost=20t, compiler-core/src/test/java/com/joshorig/ull/dag/compiler/SimpleGraphCompilerJoinPolicyValidationTest.java)
+    private static DeploymentModel dm(int partitions) {
+        return new DeploymentModel() { @Override public int partitionCount() { return partitions; } };
+    }
+
+# com.joshorig.ull.dag.compiler.SimpleGraphCompilerJoinPolicyValidationTest.clocks()  (value=0.20, cost=20t, compiler-core/src/test/java/com/joshorig/ull/dag/compiler/SimpleGraphCompilerJoinPolicyValidationTest.java)
+    private static Clocks.ClockSet clocks() { return new Clocks.ClockSet(() -> 0L, () -> 0L); }
+
+... (61 more symbols selected, sources omitted)
+
+# Relevant Search Hits
+
+## R-006
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 59, 'content': '### [R-006] Backpressure policy selector'}]
+
+## backpressure
+[{'file': 'docs/archive/examples/design_discussion.md', 'line_number': 646, 'content': '            // Apply backpressure to adapters'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 183, 'content': 'asfast uses tight loops while honoring CPU budget & backpressure.'}, {'file': 'docs/archive/plans/simulator_plan.md', 'line_number': 189, 'content': '- Replay backpressure: configurable behavior when model under test lags—block, drop, or conflate according to live policy.'}, {'file': 'docs/archive/plans/simulator_plan.md', 'line_number': 234, 'content': '- Hardening: backpressure strategies, retry policies, metrics dashboards.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 64, 'content': '- **Out of scope:** Custom policies, priority-based shedding, cross-partition backpressure propagation.'}]
+
+## policy
+[{'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 9, 'content': '    /** Set partitioning policy for symbol or key routing. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 38, 'content': '    /** JOIN with explicit JoinPolicy. expectedInputs is ignored unless policy is ALL (acts as exact indegree when >0). */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/GraphDefinitionBuilder.java', 'line_number': 41, 'content': '                                                 JoinPolicy policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/JoinPolicy.java', 'line_number': 3, 'content': '/** Join triggering policy for fan-in nodes. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/NodeDef.java', 'line_number': 17, 'content': '    /** For JOIN nodes, triggering policy. Null for non-JOIN or legacy ALL behavior. */'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/impl/SimpleGraphDefinitionBuilder.java', 'line_number': 43, 'content': '    @Override public GraphDefinitionBuilder addJoinNodeWithPolicy(String nodeId, NodeFactory factory, JoinPolicy policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/impl/SimpleGraphDefinitionBuilder.java', 'line_number': 49, 'content': '                policy,'}, {'file': 'dag-framework-api/src/main/java/com/joshorig/ull/dag/api/nodes/Contracts.java', 'line_number': 28, 'content': '    /** Timer node: fired by framework according to watermark/timer policy. */'}, {'file': 'docs/archive/examples/Tasks.md', 'line_number': 36, 'content': '•  MemoryPool interface with acquire()/release(), dynamic resizing policy'}, {'file': 'docs/archive/examples/Tasks.md', 'line_number': 134, 'content': '•  GUARANTEED feeds rely on ring buffers + reference counting; if lagging, observe metrics and apply backoff/drop policy at source (not ideal but configurable)'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 191, 'content': 'If DAG can’t keep up, either block, drop (configurable), or “quasi-conflate” using your live policy.'}, {'file': 'docs/archive/history/sim_convo.md', 'line_number': 500, 'content': 'Cons: needs network access; time-bounded slices (by policy).'}]
+
+## selector
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 59, 'content': '### [R-006] Backpressure policy selector'}]
+
+## DROP_NEW
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}]
+
+## DROP_OLD
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.'}]
+
+# ROADMAP relevant entry
+
+### [R-006] Backpressure policy selector
+- **Status:** TODO
+- **Feature id:** null
+- **Goal:** Pluggable backpressure policies (`DROP_NEW`, `DROP_OLD`, `BLOCK`, `OVERFLOW_TO_DISK`) exposed via `GraphPartitionRunner.Builder`.
+- **Scope:** `BackpressurePolicy` enum + per-edge config, overflow-to-disk via mmap spill file, policy hot-swap at edge level.
+- **Out of scope:** Custom policies, priority-based shedding, cross-partition backpressure propagation.
+- **Acceptance:** Test matrix covers all 4 policies under sustained overrun, alloc gate green, overflow-to-disk test asserts spill file reads back correctly on drain.
+- **Depends on:** none.
+- **Notes:** `OVERFLOW_TO_DISK` should reuse the `MmapJournal` machinery from lvc-standard rather than invent a new spill format.
+
+# DECISIONS relevant excerpt
+
+
+
+# Memory digest
+

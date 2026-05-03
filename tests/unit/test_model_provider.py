@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from pgloom.db.postgres import connect
+from pgloom.models.cli import CLIModelProfile
+
+from pgloom_engineering.model_provider import EngineeringCLIModelProvider
+
+
+def test_engineering_provider_records_claude_json_usage(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "claude_json.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "print(json.dumps({",
+                "  'result': '{\"ok\": true}',",
+                "  'total_cost_usd': 0.123456,",
+                "  'usage': {",
+                "    'input_tokens': 10,",
+                "    'cache_creation_input_tokens': 20,",
+                "    'cache_read_input_tokens': 30,",
+                "    'output_tokens': 40,",
+                "    'service_tier': 'standard'",
+                "  },",
+                "  'modelUsage': {'claude-sonnet': {'costUSD': 0.123456}}",
+                "}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = EngineeringCLIModelProvider(database_url=database_url).invoke(
+        profile=CLIModelProfile(
+            name="planner-panelist",
+            command=[sys.executable, str(script)],
+            parse_response="json",
+        ),
+        prompt="hello",
+    )
+
+    assert result.text == '{"ok": true}'
+    assert result.input_tokens == 60
+    assert result.output_tokens == 40
+    assert result.cost_usd == 0.123456
+    assert result.model_usage_id is not None
+    row = _usage_row(database_url, result.model_usage_id)
+    assert row["input_tokens"] == 60
+    assert row["output_tokens"] == 40
+    assert float(row["cost_usd"]) == 0.123456
+    assert row["metadata"]["token_count_source"] == "json_usage"
+    assert row["metadata"]["cache_read_input_tokens"] == 30
+
+
+def test_engineering_provider_records_codex_jsonl_usage(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "codex_jsonl.py"
+    events = [
+        {"type": "thread.started", "thread_id": "abc"},
+        {
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": '{"ok": true}'},
+        },
+        {
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 100,
+                "cached_input_tokens": 90,
+                "output_tokens": 12,
+                "reasoning_output_tokens": 3,
+            },
+        },
+    ]
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                f"events = {json.dumps(events)!r}",
+                "for event in json.loads(events):",
+                "    print(json.dumps(event))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = EngineeringCLIModelProvider(database_url=database_url).invoke(
+        profile=CLIModelProfile(
+            name="planner-critic",
+            command=[sys.executable, str(script)],
+            parse_response="text",
+        ),
+        prompt="hello",
+    )
+
+    assert result.text == '{"ok": true}'
+    assert result.input_tokens == 100
+    assert result.output_tokens == 12
+    assert result.model_usage_id is not None
+    row = _usage_row(database_url, result.model_usage_id)
+    assert row["metadata"]["token_count_source"] == "codex_json_usage"
+    assert row["metadata"]["cached_input_tokens"] == 90
+    assert row["metadata"]["reasoning_output_tokens"] == 3
+
+
+def _usage_row(database_url: str, usage_id: int) -> dict[str, object]:
+    with connect(database_url) as conn:
+        row = conn.execute("select * from model_usage where id = %s", (usage_id,)).fetchone()
+    assert row is not None
+    return dict(row)

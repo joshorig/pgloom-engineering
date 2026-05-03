@@ -1,0 +1,244 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Range tests cover empty range, single-key range, full-keyspace, and reverse scan.",
+    "SINGLE and DOUBLE store variants are both covered.",
+    "qa/smoke.sh and qa/regression.sh pass."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Alloc gate must stay green on the visitor hot path.",
+    "Do not introduce sorted-by-value queries, composite keys, or secondary indexes."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement R-003 range-query API on stores: zero-allocation StoreVisitor range scans for SINGLE and DOUBLE stores.",
+  "project": "lvc-standard",
+  "requirements": [
+    "Add a zero-allocation StoreVisitor interface.",
+    "Implement inclusive ascending and descending range scans for SINGLE and DOUBLE stores.",
+    "Cover empty range, single-key range, full-keyspace range, and reverse scans.",
+    "Optional key-prefix filtering must avoid Consumer boxing and visitor hot-path allocation."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "architecture",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "api",
+    "architecture",
+    "symbol",
+    "class",
+    "module",
+    "surface",
+    "implementation",
+    "file"
+  ],
+  "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "signal/src/test/",
+    "signal/src/test/java/",
+    "store/src/test/",
+    "store/src/test/java/"
+  ],
+  "relevant_paths": [
+    "repo-memory/ROADMAP.md",
+    "repo-memory/DECISIONS.md",
+    "qa/smoke.sh",
+    "qa/regression.sh",
+    "docs/Stores.md",
+    "store/src/main/java/com/joshorig/ull/lvc/store/Stores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/SingleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DoubleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DirectStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/DoubleMmapStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/MmapStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/SingleMmapStore.java"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nFiles: 296, Lines: 22784, Functions: 1369, Classes: 359\n# Token Savior Project Summary\nClasses: 359 total\n# Token Savior Packed Context\nContext pack for 'Implement R-003 range-query API on stores: zero-allocation StoreVisitor range scans for SINGLE and DOUBLE stores. Add a zero-allocation StoreVisitor interface. Implement inclusive ascending and descending range scans for SINGLE and DOUBLE stores. Cover empty range, single-key range, full-keyspace range, and reverse scans. Optional key-prefix filtering must avoid Consumer boxing and visitor hot-path allocation. Range tests cover empty range, single-key range, full-keyspace, and reverse scan. SINGLE and DOUBLE store variants are both covered. qa/smoke.sh and qa/regression.sh pass.' (54 symbols, ~2816 tokens / 3000 budget)\n# com.joshorig.ull.lvc.api.LvcStore.ReadOnlySlice.length()  (value=0.21, cost=20t, core/src/main/java/com/joshorig/ull/lvc/api/LvcStore.java)\n... (44 more symbols selected, sources omitted)\n# Search Hits: R-003\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] Range-query API on stores'}]\n# Search Hits: API\n[{'file': 'README.md', 'line_number': 6, 'content': '- core: public LVC API (com.ull.lvc.api), common utilities (com.ull.lvc.common), default pools (com.ull.lvc.pool)'}, {'file': 'README.md', 'line_number': 89, 'content': 'Examples (new API)'}, {'file': 'conformance-tests/build.gradle', 'line_number': 19, 'content': '    // v2 signal API'}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/api/LvcStore.java', 'line_number': 168, 'content': '    /** Snapshot slice view returned by pooled read API. Must be closed to return to pool. */'}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/common/io/MmapUtil.java', 'line_number': 92, 'content': '    /** Legacy API: Map or create a file and return only the buffer view. */'}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/common/io/MmapUtil.java', 'line_number': 108, 'content': '    /** Legacy API: Map or create a sized file and return only the buffer view. */'}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/inspect/StoreInspector.java', 'line_number': 12, 'content': ' * Lightweight inspector for mmap-backed LVC store files. Read-only, zero-allocation API surface.'}, {'file': 'docs/ConfigurationGuide.md', 'line_number': 117, 'content': '  - Pick if you prefer Agrona\u2019s behavior/API; no OVERWRITE_OLDEST'}, {'file': 'docs/Guaranteed.md', 'line_number': 17, 'content': '## APIs (overview)'}, {'file': 'docs/Signalling.md', 'line_number': 6, 'content': '- API: `signal.api`'}, {'file': 'guaranteed-inproc/src/main/java/com/joshorig/ull/lvc/guaranteed/inproc/InprocGuaranteed.java', 'line_number': 50, 'content': '        // New builder APIs'}, {'file': 'guaranteed_messaging.md', 'line_number': 7, 'content': 'Core provides LVC API and utilities; stores offer SINGLE/DOUBLE variants with fixed-slot seqlock protocol and direct/mmap backends; Signal v2 provides inproc bitset and IPC rings; conformance tests and benchmarks exist; normalize-on-open aids crash recovery.'}]\n# Search Hits: stores\n[{'file': 'build.gradle', 'line_number': 26, 'content': \"    description = 'Runs JMH benchmarks with GC profiler and stores outputs.'\"}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/metrics/StoreMetrics.java', 'line_number': 3, 'content': '/** Metrics for LVC stores. Allocation-free and cheap. */'}, {'file': 'docs/EndToEndCookbook.md', 'line_number': 3, 'content': 'This cookbook shows common end-to-end patterns for building with LVC stores and Signal v2.'}, {'file': 'docs/Guaranteed.md', 'line_number': 33, 'content': '- The mmap position file stores durable checkpoints only. In-flight lane positions stay in memory until the next checkpoint flush, so restart/resume semantics do not depend on a clean `close()`.'}, {'file': 'docs/SlotProtocol.md', 'line_number': 3, 'content': 'LVC stores are fixed-slot structures. Each slot has payload (and optional META). Two variants exist: SINGLE and DOUBLE.'}, {'file': 'guaranteed_messaging.md', 'line_number': 7, 'content': 'Core provides LVC API and utilities; stores offer SINGLE/DOUBLE variants with fixed-slot seqlock protocol and direct/mmap backends; Signal v2 provides inproc bitset and IPC rings; conformance tests and benchmarks exist; normalize-on-open aids crash recovery.'}, {'file': 'repo-memory/CURRENT_STATE.md', 'line_number': 16, 'content': '| `store` | (direct + mmap backends) | SINGLE and DOUBLE stores, direct buffers, memory-mapped files |'}, {'file': 'repo-memory/CURRENT_STATE.md', 'line_number': 37, 'content': '- **LVC core API** \u2014 stable. Direct + mmap stores, SINGLE + DOUBLE variants.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 19, 'content': '### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 29, 'content': '### [R-003] Range-query API on stores'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 62, 'content': '- **Goal:** Two JVMs sharing a single logical LVC via Aeron multicast replication \u2014 active store fan-outs writes to standby stores with bounded lag.'}, {'file': 'store/src/main/java/com/joshorig/ull/lvc/store/Stores.java', 'line_number': 9, 'content': ' * Unified facade for creating direct and mmap-backed LVC stores.'}]\n# Search Hits: zero-allocation\n[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'README.md', 'line_number': 67, 'content': '- Pooled slices and buffers; zero-allocation hot paths'}, {'file': 'core/src/main/java/com/joshorig/ull/lvc/inspect/StoreInspector.java', 'line_number': 12, 'content': ' * Lightweight inspector for mmap-backed LVC store files. Read-only, zero-allocation API surface.'}, {'file': 'docs/ConfigurationGuide.md', 'line_number': 14, 'content': '- pools: fixed-size buffer pool and optional slice object pool for zero-allocation reads'}, {'file': 'docs/Observability.md', 'line_number': 3, 'content': 'LVC exposes optional zero-allocation metrics via a `MetricsProvider`. If not provided, a no-op provider is used.'}, {'file': 'docs/Signalling.md', 'line_number': 3, 'content': 'Signal v2 provides in-process and interprocess signalling with zero-allocation hot paths.'}, {'file': 'docs/Stores.md', 'line_number': 3, 'content': 'This document explains the LVC store variants, configuration knobs, and usage patterns with zero-allocation best practices.'}, {'file': 'repo-memory/BENCHMARKS.md', 'line_number': 26, 'content': '- No dedicated JMH benchmark currently targets `AeronReplayMergePoller` or the lane position checkpoint path, so the smoke gate only confirms zero-allocation / GC behavior on the existing benchmark surface, not a quantified ReplayMerge delta.'}, {'file': 'repo-memory/CURRENT_STATE.md', 'line_number': 7, 'content': 'Standardized, zero-allocation **Last-Value Cache (LVC)** library. SINGLE and DOUBLE variants, direct and mmap backends, in-proc and inter-process signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'repo-memory/CURRENT_STATE.md', 'line_number': 47, 'content': '- Metrics registry/export adapters remain future scope; only the zero-allocation sink + primitive layer is landed so far.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 32, 'content': '- **Goal:** `store.forEach(fromKey, toKey, visitor)` with zero-allocation visitor pattern, enabling range scans without loading the whole keyspace.'}]\n# Search Hits: StoreVisitor\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 33, 'content': '- **Scope:** New `StoreVisitor` interface, `ascendingRange`/`descendingRange` methods on SINGLE + DOUBLE, bounds-inclusive semantics, optional key-prefix filter.'}]"
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-primary",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, signal/src/test/, signal/src/test/java/, store/src/test/, store/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "repo-memory/ROADMAP.md, repo-memory/DECISIONS.md, qa/smoke.sh",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the narrow feature slice.",
+      "role": "implementer",
+      "slice_id": "impl-primary",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-primary"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, signal/src/test/, signal/src/test/java/, store/src/test/, store/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "5-6 slices",
+  "task_class": "medium"
+}
+
+PRIOR_ITERATION:
+{}

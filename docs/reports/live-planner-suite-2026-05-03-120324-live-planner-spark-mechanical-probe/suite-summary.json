@@ -1,0 +1,85 @@
+{
+  "comparison": {},
+  "output_root": "docs/reports/live-planner-suite-2026-05-03-120324-live-planner-spark-mechanical-probe",
+  "runs": [
+    {
+      "backend": "codex",
+      "case_id": "trp-r003-small",
+      "command": [
+        "/Volumes/devssd/repos/oss/pgloom-engineering/.venv/bin/python",
+        "scripts/verify_lvc_r002_planner.py",
+        "--backend",
+        "codex",
+        "--model",
+        "gpt-5.5",
+        "--feature-goal",
+        "docs/evals/feature-goals/trp-r003-config-diagnostics.json",
+        "--project-root",
+        "/Volumes/devssd/repos/apps/trade-research-platform",
+        "--workflow-id",
+        "trp-r003-small",
+        "--panelists",
+        "2",
+        "--max-iterations",
+        "2",
+        "--context-budget-tokens",
+        "3000",
+        "--output-dir",
+        "docs/reports/live-planner-suite-2026-05-03-120324-live-planner-spark-mechanical-probe/trp-r003-small__codex-gpt-5.5-high__mech-gpt-5.3-codex-spark-high",
+        "--reasoning",
+        "high",
+        "--mechanical-model",
+        "gpt-5.3-codex-spark",
+        "--mechanical-reasoning",
+        "high"
+      ],
+      "model": "gpt-5.5",
+      "run_dir": "docs/reports/live-planner-suite-2026-05-03-120324-live-planner-spark-mechanical-probe/trp-r003-small__codex-gpt-5.5-high__mech-gpt-5.3-codex-spark-high",
+      "status": "dry_run"
+    },
+    {
+      "backend": "codex",
+      "case_id": "dag-r006-wide",
+      "command": [
+        "/Volumes/devssd/repos/oss/pgloom-engineering/.venv/bin/python",
+        "scripts/verify_lvc_r002_planner.py",
+        "--backend",
+        "codex",
+        "--model",
+        "gpt-5.5",
+        "--feature-goal",
+        "docs/evals/feature-goals/dag-r006-backpressure.json",
+        "--project-root",
+        "/Volumes/devssd/repos/ull/dag_framework",
+        "--workflow-id",
+        "dag-r006-wide",
+        "--panelists",
+        "3",
+        "--max-iterations",
+        "2",
+        "--context-budget-tokens",
+        "3000",
+        "--output-dir",
+        "docs/reports/live-planner-suite-2026-05-03-120324-live-planner-spark-mechanical-probe/dag-r006-wide__codex-gpt-5.5-high__mech-gpt-5.3-codex-spark-high",
+        "--reasoning",
+        "high",
+        "--mechanical-model",
+        "gpt-5.3-codex-spark",
+        "--mechanical-reasoning",
+        "high"
+      ],
+      "model": "gpt-5.5",
+      "run_dir": "docs/reports/live-planner-suite-2026-05-03-120324-live-planner-spark-mechanical-probe/dag-r006-wide__codex-gpt-5.5-high__mech-gpt-5.3-codex-spark-high",
+      "status": "dry_run"
+    }
+  ],
+  "suite": "live-planner-spark-mechanical-probe",
+  "thresholds": {
+    "failures": [
+      {
+        "reason": "comparison_missing"
+      }
+    ],
+    "passed": false
+  }
+}

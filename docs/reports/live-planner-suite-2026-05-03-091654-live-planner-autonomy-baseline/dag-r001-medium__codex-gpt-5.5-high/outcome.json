@@ -1,0 +1,1767 @@
+{
+  "accepted_at_iteration": 1,
+  "backend": "codex",
+  "final": {
+    "acceptance_test_matrix": [
+      "Tumbling event-time windows assign events to exactly one fixed interval and emit exactly once when watermark passes the window end.",
+      "Sliding event-time windows assign one event to all expected overlapping windows and close each eligible window deterministically by watermark.",
+      "Processing-time tumbling and sliding windows trigger from deterministic runtime clock or timer advancement.",
+      "Late arrivals before bounded allow-lateness expiry update the target window only under allow-lateness policy.",
+      "Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.",
+      "Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.",
+      "Watermark advancement without additional input closes all eligible event-time windows in deterministic order and never closes future windows early.",
+      "Window state eviction removes closed stale windows after trigger emission and lateness expiry.",
+      "Invariant failure coverage asserts invalid window sizes, invalid slide durations, impossible lateness settings, and stale or invalid timestamps are rejected or contained without corrupting state.",
+      "Partial/failure acceptance covers no duplicate emissions after repeated watermark or timer advancement.",
+      "Benchmark smoke coverage includes the window node and jmhSmokeCheck is green.",
+      "Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck."
+    ],
+    "affected_surfaces": [
+      "repo-memory/",
+      "dag-framework-api/src/main/",
+      "runtime-core/src/main/",
+      "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+      "benchmarks/src/main/",
+      "tests/",
+      "qa/fixtures/",
+      "benchmarks/src/test/",
+      "benchmarks/src/test/java/",
+      "dag-framework-api/src/test/",
+      "dag-framework-api/src/test/java/",
+      "runtime-core/src/test/",
+      "runtime-core/src/test/java/",
+      "sim-kdb/src/test/",
+      "sim-kdb/src/test/java/",
+      "qa/smoke.sh",
+      "qa/regression.sh"
+    ],
+    "assumptions": [
+      "Window API types belong in dag-framework-api/src/main/ while executable runtime node behavior belongs in runtime-core/src/main/.",
+      "Existing WatermarkPolicy and GraphPartitionRunner watermark/timer behavior are the integration points for event-time closure.",
+      "Processing-time windows can use existing deterministic runtime clock/timer primitives without wall-clock dependencies.",
+      "Benchmark validation is satisfied by extending the existing benchmark smoke surface rather than adding a new benchmark module layout.",
+      "Session windows, user-defined custom windows, and cross-partition window merging are explicitly out of scope."
+    ],
+    "contract_version": "engineering.contracts.v1",
+    "council_reports": [
+      {
+        "critic": {
+          "findings": [],
+          "model_usage_id": null,
+          "per_check_results": [
+            {
+              "check_id": "check_design_contract_completeness",
+              "findings": [],
+              "name": "Design contract completeness",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_slice_path_coverage",
+              "findings": [],
+              "name": "Slice path coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_forbidden_path_overlap",
+              "findings": [],
+              "name": "Forbidden-path overlap",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_verification_commands",
+              "findings": [],
+              "name": "Verification command coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_lifecycle_coverage",
+              "findings": [],
+              "name": "Acceptance matrix lifecycle coverage",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_topology_consistency",
+              "findings": [],
+              "name": "Implementation topology consistency",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_reviewer_present",
+              "findings": [],
+              "name": "Reviewer slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_author_present",
+              "findings": [],
+              "name": "QA author slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_verify_present",
+              "findings": [],
+              "name": "QA verify slice presence",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_qa_paths_disjoint",
+              "findings": [],
+              "name": "QA paths disjoint from source",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_orphan_slices",
+              "findings": [],
+              "name": "Orphan slice detection",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_finalization_policy",
+              "findings": [],
+              "name": "Finalization policy locked to human merge",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_objective_specificity",
+              "findings": [],
+              "name": "Objective specificity",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_risk_register_present",
+              "findings": [],
+              "name": "Risk register present",
+              "passed": true,
+              "severity_if_failed": "advisory"
+            },
+            {
+              "check_id": "check_roadmap_dependency_handling",
+              "findings": [],
+              "name": "Roadmap dependency handling",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_hot_path_invariants",
+              "findings": [],
+              "name": "Hot-path invariant preservation",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            },
+            {
+              "check_id": "check_small_feature_compactness",
+              "findings": [],
+              "name": "Small-feature compactness",
+              "passed": true,
+              "severity_if_failed": "blocking"
+            }
+          ],
+          "quality_report": {
+            "advisory_check_count": 0,
+            "blocking_check_count": 0,
+            "deterministic_blocking_findings": [],
+            "model_blocking_findings": [],
+            "score": 100,
+            "validator_error_count": 0,
+            "verdict": "accept"
+          },
+          "rationale": "The PlanContract satisfies all blocking rubric checks and the advisory checks. It defines lifecycle protocols, covers stale/invalid and partial failure cases, keeps QA/source write boundaries separate, includes the required QA and review ordering, preserves human-gated finalization, and avoids the stated hot-path and scope violations.",
+          "verdict": "accept"
+        },
+        "iteration": 1,
+        "proposals": [
+          {
+            "model_usage_id": null,
+            "panelist_id": "panelist-0",
+            "raw_response": "{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-001\",\n  \"project\": \"dag-framework\",\n  \"problem_statement\": \"Implement WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, deterministic watermark-driven closure, per-partition zero-allocation aggregation state, and late-arrival drop versus allow-lateness behavior.\",\n  \"assumptions\": [\n    \"Windowed aggregation belongs in dag-framework-api for public primitives and runtime-core for execution semantics.\",\n    \"Existing WatermarkPolicy and GraphPartitionRunner watermark/timer behavior are the integration points for event-time closure.\",\n    \"Processing-time windows can use existing runtime timer/clock primitives without introducing cross-partition coordination.\",\n    \"Benchmark validation is satisfied by extending the existing benchmarks test/smoke surface rather than adding a new benchmark module layout.\",\n    \"Session windows, user-defined custom windows, and cross-partition window merging are explicitly out of scope.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"Add WindowSpec factories for tumbling and sliding windows, bounded to event-time or processing-time mode, plus WindowAssigner and Trigger primitives and a WindowedAggregateNode API surface that exposes per-window aggregate output and late-arrival policy configuration.\",\n    \"ownership_boundaries\": \"dag-framework-api/src/main/ owns public window specification, assigner, trigger, and node contracts; runtime-core/src/main/ owns per-partition execution, state tables, watermark/timer integration, and late-arrival decisions; benchmarks and test roots own validation only.\",\n    \"concurrency_protocol\": \"Window state is scoped to a single graph partition and is mutated only on that partition runner thread; no cross-partition merge, shared mutable window table, or global watermark coordination is allowed.\",\n    \"persistence_protocol\": \"This feature does not introduce durable snapshot or journal persistence; runtime state is in-memory per partition, and closed or expired windows must be deterministically evicted after trigger emission or lateness expiry.\",\n    \"hard_constraints\": [\n      \"Do not implement custom user-defined windows.\",\n      \"Do not implement session windows.\",\n      \"Do not merge or share window state across partitions.\",\n      \"Use Agrona-backed zero-allocation state structures for hot-path aggregation.\",\n      \"Watermark advancement must be sufficient to close event-time windows deterministically.\",\n      \"Late arrivals must follow the configured drop or allow-lateness policy.\",\n      \"Processing-time and event-time semantics must be represented explicitly in WindowSpec or equivalent public API.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Using java.util HashMap or allocation-heavy per-event collections in the hot aggregation path.\",\n      \"Closing event-time windows only on data arrival rather than watermark advancement.\",\n      \"Encoding tumbling and sliding behavior as ad hoc node-local flags instead of public WindowSpec/WindowAssigner primitives.\",\n      \"Adding session windows as part of R-001.\",\n      \"Maintaining a global window table shared across partitions.\"\n    ],\n    \"acceptance_tests\": [\n      \"Unit tests cover event-time tumbling windows including deterministic close on watermark advancement.\",\n      \"Unit tests cover sliding windows with events assigned to multiple overlapping windows.\",\n      \"Unit tests cover processing-time tumbling and sliding trigger behavior using deterministic runtime time controls.\",\n      \"Unit tests cover late arrivals for both drop and allow-lateness policies.\",\n      \"Tests assert per-partition isolation with no cross-partition aggregation.\",\n      \"Benchmark smoke includes the window node and jmhSmokeCheck is green.\",\n      \"qa/smoke.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"dag-framework-api/src/main/\",\n    \"dag-framework-api/src/test/\",\n    \"dag-framework-api/src/test/java/\",\n    \"runtime-core/src/main/\",\n    \"runtime-core/src/test/\",\n    \"runtime-core/src/test/java/\",\n    \"benchmarks/src/test/\",\n    \"benchmarks/src/test/java/\",\n    \"tests/\",\n    \"qa/fixtures/\",\n    \"qa/\",\n    \"repo-memory/\"\n  ],\n  \"implementation_topology\": \"split_specialists\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Finalize the R-001 API/runtime design for WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, per-partition state ownership, watermark closure, and late-arrival policy in repo-memory/DECISIONS.md and repo-memory/ROADMAP.md.\",\n      \"allowed_paths\": [\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"R-001 public API notes\",\n        \"Runtime ownership and watermark integration notes\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing tests for tumbling windows, sliding windows, late arrivals, watermark-driven closure, per-partition isolation, and benchmark smoke coverage under runtime-core/src/test/java/, dag-framework-api/src/test/java/, and benchmarks/src/test/java/.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"repo-memory/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"design\"\n      ],\n      \"expected_outputs\": [\n        \"Failing WindowSpec API tests\",\n        \"Failing WindowedAggregateNode runtime tests\",\n        \"Failing late-arrival and watermark closure tests\",\n        \"Failing jmhSmokeCheck coverage for window node\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-api-window-primitives\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement public WindowSpec, WindowAssigner, Trigger, late-arrival policy, and WindowedAggregateNode contract types under dag-framework-api/src/main/ without adding session or custom window APIs.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"runtime-core/src/main/\"\n      ],\n      \"depends_on\": [\n        \"qa-author\"\n      ],\n      \"expected_outputs\": [\n        \"WindowSpec API\",\n        \"WindowAssigner API\",\n        \"Trigger API\",\n        \"WindowedAggregateNode public contract\",\n        \"Late-arrival policy API\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \":dag-framework-api:test\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-runtime-window-node\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement runtime-core WindowedAggregateNode execution with Agrona-backed per-partition state, event-time and processing-time trigger handling, deterministic watermark closure, lateness eviction, and benchmark smoke integration.\",\n      \"allowed_paths\": [\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"qa/smoke.sh\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"dag-framework-api/src/main/\"\n      ],\n      \"depends_on\": [\n        \"impl-api-window-primitives\"\n      ],\n      \"expected_outputs\": [\n        \"Runtime WindowedAggregateNode implementation\",\n        \"Agrona-backed per-partition window state\",\n        \"Watermark-driven close path\",\n        \"Drop and allow-lateness handling\",\n        \"jmhSmokeCheck-compatible benchmark smoke integration\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \":runtime-core:test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review dag-framework-api/src/main/, runtime-core/src/main/, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md, and qa/smoke.sh for R-001 contract compliance, allocation risk, deterministic watermark semantics, and out-of-scope creep.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"qa/smoke.sh\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [\n        \"impl-runtime-window-node\"\n      ],\n      \"expected_outputs\": [\n        \"ReviewReport\",\n        \"ContractComplianceFindings\",\n        \"AllocationAndConcurrencyRiskFindings\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run smoke and full regression verification for R-001, including the authored tumbling, sliding, lateness, watermark, partition-isolation, and benchmark smoke tests.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"repo-memory/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"review\"\n      ],\n      \"expected_outputs\": [\n        \"QAVerificationReport\",\n        \"SmokeResult\",\n        \"RegressionResult\",\n        \"jmhSmokeCheckResult\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./qa/regression.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Tumbling event-time windows assign events to fixed intervals and emit exactly once when watermark passes the window end.\",\n    \"Sliding event-time windows assign one event to all expected overlapping windows and close each window deterministically by watermark.\",\n    \"Processing-time tumbling and sliding windows trigger from deterministic runtime clock/timer advancement.\",\n    \"Late arrivals before allowed-lateness expiry are included only under allow-lateness policy.\",\n    \"Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.\",\n    \"Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.\",\n    \"Watermark advancement without additional input closes all eligible event-time windows.\",\n    \"Window state eviction removes closed stale windows after trigger and lateness expiry.\",\n    \"Invariant failure coverage asserts invalid window sizes, invalid slide durations, and impossible lateness settings are rejected.\",\n    \"Partial/failure acceptance covers no duplicate emissions after repeated watermark or timer advancement.\",\n    \"Benchmark smoke coverage includes the window node and jmhSmokeCheck is green.\",\n    \"Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck.\"\n  ],\n  \"risk_register\": [\n    \"Watermark closure may be implemented only on event arrival, leaving idle partitions with unclosed windows.\",\n    \"Sliding windows can accidentally double-count or miss boundary events if inclusive/exclusive bounds are inconsistent.\",\n    \"Allow-lateness can reopen already-emitted windows unless close, emit, and eviction states are explicit.\",\n    \"Processing-time tests can be flaky if they use wall-clock time instead of deterministic runtime time controls.\",\n    \"Agrona state tables can leak closed-window entries if eviction is not tied to watermark or lateness expiry.\",\n    \"A public API that includes session or custom windows would violate R-001 scope.\",\n    \"Cross-partition aggregation can creep in if window state is keyed globally rather than by partition-local node instance.\",\n    \"Benchmark smoke can pass without exercising the new node unless the benchmark surface explicitly instantiates WindowedAggregateNode.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}"
+          },
+          {
+            "model_usage_id": null,
+            "panelist_id": "panelist-1",
+            "raw_response": "{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-001-windowed-aggregate-node\",\n  \"project\": \"dag-framework\",\n  \"problem_statement\": \"Implement WindowedAggregateNode with tumbling and sliding window aggregation, event-time and processing-time semantics, per-partition state, late-arrival handling, and watermark-driven deterministic window closure.\",\n  \"assumptions\": [\n    \"Existing runtime watermark APIs under runtime-core/src/main/java/ are the integration point for event-time window closure.\",\n    \"Window API types belong in dag-framework-api/src/main/ while executable runtime node behavior belongs in runtime-core/src/main/.\",\n    \"Benchmark smoke coverage can be added without broad benchmark framework refactoring.\",\n    \"Session windows and custom user-defined windows are explicitly out of scope.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"Add WindowSpec factories for tumbling and sliding windows, WindowAssigner primitives for assigning event timestamps or processing time to window ranges, Trigger primitives for watermark and processing-time firing, and late-arrival policy configuration for drop or bounded allow-lateness behavior.\",\n    \"ownership_boundaries\": \"dag-framework-api owns declarative window contracts and validation; runtime-core owns WindowedAggregateNode execution, per-partition aggregation state, watermark callbacks, trigger evaluation, and emission ordering; benchmarks owns only smoke benchmark coverage for the new node; QA/test roots own fixtures and regression tests.\",\n    \"concurrency_protocol\": \"Window state is isolated per graph partition and must not share mutable aggregation state across partitions; watermark advancement and input processing must produce deterministic close/emission ordering within a partition.\",\n    \"persistence_protocol\": \"This feature does not add durable recovery, journal, snapshot, or CRC persistence; in-memory window state must preserve invariants for stale or invalid timestamps, bounded lateness expiry, and partial acceptance when late records are dropped.\",\n    \"hard_constraints\": [\n      \"Do not implement session windows.\",\n      \"Do not implement custom user-defined windows.\",\n      \"Window state is per-partition and never cross-partition.\",\n      \"Aggregation state must use zero-allocation-oriented Agrona collections on the hot path.\",\n      \"Watermark advancement must be sufficient to close eligible event-time windows deterministically.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Global shared window maps across partitions.\",\n      \"Ad hoc wall-clock closure for event-time windows that bypasses watermark state.\",\n      \"Allocating boxed keys or per-event collection objects in the aggregation hot path.\",\n      \"Implementing session windows as a hidden special case.\",\n      \"Adding snapshot, CRC, or journal durability work for this feature.\"\n    ],\n    \"acceptance_tests\": [\n      \"Unit tests cover tumbling windows for event-time and processing-time assignment.\",\n      \"Unit tests cover sliding windows with records assigned to multiple overlapping windows.\",\n      \"Unit tests cover late arrivals for drop and allow-lateness policies.\",\n      \"Watermark advancement closes eligible windows deterministically and leaves future windows open.\",\n      \"Benchmark smoke coverage includes WindowedAggregateNode and jmhSmokeCheck passes.\",\n      \"qa/smoke.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"dag-framework-api/src/main/\",\n    \"runtime-core/src/main/\",\n    \"benchmarks/\",\n    \"tests/\",\n    \"runtime-core/src/test/\",\n    \"dag-framework-api/src/test/\",\n    \"benchmarks/src/test/\",\n    \"qa/fixtures/\",\n    \"qa/\"\n  ],\n  \"implementation_topology\": \"council_decides\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define the WindowSpec, WindowAssigner, Trigger, late-arrival, watermark, and per-partition state contract for dag-framework-api/src/main/ and runtime-core/src/main/ before tests or implementation.\",\n      \"allowed_paths\": [\n        \"docs/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"APIAndRuntimeOwnershipNotes\",\n        \"AcceptanceCoverageMap\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing unit, fixture, and benchmark smoke tests for tumbling windows, sliding windows, late arrivals, and deterministic watermark closure.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/\",\n        \"docs/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"design\"\n      ],\n      \"expected_outputs\": [\n        \"FailingWindowSpecUnitTests\",\n        \"FailingWindowedAggregateNodeRuntimeTests\",\n        \"FailingWatermarkLatenessTests\",\n        \"FailingBenchmarkSmokeTest\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, Agrona-backed per-partition state, late-arrival handling, watermark closure, and benchmark smoke wiring.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"qa-author\"\n      ],\n      \"expected_outputs\": [\n        \"WindowSpecApi\",\n        \"WindowAssignerAndTriggerPrimitives\",\n        \"WindowedAggregateNodeRuntimeImplementation\",\n        \"AgronaBackedPerPartitionWindowState\",\n        \"BenchmarkWindowNodeSmokeSurface\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review WindowedAggregateNode API/runtime behavior, watermark determinism, late-arrival semantics, zero-allocation state choices, and benchmark integration against the design contract.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/\",\n        \"tests/\",\n        \"runtime-core/src/test/\",\n        \"dag-framework-api/src/test/\",\n        \"benchmarks/src/test/\",\n        \"qa/fixtures/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \".github/\",\n        \"deployment-core/\",\n        \"examples/\",\n        \"sim/\",\n        \"sim-kdb/src/main/\"\n      ],\n      \"depends_on\": [\n        \"impl-primary\"\n      ],\n      \"expected_outputs\": [\n        \"ReviewFindings\",\n        \"ContractComplianceAssessment\",\n        \"RiskDisposition\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run smoke, regression, unit, and jmh smoke verification for the completed windowed aggregation feature after reviewer sign-off.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/\",\n        \"docs/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"review\"\n      ],\n      \"expected_outputs\": [\n        \"SmokeVerificationReport\",\n        \"RegressionVerificationReport\",\n        \"JmhSmokeVerificationReport\",\n        \"AcceptanceMatrixResult\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./qa/regression.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Tumbling event-time windows assign records to exactly one fixed-size window and close only when watermark passes the window end.\",\n    \"Tumbling processing-time windows use processing-time trigger semantics without relying on event timestamps.\",\n    \"Sliding windows assign records to all expected overlapping windows and emit deterministic aggregate results.\",\n    \"Late arrivals before bounded allow-lateness expiry update the target window while late arrivals beyond policy are dropped with partial acceptance accounted for.\",\n    \"Stale or invalid event timestamps do not corrupt per-partition window invariants.\",\n    \"Watermark advancement deterministically closes all eligible windows in order and never closes future windows early.\",\n    \"Per-partition execution keeps window state isolated and never emits cross-partition aggregates.\",\n    \"Zero-allocation Agrona-backed state is used on the aggregation hot path.\",\n    \"jmhSmokeCheck includes the window node benchmark surface and passes.\",\n    \"qa/smoke.sh and qa/regression.sh pass after implementation.\"\n  ],\n  \"risk_register\": [\n    \"Ambiguous event-time versus processing-time trigger behavior could cause nondeterministic closures unless API validation and tests pin semantics.\",\n    \"Sliding windows may double-count or miss overlapping assignments at boundary timestamps.\",\n    \"Late-arrival allow-lateness behavior can leak stale windows if expiry and cleanup are not tied to watermark advancement.\",\n    \"Per-partition isolation can be broken by shared node-level mutable maps.\",\n    \"Agrona zero-allocation intent can regress if boxed keys or per-record temporary collections enter the hot path.\",\n    \"Benchmark smoke wiring may pass unit tests while omitting the WindowedAggregateNode from the benchmark surface.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}"
+          }
+        ],
+        "validator_errors": []
+      }
+    ],
+    "design_contract": {
+      "acceptance_tests": [
+        "Tumbling event-time windows assign events to exactly one fixed interval and emit exactly once when watermark passes the window end.",
+        "Sliding event-time windows assign one event to all expected overlapping windows and close each eligible window deterministically by watermark.",
+        "Processing-time tumbling and sliding windows trigger from deterministic runtime clock or timer advancement.",
+        "Late arrivals before bounded allow-lateness expiry update the target window only under allow-lateness policy.",
+        "Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.",
+        "Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.",
+        "Watermark advancement without additional input closes all eligible event-time windows in deterministic order and never closes future windows early.",
+        "Window state eviction removes closed stale windows after trigger emission and lateness expiry.",
+        "Invariant failure coverage asserts invalid window sizes, invalid slide durations, impossible lateness settings, and stale or invalid timestamps are rejected or contained without corrupting state.",
+        "Partial/failure coverage asserts no duplicate emissions after repeated watermark or timer advancement.",
+        "Benchmark smoke coverage includes WindowedAggregateNode and jmhSmokeCheck is green.",
+        "Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck."
+      ],
+      "concurrency_protocol": "Window state is scoped to a single graph partition and mutated only on that partition runner thread. No global window table, shared mutable aggregation state, cross-partition merge, or global watermark coordination is allowed. Watermark advancement and input processing must produce deterministic close and emission ordering within each partition.",
+      "forbidden_alternatives": [
+        "Using global shared window maps across partitions.",
+        "Using allocation-heavy boxed keys or per-event collections in the hot aggregation path.",
+        "Closing event-time windows only on data arrival rather than watermark advancement.",
+        "Encoding tumbling and sliding behavior as ad hoc node-local flags instead of public WindowSpec, WindowAssigner, and Trigger primitives.",
+        "Implementing session windows as a hidden special case.",
+        "Adding snapshot, CRC, journal, or durable recovery work for this feature."
+      ],
+      "hard_constraints": [
+        "Do not implement session windows.",
+        "Do not implement custom user-defined windows.",
+        "Do not merge or share window state across partitions.",
+        "Use Agrona-backed zero-allocation-oriented state structures for the hot aggregation path.",
+        "Watermark advancement must be sufficient to close eligible event-time windows deterministically without requiring additional input.",
+        "Late arrivals must follow the configured drop or bounded allow-lateness policy.",
+        "Processing-time and event-time semantics must be represented explicitly in WindowSpec or equivalent public API."
+      ],
+      "ownership_boundaries": "dag-framework-api/src/main/ owns declarative window contracts, validation, assigner and trigger primitives, and WindowedAggregateNode API types. runtime-core/src/main/ owns execution, per-partition aggregation state, watermark callbacks, runtime timer integration, trigger evaluation, emission ordering, eviction, and late-arrival decisions. benchmarks/src/main/ owns smoke benchmark coverage for the new node. QA/test roots own fixtures, unit tests, regression tests, and verification evidence.",
+      "persistence_protocol": "This feature does not introduce durable snapshot, journal, recovery, or CRC persistence. Runtime window state is in-memory per partition, and closed or expired windows must be deterministically evicted after trigger emission or lateness expiry while preserving invariants for stale or invalid timestamps.",
+      "public_api": "Add WindowSpec factories for tumbling and sliding windows, explicit event-time and processing-time modes, WindowAssigner primitives for assigning records to window ranges, Trigger primitives for watermark and processing-time firing, WindowedAggregateNode public contracts, and late-arrival policy configuration for drop or bounded allow-lateness behavior."
+    },
+    "feature_id": "R-001",
+    "finalization_policy": "open_final_feature_pr_for_human_merge",
+    "implementation_topology": "split_specialists",
+    "problem_statement": "Implement WindowedAggregateNode with tumbling and sliding window aggregation, event-time and processing-time semantics, deterministic watermark-driven closure, per-partition zero-allocation aggregation state, and late-arrival drop versus bounded allow-lateness behavior.",
+    "project": "dag-framework",
+    "risk_register": [
+      "Watermark closure may be implemented only on event arrival, leaving idle partitions with unclosed windows.",
+      "Ambiguous event-time versus processing-time trigger behavior could cause nondeterministic closures unless API validation and tests pin semantics.",
+      "Sliding windows can accidentally double-count or miss boundary events if inclusive and exclusive bounds are inconsistent.",
+      "Allow-lateness can reopen already-emitted windows or leak stale windows unless close, emit, expiry, and eviction states are explicit.",
+      "Processing-time tests can be flaky if they use wall-clock time instead of deterministic runtime time controls.",
+      "Agrona state tables can leak closed-window entries if eviction is not tied to watermark or lateness expiry.",
+      "Per-partition isolation can be broken by shared node-level mutable maps or globally keyed state.",
+      "A public API that includes session or custom windows would violate R-001 scope.",
+      "Benchmark smoke can pass without exercising the new node unless the benchmark surface explicitly instantiates WindowedAggregateNode."
+    ],
+    "self_heal_policy": "retry_repair_replan_then_escalate",
+    "supersedes_plan_id": null,
+    "supersession_rationale": null,
+    "task_slices": [
+      {
+        "allowed_paths": [
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/"
+        ],
+        "depends_on": [],
+        "expected_outputs": [
+          "DesignContract",
+          "R-001 public API notes",
+          "Runtime ownership and watermark integration notes",
+          "AcceptanceCoverageMap"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/"
+        ],
+        "objective": "Finalize the R-001 API, runtime, benchmark, ownership, concurrency, validation, watermark, processing-time, lateness, eviction, and acceptance coverage design in repo-memory/DECISIONS.md and repo-memory/ROADMAP.md.",
+        "role": "designer",
+        "slice_id": "design",
+        "task_type": "engineering.design",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/"
+        ],
+        "depends_on": [
+          "design"
+        ],
+        "expected_outputs": [
+          "Failing WindowSpec API tests",
+          "Failing WindowedAggregateNode runtime tests",
+          "Failing watermark, lateness, eviction, and invariant tests",
+          "Failing per-partition isolation tests",
+          "Failing jmhSmokeCheck coverage for window node"
+        ],
+        "forbidden_paths": [
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "repo-memory/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "objective": "Write failing tests and fixtures for tumbling windows, sliding windows, event-time watermark closure, processing-time triggers, late-arrival drop and bounded allow-lateness, stale or invalid timestamp handling, per-partition isolation, eviction, duplicate-emission prevention, and benchmark smoke coverage.",
+        "role": "qa",
+        "slice_id": "qa-author",
+        "task_type": "engineering.qa.author",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./gradlew",
+            "test"
+          ],
+          [
+            "./gradlew",
+            "jmhSmokeCheck"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "dag-framework-api/src/main/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "qa-author"
+        ],
+        "expected_outputs": [
+          "WindowSpec API",
+          "WindowAssigner API",
+          "Trigger API",
+          "WindowedAggregateNode public contract",
+          "Late-arrival policy API",
+          "Invalid size, slide, and lateness validation"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "objective": "Implement public WindowSpec, WindowAssigner, Trigger, late-arrival policy, validation, and WindowedAggregateNode contract types under dag-framework-api/src/main/ without adding session or custom window APIs.",
+        "role": "implementer",
+        "slice_id": "impl-api-window-primitives",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":dag-framework-api:test"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md"
+        ],
+        "depends_on": [
+          "impl-api-window-primitives"
+        ],
+        "expected_outputs": [
+          "Runtime WindowedAggregateNode implementation",
+          "Agrona-backed per-partition window state",
+          "Watermark-driven close path",
+          "Processing-time trigger path",
+          "Drop and allow-lateness handling",
+          "Stale window eviction",
+          "jmhSmokeCheck-compatible benchmark smoke surface"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/",
+          "dag-framework-api/src/main/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "objective": "Implement runtime-core WindowedAggregateNode execution with Agrona-backed per-partition state, tumbling and sliding assignment, event-time watermark closure, processing-time timer triggers, deterministic emission ordering, drop and bounded allow-lateness handling, stale-window eviction, duplicate-emission prevention, and benchmark smoke integration.",
+        "role": "implementer",
+        "slice_id": "impl-runtime-window-node",
+        "task_type": "engineering.implement",
+        "verification_commands": [
+          [
+            "./gradlew",
+            ":runtime-core:test"
+          ],
+          [
+            "./gradlew",
+            "jmhSmokeCheck"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "repo-memory/ROADMAP.md",
+          "repo-memory/DECISIONS.md",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "depends_on": [
+          "impl-runtime-window-node"
+        ],
+        "expected_outputs": [
+          "ReviewReport",
+          "ContractComplianceFindings",
+          "AllocationAndConcurrencyRiskFindings",
+          "RiskDisposition"
+        ],
+        "forbidden_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/"
+        ],
+        "objective": "Review API and runtime behavior for R-001 contract compliance, deterministic watermark and timer semantics, late-arrival semantics, stale-window eviction, per-partition isolation, zero-allocation hot-path risk, benchmark integration, and out-of-scope creep.",
+        "role": "reviewer",
+        "slice_id": "review",
+        "task_type": "engineering.review",
+        "verification_commands": [
+          [
+            "./gradlew",
+            "test",
+            "jmhSmokeCheck"
+          ],
+          [
+            "./qa/smoke.sh"
+          ]
+        ]
+      },
+      {
+        "allowed_paths": [
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/"
+        ],
+        "depends_on": [
+          "review"
+        ],
+        "expected_outputs": [
+          "QAVerificationReport",
+          "SmokeResult",
+          "RegressionResult",
+          "UnitTestResult",
+          "jmhSmokeCheckResult",
+          "AcceptanceMatrixResult"
+        ],
+        "forbidden_paths": [
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "repo-memory/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "objective": "Run smoke and full regression verification for R-001 after reviewer sign-off, including authored tumbling, sliding, event-time, processing-time, lateness, stale timestamp, eviction, duplicate-emission, partition-isolation, and benchmark smoke tests.",
+        "role": "qa",
+        "slice_id": "qa-verify",
+        "task_type": "engineering.qa.verify",
+        "verification_commands": [
+          [
+            "./qa/smoke.sh"
+          ],
+          [
+            "./qa/regression.sh"
+          ],
+          [
+            "./gradlew",
+            "test",
+            "jmhSmokeCheck"
+          ]
+        ]
+      }
+    ]
+  },
+  "iterations": [
+    {
+      "consolidated": {
+        "acceptance_test_matrix": [
+          "Tumbling event-time windows assign events to exactly one fixed interval and emit exactly once when watermark passes the window end.",
+          "Sliding event-time windows assign one event to all expected overlapping windows and close each eligible window deterministically by watermark.",
+          "Processing-time tumbling and sliding windows trigger from deterministic runtime clock or timer advancement.",
+          "Late arrivals before bounded allow-lateness expiry update the target window only under allow-lateness policy.",
+          "Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.",
+          "Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.",
+          "Watermark advancement without additional input closes all eligible event-time windows in deterministic order and never closes future windows early.",
+          "Window state eviction removes closed stale windows after trigger emission and lateness expiry.",
+          "Invariant failure coverage asserts invalid window sizes, invalid slide durations, impossible lateness settings, and stale or invalid timestamps are rejected or contained without corrupting state.",
+          "Partial/failure acceptance covers no duplicate emissions after repeated watermark or timer advancement.",
+          "Benchmark smoke coverage includes the window node and jmhSmokeCheck is green.",
+          "Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck."
+        ],
+        "affected_surfaces": [
+          "repo-memory/",
+          "dag-framework-api/src/main/",
+          "runtime-core/src/main/",
+          "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+          "benchmarks/src/main/",
+          "tests/",
+          "qa/fixtures/",
+          "benchmarks/src/test/",
+          "benchmarks/src/test/java/",
+          "dag-framework-api/src/test/",
+          "dag-framework-api/src/test/java/",
+          "runtime-core/src/test/",
+          "runtime-core/src/test/java/",
+          "sim-kdb/src/test/",
+          "sim-kdb/src/test/java/",
+          "qa/smoke.sh",
+          "qa/regression.sh"
+        ],
+        "assumptions": [
+          "Window API types belong in dag-framework-api/src/main/ while executable runtime node behavior belongs in runtime-core/src/main/.",
+          "Existing WatermarkPolicy and GraphPartitionRunner watermark/timer behavior are the integration points for event-time closure.",
+          "Processing-time windows can use existing deterministic runtime clock/timer primitives without wall-clock dependencies.",
+          "Benchmark validation is satisfied by extending the existing benchmark smoke surface rather than adding a new benchmark module layout.",
+          "Session windows, user-defined custom windows, and cross-partition window merging are explicitly out of scope."
+        ],
+        "contract_version": "engineering.contracts.v1",
+        "council_reports": [],
+        "design_contract": {
+          "acceptance_tests": [
+            "Tumbling event-time windows assign events to exactly one fixed interval and emit exactly once when watermark passes the window end.",
+            "Sliding event-time windows assign one event to all expected overlapping windows and close each eligible window deterministically by watermark.",
+            "Processing-time tumbling and sliding windows trigger from deterministic runtime clock or timer advancement.",
+            "Late arrivals before bounded allow-lateness expiry update the target window only under allow-lateness policy.",
+            "Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.",
+            "Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.",
+            "Watermark advancement without additional input closes all eligible event-time windows in deterministic order and never closes future windows early.",
+            "Window state eviction removes closed stale windows after trigger emission and lateness expiry.",
+            "Invariant failure coverage asserts invalid window sizes, invalid slide durations, impossible lateness settings, and stale or invalid timestamps are rejected or contained without corrupting state.",
+            "Partial/failure coverage asserts no duplicate emissions after repeated watermark or timer advancement.",
+            "Benchmark smoke coverage includes WindowedAggregateNode and jmhSmokeCheck is green.",
+            "Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck."
+          ],
+          "concurrency_protocol": "Window state is scoped to a single graph partition and mutated only on that partition runner thread. No global window table, shared mutable aggregation state, cross-partition merge, or global watermark coordination is allowed. Watermark advancement and input processing must produce deterministic close and emission ordering within each partition.",
+          "forbidden_alternatives": [
+            "Using global shared window maps across partitions.",
+            "Using allocation-heavy boxed keys or per-event collections in the hot aggregation path.",
+            "Closing event-time windows only on data arrival rather than watermark advancement.",
+            "Encoding tumbling and sliding behavior as ad hoc node-local flags instead of public WindowSpec, WindowAssigner, and Trigger primitives.",
+            "Implementing session windows as a hidden special case.",
+            "Adding snapshot, CRC, journal, or durable recovery work for this feature."
+          ],
+          "hard_constraints": [
+            "Do not implement session windows.",
+            "Do not implement custom user-defined windows.",
+            "Do not merge or share window state across partitions.",
+            "Use Agrona-backed zero-allocation-oriented state structures for the hot aggregation path.",
+            "Watermark advancement must be sufficient to close eligible event-time windows deterministically without requiring additional input.",
+            "Late arrivals must follow the configured drop or bounded allow-lateness policy.",
+            "Processing-time and event-time semantics must be represented explicitly in WindowSpec or equivalent public API."
+          ],
+          "ownership_boundaries": "dag-framework-api/src/main/ owns declarative window contracts, validation, assigner and trigger primitives, and WindowedAggregateNode API types. runtime-core/src/main/ owns execution, per-partition aggregation state, watermark callbacks, runtime timer integration, trigger evaluation, emission ordering, eviction, and late-arrival decisions. benchmarks/src/main/ owns smoke benchmark coverage for the new node. QA/test roots own fixtures, unit tests, regression tests, and verification evidence.",
+          "persistence_protocol": "This feature does not introduce durable snapshot, journal, recovery, or CRC persistence. Runtime window state is in-memory per partition, and closed or expired windows must be deterministically evicted after trigger emission or lateness expiry while preserving invariants for stale or invalid timestamps.",
+          "public_api": "Add WindowSpec factories for tumbling and sliding windows, explicit event-time and processing-time modes, WindowAssigner primitives for assigning records to window ranges, Trigger primitives for watermark and processing-time firing, WindowedAggregateNode public contracts, and late-arrival policy configuration for drop or bounded allow-lateness behavior."
+        },
+        "feature_id": "R-001",
+        "finalization_policy": "open_final_feature_pr_for_human_merge",
+        "implementation_topology": "split_specialists",
+        "problem_statement": "Implement WindowedAggregateNode with tumbling and sliding window aggregation, event-time and processing-time semantics, deterministic watermark-driven closure, per-partition zero-allocation aggregation state, and late-arrival drop versus bounded allow-lateness behavior.",
+        "project": "dag-framework",
+        "risk_register": [
+          "Watermark closure may be implemented only on event arrival, leaving idle partitions with unclosed windows.",
+          "Ambiguous event-time versus processing-time trigger behavior could cause nondeterministic closures unless API validation and tests pin semantics.",
+          "Sliding windows can accidentally double-count or miss boundary events if inclusive and exclusive bounds are inconsistent.",
+          "Allow-lateness can reopen already-emitted windows or leak stale windows unless close, emit, expiry, and eviction states are explicit.",
+          "Processing-time tests can be flaky if they use wall-clock time instead of deterministic runtime time controls.",
+          "Agrona state tables can leak closed-window entries if eviction is not tied to watermark or lateness expiry.",
+          "Per-partition isolation can be broken by shared node-level mutable maps or globally keyed state.",
+          "A public API that includes session or custom windows would violate R-001 scope.",
+          "Benchmark smoke can pass without exercising the new node unless the benchmark surface explicitly instantiates WindowedAggregateNode."
+        ],
+        "self_heal_policy": "retry_repair_replan_then_escalate",
+        "supersedes_plan_id": null,
+        "supersession_rationale": null,
+        "task_slices": [
+          {
+            "allowed_paths": [
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md",
+              "dag-framework-api/src/main/",
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/"
+            ],
+            "depends_on": [],
+            "expected_outputs": [
+              "DesignContract",
+              "R-001 public API notes",
+              "Runtime ownership and watermark integration notes",
+              "AcceptanceCoverageMap"
+            ],
+            "forbidden_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/"
+            ],
+            "objective": "Finalize the R-001 API, runtime, benchmark, ownership, concurrency, validation, watermark, processing-time, lateness, eviction, and acceptance coverage design in repo-memory/DECISIONS.md and repo-memory/ROADMAP.md.",
+            "role": "designer",
+            "slice_id": "design",
+            "task_type": "engineering.design",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/"
+            ],
+            "depends_on": [
+              "design"
+            ],
+            "expected_outputs": [
+              "Failing WindowSpec API tests",
+              "Failing WindowedAggregateNode runtime tests",
+              "Failing watermark, lateness, eviction, and invariant tests",
+              "Failing per-partition isolation tests",
+              "Failing jmhSmokeCheck coverage for window node"
+            ],
+            "forbidden_paths": [
+              "dag-framework-api/src/main/",
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/",
+              "repo-memory/",
+              "qa/smoke.sh",
+              "qa/regression.sh"
+            ],
+            "objective": "Write failing tests and fixtures for tumbling windows, sliding windows, event-time watermark closure, processing-time triggers, late-arrival drop and bounded allow-lateness, stale or invalid timestamp handling, per-partition isolation, eviction, duplicate-emission prevention, and benchmark smoke coverage.",
+            "role": "qa",
+            "slice_id": "qa-author",
+            "task_type": "engineering.qa.author",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ],
+              [
+                "./gradlew",
+                "test"
+              ],
+              [
+                "./gradlew",
+                "jmhSmokeCheck"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "dag-framework-api/src/main/",
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md"
+            ],
+            "depends_on": [
+              "qa-author"
+            ],
+            "expected_outputs": [
+              "WindowSpec API",
+              "WindowAssigner API",
+              "Trigger API",
+              "WindowedAggregateNode public contract",
+              "Late-arrival policy API",
+              "Invalid size, slide, and lateness validation"
+            ],
+            "forbidden_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/",
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/",
+              "qa/smoke.sh",
+              "qa/regression.sh"
+            ],
+            "objective": "Implement public WindowSpec, WindowAssigner, Trigger, late-arrival policy, validation, and WindowedAggregateNode contract types under dag-framework-api/src/main/ without adding session or custom window APIs.",
+            "role": "implementer",
+            "slice_id": "impl-api-window-primitives",
+            "task_type": "engineering.implement",
+            "verification_commands": [
+              [
+                "./gradlew",
+                ":dag-framework-api:test"
+              ],
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/",
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md"
+            ],
+            "depends_on": [
+              "impl-api-window-primitives"
+            ],
+            "expected_outputs": [
+              "Runtime WindowedAggregateNode implementation",
+              "Agrona-backed per-partition window state",
+              "Watermark-driven close path",
+              "Processing-time trigger path",
+              "Drop and allow-lateness handling",
+              "Stale window eviction",
+              "jmhSmokeCheck-compatible benchmark smoke surface"
+            ],
+            "forbidden_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/",
+              "dag-framework-api/src/main/",
+              "qa/smoke.sh",
+              "qa/regression.sh"
+            ],
+            "objective": "Implement runtime-core WindowedAggregateNode execution with Agrona-backed per-partition state, tumbling and sliding assignment, event-time watermark closure, processing-time timer triggers, deterministic emission ordering, drop and bounded allow-lateness handling, stale-window eviction, duplicate-emission prevention, and benchmark smoke integration.",
+            "role": "implementer",
+            "slice_id": "impl-runtime-window-node",
+            "task_type": "engineering.implement",
+            "verification_commands": [
+              [
+                "./gradlew",
+                ":runtime-core:test"
+              ],
+              [
+                "./gradlew",
+                "jmhSmokeCheck"
+              ],
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "repo-memory/ROADMAP.md",
+              "repo-memory/DECISIONS.md",
+              "dag-framework-api/src/main/",
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/",
+              "qa/smoke.sh",
+              "qa/regression.sh"
+            ],
+            "depends_on": [
+              "impl-runtime-window-node"
+            ],
+            "expected_outputs": [
+              "ReviewReport",
+              "ContractComplianceFindings",
+              "AllocationAndConcurrencyRiskFindings",
+              "RiskDisposition"
+            ],
+            "forbidden_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/"
+            ],
+            "objective": "Review API and runtime behavior for R-001 contract compliance, deterministic watermark and timer semantics, late-arrival semantics, stale-window eviction, per-partition isolation, zero-allocation hot-path risk, benchmark integration, and out-of-scope creep.",
+            "role": "reviewer",
+            "slice_id": "review",
+            "task_type": "engineering.review",
+            "verification_commands": [
+              [
+                "./gradlew",
+                "test",
+                "jmhSmokeCheck"
+              ],
+              [
+                "./qa/smoke.sh"
+              ]
+            ]
+          },
+          {
+            "allowed_paths": [
+              "tests/",
+              "qa/fixtures/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "sim-kdb/src/test/",
+              "sim-kdb/src/test/java/"
+            ],
+            "depends_on": [
+              "review"
+            ],
+            "expected_outputs": [
+              "QAVerificationReport",
+              "SmokeResult",
+              "RegressionResult",
+              "UnitTestResult",
+              "jmhSmokeCheckResult",
+              "AcceptanceMatrixResult"
+            ],
+            "forbidden_paths": [
+              "dag-framework-api/src/main/",
+              "runtime-core/src/main/",
+              "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+              "benchmarks/src/main/",
+              "repo-memory/",
+              "qa/smoke.sh",
+              "qa/regression.sh"
+            ],
+            "objective": "Run smoke and full regression verification for R-001 after reviewer sign-off, including authored tumbling, sliding, event-time, processing-time, lateness, stale timestamp, eviction, duplicate-emission, partition-isolation, and benchmark smoke tests.",
+            "role": "qa",
+            "slice_id": "qa-verify",
+            "task_type": "engineering.qa.verify",
+            "verification_commands": [
+              [
+                "./qa/smoke.sh"
+              ],
+              [
+                "./qa/regression.sh"
+              ],
+              [
+                "./gradlew",
+                "test",
+                "jmhSmokeCheck"
+              ]
+            ]
+          }
+        ]
+      },
+      "critic": {
+        "findings": [],
+        "model_usage_id": null,
+        "per_check_results": [
+          {
+            "check_id": "check_design_contract_completeness",
+            "findings": [],
+            "name": "Design contract completeness",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_slice_path_coverage",
+            "findings": [],
+            "name": "Slice path coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_forbidden_path_overlap",
+            "findings": [],
+            "name": "Forbidden-path overlap",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_verification_commands",
+            "findings": [],
+            "name": "Verification command coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_lifecycle_coverage",
+            "findings": [],
+            "name": "Acceptance matrix lifecycle coverage",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_topology_consistency",
+            "findings": [],
+            "name": "Implementation topology consistency",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_reviewer_present",
+            "findings": [],
+            "name": "Reviewer slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_author_present",
+            "findings": [],
+            "name": "QA author slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_verify_present",
+            "findings": [],
+            "name": "QA verify slice presence",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_qa_paths_disjoint",
+            "findings": [],
+            "name": "QA paths disjoint from source",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_orphan_slices",
+            "findings": [],
+            "name": "Orphan slice detection",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_finalization_policy",
+            "findings": [],
+            "name": "Finalization policy locked to human merge",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_objective_specificity",
+            "findings": [],
+            "name": "Objective specificity",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_risk_register_present",
+            "findings": [],
+            "name": "Risk register present",
+            "passed": true,
+            "severity_if_failed": "advisory"
+          },
+          {
+            "check_id": "check_roadmap_dependency_handling",
+            "findings": [],
+            "name": "Roadmap dependency handling",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_hot_path_invariants",
+            "findings": [],
+            "name": "Hot-path invariant preservation",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          },
+          {
+            "check_id": "check_small_feature_compactness",
+            "findings": [],
+            "name": "Small-feature compactness",
+            "passed": true,
+            "severity_if_failed": "blocking"
+          }
+        ],
+        "quality_report": {
+          "advisory_check_count": 0,
+          "blocking_check_count": 0,
+          "deterministic_blocking_findings": [],
+          "model_blocking_findings": [],
+          "score": 100,
+          "validator_error_count": 0,
+          "verdict": "accept"
+        },
+        "rationale": "The PlanContract satisfies all blocking rubric checks and the advisory checks. It defines lifecycle protocols, covers stale/invalid and partial failure cases, keeps QA/source write boundaries separate, includes the required QA and review ordering, preserves human-gated finalization, and avoids the stated hot-path and scope violations.",
+        "verdict": "accept"
+      },
+      "iteration": 1,
+      "proposals": [
+        {
+          "candidate": {
+            "acceptance_test_matrix": [
+              "Tumbling event-time windows assign events to fixed intervals and emit exactly once when watermark passes the window end.",
+              "Sliding event-time windows assign one event to all expected overlapping windows and close each window deterministically by watermark.",
+              "Processing-time tumbling and sliding windows trigger from deterministic runtime clock/timer advancement.",
+              "Late arrivals before allowed-lateness expiry are included only under allow-lateness policy.",
+              "Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.",
+              "Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.",
+              "Watermark advancement without additional input closes all eligible event-time windows.",
+              "Window state eviction removes closed stale windows after trigger and lateness expiry.",
+              "Invariant failure coverage asserts invalid window sizes, invalid slide durations, and impossible lateness settings are rejected.",
+              "Partial/failure acceptance covers no duplicate emissions after repeated watermark or timer advancement.",
+              "Benchmark smoke coverage includes the window node and jmhSmokeCheck is green.",
+              "Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck."
+            ],
+            "affected_surfaces": [
+              "dag-framework-api/src/main/",
+              "dag-framework-api/src/test/",
+              "dag-framework-api/src/test/java/",
+              "runtime-core/src/main/",
+              "runtime-core/src/test/",
+              "runtime-core/src/test/java/",
+              "benchmarks/src/test/",
+              "benchmarks/src/test/java/",
+              "tests/",
+              "qa/fixtures/",
+              "qa/",
+              "repo-memory/"
+            ],
+            "assumptions": [
+              "Windowed aggregation belongs in dag-framework-api for public primitives and runtime-core for execution semantics.",
+              "Existing WatermarkPolicy and GraphPartitionRunner watermark/timer behavior are the integration points for event-time closure.",
+              "Processing-time windows can use existing runtime timer/clock primitives without introducing cross-partition coordination.",
+              "Benchmark validation is satisfied by extending the existing benchmarks test/smoke surface rather than adding a new benchmark module layout.",
+              "Session windows, user-defined custom windows, and cross-partition window merging are explicitly out of scope."
+            ],
+            "contract_version": "engineering.contracts.v1",
+            "council_reports": [],
+            "design_contract": {
+              "acceptance_tests": [
+                "Unit tests cover event-time tumbling windows including deterministic close on watermark advancement.",
+                "Unit tests cover sliding windows with events assigned to multiple overlapping windows.",
+                "Unit tests cover processing-time tumbling and sliding trigger behavior using deterministic runtime time controls.",
+                "Unit tests cover late arrivals for both drop and allow-lateness policies.",
+                "Tests assert per-partition isolation with no cross-partition aggregation.",
+                "Benchmark smoke includes the window node and jmhSmokeCheck is green.",
+                "qa/smoke.sh passes."
+              ],
+              "concurrency_protocol": "Window state is scoped to a single graph partition and is mutated only on that partition runner thread; no cross-partition merge, shared mutable window table, or global watermark coordination is allowed.",
+              "forbidden_alternatives": [
+                "Using java.util HashMap or allocation-heavy per-event collections in the hot aggregation path.",
+                "Closing event-time windows only on data arrival rather than watermark advancement.",
+                "Encoding tumbling and sliding behavior as ad hoc node-local flags instead of public WindowSpec/WindowAssigner primitives.",
+                "Adding session windows as part of R-001.",
+                "Maintaining a global window table shared across partitions."
+              ],
+              "hard_constraints": [
+                "Do not implement custom user-defined windows.",
+                "Do not implement session windows.",
+                "Do not merge or share window state across partitions.",
+                "Use Agrona-backed zero-allocation state structures for hot-path aggregation.",
+                "Watermark advancement must be sufficient to close event-time windows deterministically.",
+                "Late arrivals must follow the configured drop or allow-lateness policy.",
+                "Processing-time and event-time semantics must be represented explicitly in WindowSpec or equivalent public API."
+              ],
+              "ownership_boundaries": "dag-framework-api/src/main/ owns public window specification, assigner, trigger, and node contracts; runtime-core/src/main/ owns per-partition execution, state tables, watermark/timer integration, and late-arrival decisions; benchmarks and test roots own validation only.",
+              "persistence_protocol": "This feature does not introduce durable snapshot or journal persistence; runtime state is in-memory per partition, and closed or expired windows must be deterministically evicted after trigger emission or lateness expiry.",
+              "public_api": "Add WindowSpec factories for tumbling and sliding windows, bounded to event-time or processing-time mode, plus WindowAssigner and Trigger primitives and a WindowedAggregateNode API surface that exposes per-window aggregate output and late-arrival policy configuration."
+            },
+            "feature_id": "R-001",
+            "finalization_policy": "open_final_feature_pr_for_human_merge",
+            "implementation_topology": "split_specialists",
+            "problem_statement": "Implement WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, deterministic watermark-driven closure, per-partition zero-allocation aggregation state, and late-arrival drop versus allow-lateness behavior.",
+            "project": "dag-framework",
+            "risk_register": [
+              "Watermark closure may be implemented only on event arrival, leaving idle partitions with unclosed windows.",
+              "Sliding windows can accidentally double-count or miss boundary events if inclusive/exclusive bounds are inconsistent.",
+              "Allow-lateness can reopen already-emitted windows unless close, emit, and eviction states are explicit.",
+              "Processing-time tests can be flaky if they use wall-clock time instead of deterministic runtime time controls.",
+              "Agrona state tables can leak closed-window entries if eviction is not tied to watermark or lateness expiry.",
+              "A public API that includes session or custom windows would violate R-001 scope.",
+              "Cross-partition aggregation can creep in if window state is keyed globally rather than by partition-local node instance.",
+              "Benchmark smoke can pass without exercising the new node unless the benchmark surface explicitly instantiates WindowedAggregateNode."
+            ],
+            "self_heal_policy": "retry_repair_replan_then_escalate",
+            "supersedes_plan_id": null,
+            "supersession_rationale": null,
+            "task_slices": [
+              {
+                "allowed_paths": [
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md",
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java"
+                ],
+                "depends_on": [],
+                "expected_outputs": [
+                  "DesignContract",
+                  "R-001 public API notes",
+                  "Runtime ownership and watermark integration notes"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "objective": "Finalize the R-001 API/runtime design for WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, per-partition state ownership, watermark closure, and late-arrival policy in repo-memory/DECISIONS.md and repo-memory/ROADMAP.md.",
+                "role": "designer",
+                "slice_id": "design",
+                "task_type": "engineering.design",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "depends_on": [
+                  "design"
+                ],
+                "expected_outputs": [
+                  "Failing WindowSpec API tests",
+                  "Failing WindowedAggregateNode runtime tests",
+                  "Failing late-arrival and watermark closure tests",
+                  "Failing jmhSmokeCheck coverage for window node"
+                ],
+                "forbidden_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "repo-memory/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh"
+                ],
+                "objective": "Write failing tests for tumbling windows, sliding windows, late arrivals, watermark-driven closure, per-partition isolation, and benchmark smoke coverage under runtime-core/src/test/java/, dag-framework-api/src/test/java/, and benchmarks/src/test/java/.",
+                "role": "qa",
+                "slice_id": "qa-author",
+                "task_type": "engineering.qa.author",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./gradlew",
+                    "test",
+                    "jmhSmokeCheck"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "dag-framework-api/src/main/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md"
+                ],
+                "depends_on": [
+                  "qa-author"
+                ],
+                "expected_outputs": [
+                  "WindowSpec API",
+                  "WindowAssigner API",
+                  "Trigger API",
+                  "WindowedAggregateNode public contract",
+                  "Late-arrival policy API"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/",
+                  "runtime-core/src/main/"
+                ],
+                "objective": "Implement public WindowSpec, WindowAssigner, Trigger, late-arrival policy, and WindowedAggregateNode contract types under dag-framework-api/src/main/ without adding session or custom window APIs.",
+                "role": "implementer",
+                "slice_id": "impl-api-window-primitives",
+                "task_type": "engineering.implement",
+                "verification_commands": [
+                  [
+                    "./gradlew",
+                    ":dag-framework-api:test"
+                  ],
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "runtime-core/src/main/",
+                  "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md",
+                  "qa/smoke.sh"
+                ],
+                "depends_on": [
+                  "impl-api-window-primitives"
+                ],
+                "expected_outputs": [
+                  "Runtime WindowedAggregateNode implementation",
+                  "Agrona-backed per-partition window state",
+                  "Watermark-driven close path",
+                  "Drop and allow-lateness handling",
+                  "jmhSmokeCheck-compatible benchmark smoke integration"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/",
+                  "dag-framework-api/src/main/"
+                ],
+                "objective": "Implement runtime-core WindowedAggregateNode execution with Agrona-backed per-partition state, event-time and processing-time trigger handling, deterministic watermark closure, lateness eviction, and benchmark smoke integration.",
+                "role": "implementer",
+                "slice_id": "impl-runtime-window-node",
+                "task_type": "engineering.implement",
+                "verification_commands": [
+                  [
+                    "./gradlew",
+                    ":runtime-core:test"
+                  ],
+                  [
+                    "./gradlew",
+                    "jmhSmokeCheck"
+                  ],
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md",
+                  "qa/smoke.sh"
+                ],
+                "depends_on": [
+                  "impl-runtime-window-node"
+                ],
+                "expected_outputs": [
+                  "ReviewReport",
+                  "ContractComplianceFindings",
+                  "AllocationAndConcurrencyRiskFindings"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "objective": "Review dag-framework-api/src/main/, runtime-core/src/main/, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md, and qa/smoke.sh for R-001 contract compliance, allocation risk, deterministic watermark semantics, and out-of-scope creep.",
+                "role": "reviewer",
+                "slice_id": "review",
+                "task_type": "engineering.review",
+                "verification_commands": [
+                  [
+                    "./gradlew",
+                    "test",
+                    "jmhSmokeCheck"
+                  ],
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "depends_on": [
+                  "review"
+                ],
+                "expected_outputs": [
+                  "QAVerificationReport",
+                  "SmokeResult",
+                  "RegressionResult",
+                  "jmhSmokeCheckResult"
+                ],
+                "forbidden_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "repo-memory/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh"
+                ],
+                "objective": "Run smoke and full regression verification for R-001, including the authored tumbling, sliding, lateness, watermark, partition-isolation, and benchmark smoke tests.",
+                "role": "qa",
+                "slice_id": "qa-verify",
+                "task_type": "engineering.qa.verify",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./qa/regression.sh"
+                  ],
+                  [
+                    "./gradlew",
+                    "test",
+                    "jmhSmokeCheck"
+                  ]
+                ]
+              }
+            ]
+          },
+          "model_usage_id": null,
+          "panelist_id": "panelist-0",
+          "raw_response": "{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-001\",\n  \"project\": \"dag-framework\",\n  \"problem_statement\": \"Implement WindowedAggregateNode with tumbling and sliding windows, event-time and processing-time semantics, deterministic watermark-driven closure, per-partition zero-allocation aggregation state, and late-arrival drop versus allow-lateness behavior.\",\n  \"assumptions\": [\n    \"Windowed aggregation belongs in dag-framework-api for public primitives and runtime-core for execution semantics.\",\n    \"Existing WatermarkPolicy and GraphPartitionRunner watermark/timer behavior are the integration points for event-time closure.\",\n    \"Processing-time windows can use existing runtime timer/clock primitives without introducing cross-partition coordination.\",\n    \"Benchmark validation is satisfied by extending the existing benchmarks test/smoke surface rather than adding a new benchmark module layout.\",\n    \"Session windows, user-defined custom windows, and cross-partition window merging are explicitly out of scope.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"Add WindowSpec factories for tumbling and sliding windows, bounded to event-time or processing-time mode, plus WindowAssigner and Trigger primitives and a WindowedAggregateNode API surface that exposes per-window aggregate output and late-arrival policy configuration.\",\n    \"ownership_boundaries\": \"dag-framework-api/src/main/ owns public window specification, assigner, trigger, and node contracts; runtime-core/src/main/ owns per-partition execution, state tables, watermark/timer integration, and late-arrival decisions; benchmarks and test roots own validation only.\",\n    \"concurrency_protocol\": \"Window state is scoped to a single graph partition and is mutated only on that partition runner thread; no cross-partition merge, shared mutable window table, or global watermark coordination is allowed.\",\n    \"persistence_protocol\": \"This feature does not introduce durable snapshot or journal persistence; runtime state is in-memory per partition, and closed or expired windows must be deterministically evicted after trigger emission or lateness expiry.\",\n    \"hard_constraints\": [\n      \"Do not implement custom user-defined windows.\",\n      \"Do not implement session windows.\",\n      \"Do not merge or share window state across partitions.\",\n      \"Use Agrona-backed zero-allocation state structures for hot-path aggregation.\",\n      \"Watermark advancement must be sufficient to close event-time windows deterministically.\",\n      \"Late arrivals must follow the configured drop or allow-lateness policy.\",\n      \"Processing-time and event-time semantics must be represented explicitly in WindowSpec or equivalent public API.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Using java.util HashMap or allocation-heavy per-event collections in the hot aggregation path.\",\n      \"Closing event-time windows only on data arrival rather than watermark advancement.\",\n      \"Encoding tumbling and sliding behavior as ad hoc node-local flags instead of public WindowSpec/WindowAssigner primitives.\",\n      \"Adding session windows as part of R-001.\",\n      \"Maintaining a global window table shared across partitions.\"\n    ],\n    \"acceptance_tests\": [\n      \"Unit tests cover event-time tumbling windows including deterministic close on watermark advancement.\",\n      \"Unit tests cover sliding windows with events assigned to multiple overlapping windows.\",\n      \"Unit tests cover processing-time tumbling and sliding trigger behavior using deterministic runtime time controls.\",\n      \"Unit tests cover late arrivals for both drop and allow-lateness policies.\",\n      \"Tests assert per-partition isolation with no cross-partition aggregation.\",\n      \"Benchmark smoke includes the window node and jmhSmokeCheck is green.\",\n      \"qa/smoke.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"dag-framework-api/src/main/\",\n    \"dag-framework-api/src/test/\",\n    \"dag-framework-api/src/test/java/\",\n    \"runtime-core/src/main/\",\n    \"runtime-core/src/test/\",\n    \"runtime-core/src/test/java/\",\n    \"benchmarks/src/test/\",\n    \"benchmarks/src/test/java/\",\n    \"tests/\",\n    \"qa/fixtures/\",\n    \"qa/\",\n    \"repo-memory/\"\n  ],\n  \"implementation_topology\": \"split_specialists\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Finalize the R-001 API/runtime design for WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, per-partition state ownership, watermark closure, and late-arrival policy in repo-memory/DECISIONS.md and repo-memory/ROADMAP.md.\",\n      \"allowed_paths\": [\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"R-001 public API notes\",\n        \"Runtime ownership and watermark integration notes\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing tests for tumbling windows, sliding windows, late arrivals, watermark-driven closure, per-partition isolation, and benchmark smoke coverage under runtime-core/src/test/java/, dag-framework-api/src/test/java/, and benchmarks/src/test/java/.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"repo-memory/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"design\"\n      ],\n      \"expected_outputs\": [\n        \"Failing WindowSpec API tests\",\n        \"Failing WindowedAggregateNode runtime tests\",\n        \"Failing late-arrival and watermark closure tests\",\n        \"Failing jmhSmokeCheck coverage for window node\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-api-window-primitives\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement public WindowSpec, WindowAssigner, Trigger, late-arrival policy, and WindowedAggregateNode contract types under dag-framework-api/src/main/ without adding session or custom window APIs.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"runtime-core/src/main/\"\n      ],\n      \"depends_on\": [\n        \"qa-author\"\n      ],\n      \"expected_outputs\": [\n        \"WindowSpec API\",\n        \"WindowAssigner API\",\n        \"Trigger API\",\n        \"WindowedAggregateNode public contract\",\n        \"Late-arrival policy API\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \":dag-framework-api:test\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-runtime-window-node\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement runtime-core WindowedAggregateNode execution with Agrona-backed per-partition state, event-time and processing-time trigger handling, deterministic watermark closure, lateness eviction, and benchmark smoke integration.\",\n      \"allowed_paths\": [\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"qa/smoke.sh\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"dag-framework-api/src/main/\"\n      ],\n      \"depends_on\": [\n        \"impl-api-window-primitives\"\n      ],\n      \"expected_outputs\": [\n        \"Runtime WindowedAggregateNode implementation\",\n        \"Agrona-backed per-partition window state\",\n        \"Watermark-driven close path\",\n        \"Drop and allow-lateness handling\",\n        \"jmhSmokeCheck-compatible benchmark smoke integration\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \":runtime-core:test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review dag-framework-api/src/main/, runtime-core/src/main/, repo-memory/ROADMAP.md, repo-memory/DECISIONS.md, and qa/smoke.sh for R-001 contract compliance, allocation risk, deterministic watermark semantics, and out-of-scope creep.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"runtime-core/src/main/java/com/joshorig/ull/dag/time/WatermarkPolicy.java\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"qa/smoke.sh\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [\n        \"impl-runtime-window-node\"\n      ],\n      \"expected_outputs\": [\n        \"ReviewReport\",\n        \"ContractComplianceFindings\",\n        \"AllocationAndConcurrencyRiskFindings\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run smoke and full regression verification for R-001, including the authored tumbling, sliding, lateness, watermark, partition-isolation, and benchmark smoke tests.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"repo-memory/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"review\"\n      ],\n      \"expected_outputs\": [\n        \"QAVerificationReport\",\n        \"SmokeResult\",\n        \"RegressionResult\",\n        \"jmhSmokeCheckResult\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./qa/regression.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Tumbling event-time windows assign events to fixed intervals and emit exactly once when watermark passes the window end.\",\n    \"Sliding event-time windows assign one event to all expected overlapping windows and close each window deterministically by watermark.\",\n    \"Processing-time tumbling and sliding windows trigger from deterministic runtime clock/timer advancement.\",\n    \"Late arrivals before allowed-lateness expiry are included only under allow-lateness policy.\",\n    \"Late arrivals beyond allowed-lateness expiry are dropped or rejected according to policy and do not reopen evicted windows.\",\n    \"Per-partition state isolation prevents aggregation across partitions with identical keys and window bounds.\",\n    \"Watermark advancement without additional input closes all eligible event-time windows.\",\n    \"Window state eviction removes closed stale windows after trigger and lateness expiry.\",\n    \"Invariant failure coverage asserts invalid window sizes, invalid slide durations, and impossible lateness settings are rejected.\",\n    \"Partial/failure acceptance covers no duplicate emissions after repeated watermark or timer advancement.\",\n    \"Benchmark smoke coverage includes the window node and jmhSmokeCheck is green.\",\n    \"Configured QA gate coverage includes qa/smoke.sh, qa/regression.sh, unit tests, and jmhSmokeCheck.\"\n  ],\n  \"risk_register\": [\n    \"Watermark closure may be implemented only on event arrival, leaving idle partitions with unclosed windows.\",\n    \"Sliding windows can accidentally double-count or miss boundary events if inclusive/exclusive bounds are inconsistent.\",\n    \"Allow-lateness can reopen already-emitted windows unless close, emit, and eviction states are explicit.\",\n    \"Processing-time tests can be flaky if they use wall-clock time instead of deterministic runtime time controls.\",\n    \"Agrona state tables can leak closed-window entries if eviction is not tied to watermark or lateness expiry.\",\n    \"A public API that includes session or custom windows would violate R-001 scope.\",\n    \"Cross-partition aggregation can creep in if window state is keyed globally rather than by partition-local node instance.\",\n    \"Benchmark smoke can pass without exercising the new node unless the benchmark surface explicitly instantiates WindowedAggregateNode.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}"
+        },
+        {
+          "candidate": {
+            "acceptance_test_matrix": [
+              "Tumbling event-time windows assign records to exactly one fixed-size window and close only when watermark passes the window end.",
+              "Tumbling processing-time windows use processing-time trigger semantics without relying on event timestamps.",
+              "Sliding windows assign records to all expected overlapping windows and emit deterministic aggregate results.",
+              "Late arrivals before bounded allow-lateness expiry update the target window while late arrivals beyond policy are dropped with partial acceptance accounted for.",
+              "Stale or invalid event timestamps do not corrupt per-partition window invariants.",
+              "Watermark advancement deterministically closes all eligible windows in order and never closes future windows early.",
+              "Per-partition execution keeps window state isolated and never emits cross-partition aggregates.",
+              "Zero-allocation Agrona-backed state is used on the aggregation hot path.",
+              "jmhSmokeCheck includes the window node benchmark surface and passes.",
+              "qa/smoke.sh and qa/regression.sh pass after implementation."
+            ],
+            "affected_surfaces": [
+              "dag-framework-api/src/main/",
+              "runtime-core/src/main/",
+              "benchmarks/",
+              "tests/",
+              "runtime-core/src/test/",
+              "dag-framework-api/src/test/",
+              "benchmarks/src/test/",
+              "qa/fixtures/",
+              "qa/"
+            ],
+            "assumptions": [
+              "Existing runtime watermark APIs under runtime-core/src/main/java/ are the integration point for event-time window closure.",
+              "Window API types belong in dag-framework-api/src/main/ while executable runtime node behavior belongs in runtime-core/src/main/.",
+              "Benchmark smoke coverage can be added without broad benchmark framework refactoring.",
+              "Session windows and custom user-defined windows are explicitly out of scope."
+            ],
+            "contract_version": "engineering.contracts.v1",
+            "council_reports": [],
+            "design_contract": {
+              "acceptance_tests": [
+                "Unit tests cover tumbling windows for event-time and processing-time assignment.",
+                "Unit tests cover sliding windows with records assigned to multiple overlapping windows.",
+                "Unit tests cover late arrivals for drop and allow-lateness policies.",
+                "Watermark advancement closes eligible windows deterministically and leaves future windows open.",
+                "Benchmark smoke coverage includes WindowedAggregateNode and jmhSmokeCheck passes.",
+                "qa/smoke.sh passes."
+              ],
+              "concurrency_protocol": "Window state is isolated per graph partition and must not share mutable aggregation state across partitions; watermark advancement and input processing must produce deterministic close/emission ordering within a partition.",
+              "forbidden_alternatives": [
+                "Global shared window maps across partitions.",
+                "Ad hoc wall-clock closure for event-time windows that bypasses watermark state.",
+                "Allocating boxed keys or per-event collection objects in the aggregation hot path.",
+                "Implementing session windows as a hidden special case.",
+                "Adding snapshot, CRC, or journal durability work for this feature."
+              ],
+              "hard_constraints": [
+                "Do not implement session windows.",
+                "Do not implement custom user-defined windows.",
+                "Window state is per-partition and never cross-partition.",
+                "Aggregation state must use zero-allocation-oriented Agrona collections on the hot path.",
+                "Watermark advancement must be sufficient to close eligible event-time windows deterministically."
+              ],
+              "ownership_boundaries": "dag-framework-api owns declarative window contracts and validation; runtime-core owns WindowedAggregateNode execution, per-partition aggregation state, watermark callbacks, trigger evaluation, and emission ordering; benchmarks owns only smoke benchmark coverage for the new node; QA/test roots own fixtures and regression tests.",
+              "persistence_protocol": "This feature does not add durable recovery, journal, snapshot, or CRC persistence; in-memory window state must preserve invariants for stale or invalid timestamps, bounded lateness expiry, and partial acceptance when late records are dropped.",
+              "public_api": "Add WindowSpec factories for tumbling and sliding windows, WindowAssigner primitives for assigning event timestamps or processing time to window ranges, Trigger primitives for watermark and processing-time firing, and late-arrival policy configuration for drop or bounded allow-lateness behavior."
+            },
+            "feature_id": "R-001-windowed-aggregate-node",
+            "finalization_policy": "open_final_feature_pr_for_human_merge",
+            "implementation_topology": "council_decides",
+            "problem_statement": "Implement WindowedAggregateNode with tumbling and sliding window aggregation, event-time and processing-time semantics, per-partition state, late-arrival handling, and watermark-driven deterministic window closure.",
+            "project": "dag-framework",
+            "risk_register": [
+              "Ambiguous event-time versus processing-time trigger behavior could cause nondeterministic closures unless API validation and tests pin semantics.",
+              "Sliding windows may double-count or miss overlapping assignments at boundary timestamps.",
+              "Late-arrival allow-lateness behavior can leak stale windows if expiry and cleanup are not tied to watermark advancement.",
+              "Per-partition isolation can be broken by shared node-level mutable maps.",
+              "Agrona zero-allocation intent can regress if boxed keys or per-record temporary collections enter the hot path.",
+              "Benchmark smoke wiring may pass unit tests while omitting the WindowedAggregateNode from the benchmark surface."
+            ],
+            "self_heal_policy": "retry_repair_replan_then_escalate",
+            "supersedes_plan_id": null,
+            "supersession_rationale": null,
+            "task_slices": [
+              {
+                "allowed_paths": [
+                  "docs/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md",
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "benchmarks/"
+                ],
+                "depends_on": [],
+                "expected_outputs": [
+                  "DesignContract",
+                  "APIAndRuntimeOwnershipNotes",
+                  "AcceptanceCoverageMap"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "objective": "Define the WindowSpec, WindowAssigner, Trigger, late-arrival, watermark, and per-partition state contract for dag-framework-api/src/main/ and runtime-core/src/main/ before tests or implementation.",
+                "role": "designer",
+                "slice_id": "design",
+                "task_type": "engineering.design",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "depends_on": [
+                  "design"
+                ],
+                "expected_outputs": [
+                  "FailingWindowSpecUnitTests",
+                  "FailingWindowedAggregateNodeRuntimeTests",
+                  "FailingWatermarkLatenessTests",
+                  "FailingBenchmarkSmokeTest"
+                ],
+                "forbidden_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "benchmarks/src/main/",
+                  "repo-memory/",
+                  "docs/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh"
+                ],
+                "objective": "Write failing unit, fixture, and benchmark smoke tests for tumbling windows, sliding windows, late arrivals, and deterministic watermark closure.",
+                "role": "qa",
+                "slice_id": "qa-author",
+                "task_type": "engineering.qa.author",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./gradlew",
+                    "test"
+                  ],
+                  [
+                    "./gradlew",
+                    "jmhSmokeCheck"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "benchmarks/src/main/",
+                  "repo-memory/ROADMAP.md",
+                  "repo-memory/DECISIONS.md"
+                ],
+                "depends_on": [
+                  "qa-author"
+                ],
+                "expected_outputs": [
+                  "WindowSpecApi",
+                  "WindowAssignerAndTriggerPrimitives",
+                  "WindowedAggregateNodeRuntimeImplementation",
+                  "AgronaBackedPerPartitionWindowState",
+                  "BenchmarkWindowNodeSmokeSurface"
+                ],
+                "forbidden_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh"
+                ],
+                "objective": "Implement WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, Agrona-backed per-partition state, late-arrival handling, watermark closure, and benchmark smoke wiring.",
+                "role": "implementer",
+                "slice_id": "impl-primary",
+                "task_type": "engineering.implement",
+                "verification_commands": [
+                  [
+                    "./gradlew",
+                    "test"
+                  ],
+                  [
+                    "./gradlew",
+                    "jmhSmokeCheck"
+                  ],
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "benchmarks/",
+                  "tests/",
+                  "runtime-core/src/test/",
+                  "dag-framework-api/src/test/",
+                  "benchmarks/src/test/",
+                  "qa/fixtures/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh",
+                  "repo-memory/"
+                ],
+                "depends_on": [
+                  "impl-primary"
+                ],
+                "expected_outputs": [
+                  "ReviewFindings",
+                  "ContractComplianceAssessment",
+                  "RiskDisposition"
+                ],
+                "forbidden_paths": [
+                  ".github/",
+                  "deployment-core/",
+                  "examples/",
+                  "sim/",
+                  "sim-kdb/src/main/"
+                ],
+                "objective": "Review WindowedAggregateNode API/runtime behavior, watermark determinism, late-arrival semantics, zero-allocation state choices, and benchmark integration against the design contract.",
+                "role": "reviewer",
+                "slice_id": "review",
+                "task_type": "engineering.review",
+                "verification_commands": [
+                  [
+                    "./gradlew",
+                    "test"
+                  ],
+                  [
+                    "./gradlew",
+                    "jmhSmokeCheck"
+                  ],
+                  [
+                    "./qa/smoke.sh"
+                  ]
+                ]
+              },
+              {
+                "allowed_paths": [
+                  "tests/",
+                  "qa/fixtures/",
+                  "benchmarks/src/test/",
+                  "benchmarks/src/test/java/",
+                  "dag-framework-api/src/test/",
+                  "dag-framework-api/src/test/java/",
+                  "runtime-core/src/test/",
+                  "runtime-core/src/test/java/",
+                  "sim-kdb/src/test/",
+                  "sim-kdb/src/test/java/"
+                ],
+                "depends_on": [
+                  "review"
+                ],
+                "expected_outputs": [
+                  "SmokeVerificationReport",
+                  "RegressionVerificationReport",
+                  "JmhSmokeVerificationReport",
+                  "AcceptanceMatrixResult"
+                ],
+                "forbidden_paths": [
+                  "dag-framework-api/src/main/",
+                  "runtime-core/src/main/",
+                  "benchmarks/src/main/",
+                  "repo-memory/",
+                  "docs/",
+                  "qa/smoke.sh",
+                  "qa/regression.sh"
+                ],
+                "objective": "Run smoke, regression, unit, and jmh smoke verification for the completed windowed aggregation feature after reviewer sign-off.",
+                "role": "qa",
+                "slice_id": "qa-verify",
+                "task_type": "engineering.qa.verify",
+                "verification_commands": [
+                  [
+                    "./qa/smoke.sh"
+                  ],
+                  [
+                    "./qa/regression.sh"
+                  ],
+                  [
+                    "./gradlew",
+                    "test"
+                  ],
+                  [
+                    "./gradlew",
+                    "jmhSmokeCheck"
+                  ]
+                ]
+              }
+            ]
+          },
+          "model_usage_id": null,
+          "panelist_id": "panelist-1",
+          "raw_response": "{\n  \"contract_version\": \"engineering.contracts.v1\",\n  \"feature_id\": \"R-001-windowed-aggregate-node\",\n  \"project\": \"dag-framework\",\n  \"problem_statement\": \"Implement WindowedAggregateNode with tumbling and sliding window aggregation, event-time and processing-time semantics, per-partition state, late-arrival handling, and watermark-driven deterministic window closure.\",\n  \"assumptions\": [\n    \"Existing runtime watermark APIs under runtime-core/src/main/java/ are the integration point for event-time window closure.\",\n    \"Window API types belong in dag-framework-api/src/main/ while executable runtime node behavior belongs in runtime-core/src/main/.\",\n    \"Benchmark smoke coverage can be added without broad benchmark framework refactoring.\",\n    \"Session windows and custom user-defined windows are explicitly out of scope.\"\n  ],\n  \"design_contract\": {\n    \"public_api\": \"Add WindowSpec factories for tumbling and sliding windows, WindowAssigner primitives for assigning event timestamps or processing time to window ranges, Trigger primitives for watermark and processing-time firing, and late-arrival policy configuration for drop or bounded allow-lateness behavior.\",\n    \"ownership_boundaries\": \"dag-framework-api owns declarative window contracts and validation; runtime-core owns WindowedAggregateNode execution, per-partition aggregation state, watermark callbacks, trigger evaluation, and emission ordering; benchmarks owns only smoke benchmark coverage for the new node; QA/test roots own fixtures and regression tests.\",\n    \"concurrency_protocol\": \"Window state is isolated per graph partition and must not share mutable aggregation state across partitions; watermark advancement and input processing must produce deterministic close/emission ordering within a partition.\",\n    \"persistence_protocol\": \"This feature does not add durable recovery, journal, snapshot, or CRC persistence; in-memory window state must preserve invariants for stale or invalid timestamps, bounded lateness expiry, and partial acceptance when late records are dropped.\",\n    \"hard_constraints\": [\n      \"Do not implement session windows.\",\n      \"Do not implement custom user-defined windows.\",\n      \"Window state is per-partition and never cross-partition.\",\n      \"Aggregation state must use zero-allocation-oriented Agrona collections on the hot path.\",\n      \"Watermark advancement must be sufficient to close eligible event-time windows deterministically.\"\n    ],\n    \"forbidden_alternatives\": [\n      \"Global shared window maps across partitions.\",\n      \"Ad hoc wall-clock closure for event-time windows that bypasses watermark state.\",\n      \"Allocating boxed keys or per-event collection objects in the aggregation hot path.\",\n      \"Implementing session windows as a hidden special case.\",\n      \"Adding snapshot, CRC, or journal durability work for this feature.\"\n    ],\n    \"acceptance_tests\": [\n      \"Unit tests cover tumbling windows for event-time and processing-time assignment.\",\n      \"Unit tests cover sliding windows with records assigned to multiple overlapping windows.\",\n      \"Unit tests cover late arrivals for drop and allow-lateness policies.\",\n      \"Watermark advancement closes eligible windows deterministically and leaves future windows open.\",\n      \"Benchmark smoke coverage includes WindowedAggregateNode and jmhSmokeCheck passes.\",\n      \"qa/smoke.sh passes.\"\n    ]\n  },\n  \"affected_surfaces\": [\n    \"dag-framework-api/src/main/\",\n    \"runtime-core/src/main/\",\n    \"benchmarks/\",\n    \"tests/\",\n    \"runtime-core/src/test/\",\n    \"dag-framework-api/src/test/\",\n    \"benchmarks/src/test/\",\n    \"qa/fixtures/\",\n    \"qa/\"\n  ],\n  \"implementation_topology\": \"council_decides\",\n  \"task_slices\": [\n    {\n      \"slice_id\": \"design\",\n      \"role\": \"designer\",\n      \"task_type\": \"engineering.design\",\n      \"objective\": \"Define the WindowSpec, WindowAssigner, Trigger, late-arrival, watermark, and per-partition state contract for dag-framework-api/src/main/ and runtime-core/src/main/ before tests or implementation.\",\n      \"allowed_paths\": [\n        \"docs/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\",\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"depends_on\": [],\n      \"expected_outputs\": [\n        \"DesignContract\",\n        \"APIAndRuntimeOwnershipNotes\",\n        \"AcceptanceCoverageMap\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-author\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.author\",\n      \"objective\": \"Write failing unit, fixture, and benchmark smoke tests for tumbling windows, sliding windows, late arrivals, and deterministic watermark closure.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/\",\n        \"docs/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"design\"\n      ],\n      \"expected_outputs\": [\n        \"FailingWindowSpecUnitTests\",\n        \"FailingWindowedAggregateNodeRuntimeTests\",\n        \"FailingWatermarkLatenessTests\",\n        \"FailingBenchmarkSmokeTest\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"impl-primary\",\n      \"role\": \"implementer\",\n      \"task_type\": \"engineering.implement\",\n      \"objective\": \"Implement WindowSpec, WindowAssigner, Trigger, WindowedAggregateNode, Agrona-backed per-partition state, late-arrival handling, watermark closure, and benchmark smoke wiring.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/ROADMAP.md\",\n        \"repo-memory/DECISIONS.md\"\n      ],\n      \"forbidden_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"qa-author\"\n      ],\n      \"expected_outputs\": [\n        \"WindowSpecApi\",\n        \"WindowAssignerAndTriggerPrimitives\",\n        \"WindowedAggregateNodeRuntimeImplementation\",\n        \"AgronaBackedPerPartitionWindowState\",\n        \"BenchmarkWindowNodeSmokeSurface\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"review\",\n      \"role\": \"reviewer\",\n      \"task_type\": \"engineering.review\",\n      \"objective\": \"Review WindowedAggregateNode API/runtime behavior, watermark determinism, late-arrival semantics, zero-allocation state choices, and benchmark integration against the design contract.\",\n      \"allowed_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/\",\n        \"tests/\",\n        \"runtime-core/src/test/\",\n        \"dag-framework-api/src/test/\",\n        \"benchmarks/src/test/\",\n        \"qa/fixtures/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\",\n        \"repo-memory/\"\n      ],\n      \"forbidden_paths\": [\n        \".github/\",\n        \"deployment-core/\",\n        \"examples/\",\n        \"sim/\",\n        \"sim-kdb/src/main/\"\n      ],\n      \"depends_on\": [\n        \"impl-primary\"\n      ],\n      \"expected_outputs\": [\n        \"ReviewFindings\",\n        \"ContractComplianceAssessment\",\n        \"RiskDisposition\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ],\n        [\n          \"./qa/smoke.sh\"\n        ]\n      ]\n    },\n    {\n      \"slice_id\": \"qa-verify\",\n      \"role\": \"qa\",\n      \"task_type\": \"engineering.qa.verify\",\n      \"objective\": \"Run smoke, regression, unit, and jmh smoke verification for the completed windowed aggregation feature after reviewer sign-off.\",\n      \"allowed_paths\": [\n        \"tests/\",\n        \"qa/fixtures/\",\n        \"benchmarks/src/test/\",\n        \"benchmarks/src/test/java/\",\n        \"dag-framework-api/src/test/\",\n        \"dag-framework-api/src/test/java/\",\n        \"runtime-core/src/test/\",\n        \"runtime-core/src/test/java/\",\n        \"sim-kdb/src/test/\",\n        \"sim-kdb/src/test/java/\"\n      ],\n      \"forbidden_paths\": [\n        \"dag-framework-api/src/main/\",\n        \"runtime-core/src/main/\",\n        \"benchmarks/src/main/\",\n        \"repo-memory/\",\n        \"docs/\",\n        \"qa/smoke.sh\",\n        \"qa/regression.sh\"\n      ],\n      \"depends_on\": [\n        \"review\"\n      ],\n      \"expected_outputs\": [\n        \"SmokeVerificationReport\",\n        \"RegressionVerificationReport\",\n        \"JmhSmokeVerificationReport\",\n        \"AcceptanceMatrixResult\"\n      ],\n      \"verification_commands\": [\n        [\n          \"./qa/smoke.sh\"\n        ],\n        [\n          \"./qa/regression.sh\"\n        ],\n        [\n          \"./gradlew\",\n          \"test\"\n        ],\n        [\n          \"./gradlew\",\n          \"jmhSmokeCheck\"\n        ]\n      ]\n    }\n  ],\n  \"acceptance_test_matrix\": [\n    \"Tumbling event-time windows assign records to exactly one fixed-size window and close only when watermark passes the window end.\",\n    \"Tumbling processing-time windows use processing-time trigger semantics without relying on event timestamps.\",\n    \"Sliding windows assign records to all expected overlapping windows and emit deterministic aggregate results.\",\n    \"Late arrivals before bounded allow-lateness expiry update the target window while late arrivals beyond policy are dropped with partial acceptance accounted for.\",\n    \"Stale or invalid event timestamps do not corrupt per-partition window invariants.\",\n    \"Watermark advancement deterministically closes all eligible windows in order and never closes future windows early.\",\n    \"Per-partition execution keeps window state isolated and never emits cross-partition aggregates.\",\n    \"Zero-allocation Agrona-backed state is used on the aggregation hot path.\",\n    \"jmhSmokeCheck includes the window node benchmark surface and passes.\",\n    \"qa/smoke.sh and qa/regression.sh pass after implementation.\"\n  ],\n  \"risk_register\": [\n    \"Ambiguous event-time versus processing-time trigger behavior could cause nondeterministic closures unless API validation and tests pin semantics.\",\n    \"Sliding windows may double-count or miss overlapping assignments at boundary timestamps.\",\n    \"Late-arrival allow-lateness behavior can leak stale windows if expiry and cleanup are not tied to watermark advancement.\",\n    \"Per-partition isolation can be broken by shared node-level mutable maps.\",\n    \"Agrona zero-allocation intent can regress if boxed keys or per-record temporary collections enter the hot path.\",\n    \"Benchmark smoke wiring may pass unit tests while omitting the WindowedAggregateNode from the benchmark surface.\"\n  ],\n  \"self_heal_policy\": \"retry_repair_replan_then_escalate\",\n  \"finalization_policy\": \"open_final_feature_pr_for_human_merge\",\n  \"council_reports\": []\n}"
+        }
+      ],
+      "validator_errors": []
+    }
+  ],
+  "model": "gpt-5.5",
+  "reasoning": "high",
+  "status": "accepted",
+  "token_savior": {
+    "input_tokens_after_savior": 4108,
+    "input_tokens_original": 10444,
+    "method": "token_savior_pack_context",
+    "reduction_ratio": 0.6066641133665263,
+    "tokens_saved": 6336
+  },
+  "validation_errors": []
+}

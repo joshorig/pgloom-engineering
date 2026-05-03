@@ -16,6 +16,7 @@ REQUIRED_TABLES = {
     "engineering_handoffs",
     "engineering_recovery_actions",
     "engineering_projects",
+    "engineering_project_context_capsules",
 }
 
 

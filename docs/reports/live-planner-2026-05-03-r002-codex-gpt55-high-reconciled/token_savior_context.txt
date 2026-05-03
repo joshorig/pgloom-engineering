@@ -1,0 +1,93 @@
+# Token Savior Project Summary
+Project: /Volumes/devssd/repos/ull/lvc-standard
+Files: 296, Lines: 22784, Functions: 1369, Classes: 359
+Packages (12): .github, benchmarks, conformance-tests, core, docs, guaranteed-aeron, guaranteed-inproc, qa, repo-memory, sbe-adapters, signal, store
+Classes: 359 total
+Top-level functions: 4 total
+
+# Token Savior Packed Context
+Context pack for 'Implement scheduled snapshot + atomic restore for SINGLE and DOUBLE stores so cold-start time collapses from journal replay to mmap'd reload, while preserving atomic publishChecked semantics on restore. Store.snapshot(Path) writes a snapshot with magic+version header and per-page CRC. Store.restore(Path) atomically swaps in the snapshot and reconciles with the guaranteed journal cursor. Restore must not surface staged-but-unjournaled writes until the journal cursor is reconciled. SINGLE and DOUBLE store implementations must both support snapshot and restore. Round-trip integration test: write keys, snapshot, kill JVM, restore, read keys. Crash-mid-journal test: only journal-acknowledged writes visible after restore. Alloc gate qa/smoke.sh passes with snapshot enabled. JMH benchmark restore-latency-1m-keys < 10ms p99. CRC mismatch on a page during restore aborts restore with structured invariant failure.' (63 symbols, ~2864 tokens / 3000 budget)
+------------------------------------------------------------
+
+# com.joshorig.ull.lvc.store.guaranteed.Journal.tail()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)
+    long tail();
+
+# com.joshorig.ull.lvc.store.guaranteed.Journal.close()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)
+    @Override void close();
+
+# com.joshorig.ull.lvc.store.guaranteed.Journal.Visitor.onRecord(int,long,DirectBuffer,int,int)  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/Journal.java)
+        void onRecord(int keyId, long seq, DirectBuffer buffer, int offset, int length);
+
+# com.joshorig.ull.lvc.store.Stores.Stores()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+    private Stores() {}
+
+# com.joshorig.ull.lvc.store.Stores.direct()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+    public static Direct direct() { return new Direct(); }
+
+# com.joshorig.ull.lvc.store.Stores.mmap(Path)  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+    public static Mmap mmap(Path path) { return new Mmap(path); }
+
+# com.joshorig.ull.lvc.store.Stores.Direct.singleBuilder()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+        public DirectStores.SingleBuilder singleBuilder() {
+            return DirectStores.singleBuilder();
+        }
+
+# com.joshorig.ull.lvc.store.Stores.Direct.doubleBuilder()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+        public DirectStores.DoubleBuilder doubleBuilder() {
+            return DirectStores.doubleBuilder();
+        }
+
+# com.joshorig.ull.lvc.store.Stores.Mmap.Mmap(Path)  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+        private Mmap(Path path) { this.path = path; }
+
+# com.joshorig.ull.lvc.store.Stores.Mmap.singleBuilder()  (value=0.21, cost=20t, store/src/main/java/com/joshorig/ull/lvc/store/Stores.java)
+        public MmapStores.SingleBuilder singleBuilder() {
+            return MmapStores.singleBuilder().path(path);
+        }
+
+... (53 more symbols selected, sources omitted)
+
+# Search Hits: scheduled
+[]
+
+# Search Hits: snapshot
+[{'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcMmapBenchmark.java', 'line_number': 112, 'content': '        // read stable snapshot'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 26, 'content': '/** Ensures snapshot frames (flagged) are delivered and followed by deltas correctly. */'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 65, 'content': '    public void snapshotThenDeltas_ipc() {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 92, 'content': '        // Publish snapshots for all keys at seq=10'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 125, 'content': '                assertTrue(done.await(5, TimeUnit.SECONDS), "must deliver snapshot + deltas");'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 128, 'content': '                fail("interrupted while waiting for snapshot + deltas");'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 24, 'content': '/** Publish a very large snapshot to trigger reassembly overflow drops metric. */'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 78, 'content': '            .snapshotChannel(snapChannel).snapshotStreamBase(streamBase + 2000)'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 99, 'content': '                        // Poll a larger budget so snapshot fragments complete quickly.'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronOverflowDropMetricIpcTest.java', 'line_number': 101, 'content': '                        if (metrics.snapshot().reassemblyOverflowDrops > 0) {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronReplayMergeMetricsIpcTest.java', 'line_number': 166, 'content': '            AeronMetricsFormatter.formatLine(metrics.snapshot(), sb);'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronReplayMergeMetricsIpcTest.java', 'line_number': 197, 'content': '            sch.scheduleAtFixedRate(() -> { if (metrics.snapshot().liveMessages > 0) liveSeen.countDown(); }, 0, 10, TimeUnit.MILLISECONDS);'}]
+
+# Search Hits: atomic
+[{'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 5, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcStructuredSignaledBenchmark.java', 'line_number': 5, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedIpcIntegrationTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedPositionResumeIpcTest.java', 'line_number': 12, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronGuaranteedSnapshotFramesIpcTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/AeronSnapshotGatingIpcTest.java', 'line_number': 9, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/ConformanceDoubleTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/ConformanceSingleTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 10, 'content': 'import java.util.concurrent.atomic.AtomicBoolean;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 11, 'content': 'import java.util.concurrent.atomic.AtomicInteger;'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 25, 'content': '    void direct_double_batch_atomic_visibility() throws Exception {'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/DoubleBatchConformanceTest.java', 'line_number': 87, 'content': '    void mmap_double_batch_atomic_visibility_and_region_stability() throws Exception {'}]
+
+# Search Hits: restore
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 19, 'content': '### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 22, 'content': "- **Goal:** Scheduled checkpoint of the full store to disk + atomic swap on restore, collapsing cold-start time from journal replay to mmap'd reload."}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 23, 'content': '- **Scope:** `Store.snapshot(Path)`, `Store.restore(Path)`, snapshot format with magic+version header, CRC per page, integration with guaranteed journal cursor so restore picks up from checkpoint offset.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 25, 'content': '- **Acceptance:** Full round-trip test (write → snapshot → kill → restore → read), alloc gate unaffected, restore latency < 10ms for 1M keys.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 27, 'content': '- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics — restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.'}]
+
+# Search Hits: SINGLE
+[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive–backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 66, 'content': '                if ("SINGLE".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 84, 'content': '                if ("SINGLE".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 64, 'content': '                if ("SINGLE".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 81, 'content': '                if ("SINGLE".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 103, 'content': '                if ("SINGLE".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 120, 'content': '                if ("SINGLE".equals(variant)) {'}]
+
+# Search Hits: DOUBLE
+[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive–backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 104, 'content': '                if ((mask & D_PAIR) != 0)  n += store.readRegion(slotId, scratchByReader[idx], 0, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 157, 'content': '            codec.setBlockIf(domainMask, 1 /*D_PAIR*/, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, val);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 33, 'content': '        @Param({"SINGLE", "DOUBLE"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 123, 'content': '        if (!ok) return; // under contention in DOUBLE readers, might rarely fail claim in non-claim path'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 46, 'content': '        codec.setBlockIf(mask, D_PAIR, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, (byte)0x7F);'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 57, 'content': '            // PAIR_DOUBLES remains zero'}]
+
+
+# ROADMAP relevant entry
+
+### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores
+- **Status:** TODO
+- **Feature id:** null
+- **Goal:** Scheduled checkpoint of the full store to disk + atomic swap on restore, collapsing cold-start time from journal replay to mmap'd reload.
+- **Scope:** `Store.snapshot(Path)`, `Store.restore(Path)`, snapshot format with magic+version header, CRC per page, integration with guaranteed journal cursor so restore picks up from checkpoint offset.
+- **Out of scope:** Incremental snapshots, cross-version schema evolution (R-005 territory), distributed coordination.
+- **Acceptance:** Full round-trip test (write → snapshot → kill → restore → read), alloc gate unaffected, restore latency < 10ms for 1M keys.
+- **Depends on:** none.
+- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics — restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.
+
+# DECISIONS relevant excerpt
+
+## 2026-04-xx — Atomic GuaranteedPublisher (staged store+journal)
+**Context:** Journal-write failures after a successful store write were leaving the system in a split state: the store had the new value but the journal didn't, which violated the per-key in-order at-least-once contract on replay.
+**Decision:** Introduce `GuaranteedPublisher.publishChecked(...)` + `PublishResult` enum. The method stages the store write and journal append such that either both land or neither does. On journal-append failure the store write is aborted (not committed).
+- Downstream consumers must handle `PublishResult.ABORTED` explicitly; implicit success is gone.
+- Journal failure tests (`GuaranteedPublisherAtomicTest`) now enforce this invariant in conformance.
+**Context:** `AeronReplayMergePoller` was updating the mmap lane position file on every advance but only forcing it to disk when callers explicitly configured flush knobs or reached `close()`. Resume tests passed in-process, but crash/restart durability still depended on a clean shutdown or relaxed CI timeouts.
+- CI matrix simplified to a single JDK.
+**Context:** The CI version-bump workflow has gone through multiple fix iterations. The current path is serviceable but carries patch-on-patch complexity that risks more churn the next time release automation changes.
+
+# Memory digest
+

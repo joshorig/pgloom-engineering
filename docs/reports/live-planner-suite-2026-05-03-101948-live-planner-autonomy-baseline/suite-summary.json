@@ -1,0 +1,46 @@
+{
+  "comparison": {},
+  "output_root": "docs/reports/live-planner-suite-2026-05-03-101948-live-planner-autonomy-baseline",
+  "runs": [
+    {
+      "backend": "codex",
+      "case_id": "dag-r006-wide",
+      "command": [
+        "/Volumes/devssd/repos/oss/pgloom-engineering/.venv/bin/python",
+        "scripts/verify_lvc_r002_planner.py",
+        "--backend",
+        "codex",
+        "--model",
+        "gpt-5.5",
+        "--feature-goal",
+        "docs/evals/feature-goals/dag-r006-backpressure.json",
+        "--project-root",
+        "/Volumes/devssd/repos/ull/dag_framework",
+        "--workflow-id",
+        "dag-r006-wide",
+        "--panelists",
+        "3",
+        "--max-iterations",
+        "2",
+        "--context-budget-tokens",
+        "3000",
+        "--output-dir",
+        "docs/reports/live-planner-suite-2026-05-03-101948-live-planner-autonomy-baseline/dag-r006-wide__codex-gpt-5.5-high",
+        "--reasoning",
+        "high"
+      ],
+      "model": "gpt-5.5",
+      "run_dir": "docs/reports/live-planner-suite-2026-05-03-101948-live-planner-autonomy-baseline/dag-r006-wide__codex-gpt-5.5-high",
+      "status": "dry_run"
+    }
+  ],
+  "suite": "live-planner-autonomy-baseline",
+  "thresholds": {
+    "failures": [
+      {
+        "reason": "comparison_missing"
+      }
+    ],
+    "passed": false
+  }
+}

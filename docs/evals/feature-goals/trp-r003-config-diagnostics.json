@@ -1,0 +1,22 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "project": "trade-research-platform",
+  "goal": "Implement R-003 crypto-domain config and diagnostics parity so /api/config/* and /api/diagnostics/* return crypto-scoped runtime metadata instead of equities identifiers.",
+  "requirements": [
+    "Thread ?domain=crypto through config and diagnostics controllers.",
+    "Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list.",
+    "Preserve equities behavior for domain=equities.",
+    "Add Playwright selector-switch coverage for both domains."
+  ],
+  "constraints": [
+    "Do not add new diagnostics endpoints.",
+    "Do not add config mutation paths.",
+    "Keep this as a compact read-only parity pass."
+  ],
+  "acceptance_criteria": [
+    "Every config endpoint returns correct equities and crypto data.",
+    "Every diagnostics endpoint returns correct equities and crypto data.",
+    "Playwright domain switch covers both domains.",
+    "qa/smoke.sh passes."
+  ]
+}

@@ -1,0 +1,259 @@
+You are one planner panelist in a multi-agent engineering council.
+
+Emit exactly one JSON object matching PlanContract. Do not include prose outside JSON.
+The plan must include a design contract, concrete task slices, acceptance matrix,
+reviewer and QA slices, and human-gated finalization.
+
+Required JSON shape:
+
+```json
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "<workflow id from context if available, otherwise stable feature id>",
+  "project": "<project name>",
+  "problem_statement": "<specific problem>",
+  "assumptions": ["..."],
+  "design_contract": {
+    "public_api": "...",
+    "ownership_boundaries": "...",
+    "concurrency_protocol": "...",
+    "persistence_protocol": "...",
+    "hard_constraints": ["..."],
+    "forbidden_alternatives": ["..."],
+    "acceptance_tests": ["..."]
+  },
+  "affected_surfaces": ["store/", "conformance-tests/", "benchmarks/", "qa/"],
+  "implementation_topology": "council_decides",
+  "task_slices": [
+    {
+      "slice_id": "design-feature-contract",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "One concrete sentence naming files/classes/tests.",
+      "allowed_paths": ["..."],
+      "forbidden_paths": ["..."],
+      "depends_on": [],
+      "expected_outputs": ["DesignContract"],
+      "verification_commands": [["./qa/smoke.sh"]]
+    }
+  ],
+  "acceptance_test_matrix": [
+    "feature-specific semantic coverage",
+    "feature-specific edge-case coverage",
+    "configured QA gate coverage"
+  ],
+  "risk_register": ["..."],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": []
+}
+```
+
+Rules:
+- Treat DETERMINISTIC_PLAN_SKELETON as a local skeleton built from contract
+  rules. Prefer its slice order, role/task_type pairs, and target slice count.
+  Fill the feature-specific objectives, allowed source paths, acceptance matrix,
+  risk register, and verification commands. Only add or rename skeleton slices
+  when the feature evidence clearly requires it.
+- PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
+  to emphasize, but you must still produce a complete PlanContract.
+- Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
+  `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
+- Use the canonical role/task_type mapping:
+  - `designer` -> `engineering.design`
+  - `implementer` -> `engineering.implement`
+  - `reviewer` -> `engineering.review`
+  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `historian` -> `engineering.history`
+- `affected_surfaces` must be non-empty and should include every repo area the
+  plan will touch.
+- Use only these implementation_topology values: `split_specialists`,
+  `parallel_candidates`, `council_decides`, or `single`.
+- Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
+  `expected_outputs`, and `verification_commands`.
+- Dependency IDs must refer only to earlier slices.
+- Use concrete path prefixes only. Do not emit wildcard paths such as
+  `platform-ingest-*/`; list the exact directory if it matters.
+- A slice must not both allow and forbid overlapping paths. If a QA slice allows
+  `ui/tests/`, do not also forbid `ui/` or `ui/tests/` in that same slice.
+- Use two QA phases:
+  - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
+    It writes failing tests/fixtures only, so `allowed_paths` must be limited
+    to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
+    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
+    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+- Implementer slices must depend on the QA author slice and must not include
+  PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
+  approval task slice. Human merge is represented only by
+  `finalization_policy: "open_final_feature_pr_for_human_merge"`.
+- Lifecycle/durability/stateful recovery work must include stale/invalid,
+  invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
+  entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
+  features.
+- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+  slices total: design, QA author, 1-2 implementation slices, one reviewer
+  slice, and QA verify. Do not add a separate historian or finalization slice
+  unless the roadmap item explicitly requires repo-memory or release-note
+  updates.
+- Include at least one reviewer slice, one QA author slice, and one QA verify
+  slice.
+- If PRIOR_ITERATION contains a repair_brief, satisfy every item in
+  `required_repairs` before optimizing for extra coverage. Deterministic
+  validator and critic checks are authoritative.
+
+
+FEATURE_GOAL:
+{
+  "acceptance_criteria": [
+    "Round-trip integration test writes keys, snapshots, kills JVM, restores, and reads all keys.",
+    "Crash-mid-journal test shows only journal-acknowledged writes after restore.",
+    "CRC mismatch aborts restore with a structured invariant failure and no state mutation.",
+    "Stale or invalid snapshot headers are rejected.",
+    "Partial snapshot writes are rejected without mutating live state."
+  ],
+  "autonomy_policy": "autonomous_until_final_pr",
+  "constraints": [
+    "Zero allocation on the publish hot path stays invariant.",
+    "qa/smoke.sh must pass the allocation gate.",
+    "Restore latency must be below 10ms p99 for a 1M-key snapshot."
+  ],
+  "contract_version": "engineering.contracts.v1",
+  "final_human_gate": "final_feature_pr_merge",
+  "goal": "Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so cold-start restores from a CRC-validated snapshot plus guaranteed journal cursor reconciliation.",
+  "project": "lvc-standard",
+  "requirements": [
+    "Store.snapshot(Path) writes a snapshot with magic/version header and per-page CRC.",
+    "Store.restore(Path) atomically swaps in the snapshot after full validation.",
+    "Restore reconciles with the guaranteed journal cursor.",
+    "Restore must not surface staged-but-unjournaled writes until the journal cursor is reconciled.",
+    "SINGLE and DOUBLE direct/mmap stores must support snapshot and restore."
+  ]
+}
+
+PROJECT_CONTEXT:
+{
+  "context_lens": "risk",
+  "decisions_excerpt": "See roadmap_excerpt: token-savior packed context includes decisions.",
+  "lens_focus": [
+    "risk",
+    "constraint",
+    "decision",
+    "memory",
+    "failure",
+    "stale",
+    "security",
+    "concurrency",
+    "migration",
+    "persistence"
+  ],
+  "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+  "qa_regression_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/regression.sh",
+  "qa_smoke_path": "/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh",
+  "qa_write_paths": [
+    "tests/",
+    "qa/fixtures/",
+    "store/src/test/",
+    "store/src/test/java/"
+  ],
+  "relevant_paths": [
+    "docs/migration_from_exchanger.md",
+    "docs/Stores.md",
+    "store/src/main/java/com/joshorig/ull/lvc/store/Stores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/SingleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DoubleDirectStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/direct/DirectStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/DoubleMmapStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/MmapStores.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/SingleMmapStore.java",
+    "store/src/main/java/com/joshorig/ull/lvc/store/guaranteed/SnapshotBarrier.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/DirectStoresTest.java",
+    "store/src/test/java/com/joshorig/ull/lvc/store/direct/DoubleDirectStoreBranchesTest.java"
+  ],
+  "roadmap_excerpt": "# Token Savior Project Summary\nPackages (12): .github, benchmarks, conformance-tests, core, docs, guaranteed-aeron, guaranteed-inproc, qa, repo-memory, sbe-adapters, signal, store\n# Token Savior Packed Context\nContext pack for 'Implement scheduled snapshot and atomic restore for SINGLE and DOUBLE stores so cold-start restores from a CRC-validated snapshot plus guaranteed journal cursor reconciliation. Store.snapshot(Path) writes a snapshot with magic/version header and per-page CRC. Store.restore(Path) atomically swaps in the snapshot after full validation. Restore reconciles with the guaranteed journal cursor. Restore must not surface staged-but-unjournaled writes until the journal cursor is reconciled. SINGLE and DOUBLE direct/mmap stores must support snapshot and restore. Round-trip integration test writes keys, snapshots, kills JVM, restores, and reads all keys. Crash-mid-journal test shows only journal-acknowledged writes after restore. CRC mismatch aborts restore with a structured invariant failure and no state mutation. Stale or invalid snapshot headers are rejected. Partial snapshot writes are rejected without mutating live state.' (55 symbols, ~2904 tokens / 3000 budget)\n# Search Hits: restore\n[{'file': 'repo-memory/ROADMAP.md', 'line_number': 19, 'content': '### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 22, 'content': \"- **Goal:** Scheduled checkpoint of the full store to disk + atomic swap on restore, collapsing cold-start time from journal replay to mmap'd reload.\"}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 23, 'content': '- **Scope:** `Store.snapshot(Path)`, `Store.restore(Path)`, snapshot format with magic+version header, CRC per page, integration with guaranteed journal cursor so restore picks up from checkpoint offset.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 25, 'content': '- **Acceptance:** Full round-trip test (write \u2192 snapshot \u2192 kill \u2192 restore \u2192 read), alloc gate unaffected, restore latency < 10ms for 1M keys.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 27, 'content': '- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics \u2014 restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.'}]\n# Search Hits: SINGLE\n[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 66, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 84, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 64, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 81, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 103, 'content': '                if (\"SINGLE\".equals(variant)) {'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 120, 'content': '                if (\"SINGLE\".equals(variant)) {'}]\n# Search Hits: DOUBLE\n[{'file': 'README.md', 'line_number': 3, 'content': 'A standardized, zero-allocation Last-Value Cache (LVC) with SINGLE and DOUBLE variants, direct and mmap backends, in-process and interprocess signalling, SBE-friendly adapters, and an optional Guaranteed Messaging mode (per-key in-order, at-least-once) with in-proc and Aeron Archive\u2013backed profiles.'}, {'file': 'README.md', 'line_number': 7, 'content': '- store: SINGLE and DOUBLE backends (direct buffers and memory-mapped files)'}, {'file': 'README.md', 'line_number': 66, 'content': '- Fixed-slot seqlock protocol with SINGLE and DOUBLE variants'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndInprocBroadcastBenchmark.java', 'line_number': 43, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/EndToEndIpcBitsetBenchmark.java', 'line_number': 37, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/GeneralizedEndToEndBenchmark.java', 'line_number': 63, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 104, 'content': '                if ((mask & D_PAIR) != 0)  n += store.readRegion(slotId, scratchByReader[idx], 0, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/LvcSbePairUpdateBenchmark.java', 'line_number': 157, 'content': '            codec.setBlockIf(domainMask, 1 /*D_PAIR*/, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, val);'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 33, 'content': '        @Param({\"SINGLE\", \"DOUBLE\"})'}, {'file': 'benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/SbeStoreBenchmark.java', 'line_number': 123, 'content': '        if (!ok) return; // under contention in DOUBLE readers, might rarely fail claim in non-claim path'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 46, 'content': '        codec.setBlockIf(mask, D_PAIR, PairUpdateLayout.OFF_PAIR_DOUBLES, PairUpdateLayout.BYTES_PAIR_DOUBLES, (byte)0x7F);'}, {'file': 'conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/SbeGatingIntegrationTest.java', 'line_number': 57, 'content': '            // PAIR_DOUBLES remains zero'}]\n### [R-002] Snapshot/restore API for SINGLE + DOUBLE stores\n- **Notes:** Must respect DECISIONS entry on atomic `publishChecked` semantics \u2014 restore must leave staged-but-unjournaled writes visible only after journal cursor reconciliation.\n## 2026-04-xx \u2014 Atomic GuaranteedPublisher (staged store+journal)\n**Context:** Journal-write failures after a successful store write were leaving the system in a split state: the store had the new value but the journal didn't, which violated the per-key in-order at-least-once contract on replay.\n## 2026-04-xx \u2014 Atomic GuaranteedPublisher (staged store+journal)\n**Decision:** Introduce `GuaranteedPublisher.publishChecked(...)` + `PublishResult` enum. The method stages the store write and journal append such that either both land or neither does. On journal-append failure the store write is aborted (not committed).\n## 2026-04-xx \u2014 Atomic GuaranteedPublisher (staged store+journal)\n- Journal failure tests (`GuaranteedPublisherAtomicTest`) now enforce this invariant in conformance."
+}
+
+DETERMINISTIC_PLAN_SKELETON:
+{
+  "local_expansion_rules": [
+    "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
+    "Do not add finalization or merge slices; finalization_policy carries the human gate.",
+    "QA author and QA verify write only registered QA/test roots.",
+    "Implementers write source/config/docs only and must not claim QA write paths.",
+    "Expand objectives, acceptance matrix, risk register, and verification commands from feature-specific evidence."
+  ],
+  "required_order": [
+    "design",
+    "qa-author",
+    "impl-core",
+    "impl-invariants",
+    "review",
+    "qa-verify"
+  ],
+  "slices": [
+    {
+      "allowed_path_hint": "docs/ plus affected source paths",
+      "depends_on": [],
+      "purpose": "Lock public API, ownership, constraints, and acceptance coverage.",
+      "role": "designer",
+      "slice_id": "design",
+      "task_type": "engineering.design"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, store/src/test/, store/src/test/java/",
+      "depends_on": [
+        "design"
+      ],
+      "purpose": "Write failing tests and fixtures before implementation.",
+      "role": "qa",
+      "slice_id": "qa-author",
+      "task_type": "engineering.qa.author"
+    },
+    {
+      "allowed_path_hint": "repo-memory/ROADMAP.md",
+      "depends_on": [
+        "qa-author"
+      ],
+      "purpose": "Implement the primary source/runtime change.",
+      "role": "implementer",
+      "slice_id": "impl-core",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "qa/regression.sh",
+      "depends_on": [
+        "impl-core"
+      ],
+      "purpose": "Implement lifecycle, failure, persistence, or integration invariants.",
+      "role": "implementer",
+      "slice_id": "impl-invariants",
+      "task_type": "engineering.implement"
+    },
+    {
+      "allowed_path_hint": "affected source paths for read/review evidence",
+      "depends_on": [
+        "impl-invariants"
+      ],
+      "purpose": "Multi-panel review of correctness, risks, and contract compliance.",
+      "role": "reviewer",
+      "slice_id": "review",
+      "task_type": "engineering.review"
+    },
+    {
+      "allowed_path_hint": "tests/, qa/fixtures/, store/src/test/, store/src/test/java/",
+      "depends_on": [
+        "review"
+      ],
+      "purpose": "Run smoke and full regression after reviewer sign-off.",
+      "role": "qa",
+      "slice_id": "qa-verify",
+      "task_type": "engineering.qa.verify"
+    }
+  ],
+  "target_slice_count": "6-8 slices with only justified extra implementers",
+  "task_class": "high_risk"
+}
+
+PRIOR_ITERATION:
+{}

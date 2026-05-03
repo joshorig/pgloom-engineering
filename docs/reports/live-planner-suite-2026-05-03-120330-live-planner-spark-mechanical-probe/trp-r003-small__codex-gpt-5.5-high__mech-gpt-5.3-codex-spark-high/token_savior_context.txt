@@ -1,0 +1,94 @@
+# Token Savior Project Summary
+
+Project: /Volumes/devssd/repos/apps/trade-research-platform
+Files: 400, Lines: 39575, Functions: 1863, Classes: 488
+Packages (10): app-api, plans, platform-dsl, platform-ingest-crypto-coingecko, platform-ingest-crypto-coinglass, platform-ingest-macro-fred, platform-runtime, repo-memory, research, ui
+Classes: 488 total
+Top-level functions: 248 total
+
+# Packed Context
+
+Context pack for 'Implement R-003 crypto-domain config and diagnostics parity so /api/config/* and /api/diagnostics/* return crypto-scoped runtime metadata instead of equities identifiers. Thread ?domain=crypto through config and diagnostics controllers. Expose crypto runtimeConfigVersion, graphId, live config, partition state, and domain-correct venue list. Preserve equities behavior for domain=equities. Add Playwright selector-switch coverage for both domains. Every config endpoint returns correct equities and crypto data. Every diagnostics endpoint returns correct equities and crypto data. Playwright domain switch covers both domains. qa/smoke.sh passes.' (59 symbols, ~2908 tokens / 3000 budget)
+------------------------------------------------------------
+
+# com.ull.trading.runtime.crypto.CryptoDislocationRegimes.CryptoDislocationRegimes()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoDislocationRegimes.java)
+    private CryptoDislocationRegimes() { }
+
+# com.ull.trading.runtime.crypto.CryptoLeadershipRegimes.CryptoLeadershipRegimes()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoLeadershipRegimes.java)
+    private CryptoLeadershipRegimes() { }
+
+# com.ull.trading.runtime.crypto.CryptoAssetSinkNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetSinkNode.java)
+    public void onInit() { }
+
+# com.ull.trading.runtime.crypto.CryptoAssetSinkNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoAssetSinkNode.java)
+    public void onClose() { }
+
+# com.ull.trading.runtime.crypto.CryptoTakeProfitBands.CryptoTakeProfitBands()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoTakeProfitBands.java)
+    private CryptoTakeProfitBands() {}
+
+# com.ull.trading.runtime.crypto.CryptoDislocationNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoDislocationNode.java)
+    public void onInit() { }
+
+# com.ull.trading.runtime.crypto.CryptoDislocationNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoDislocationNode.java)
+    public void onClose() { }
+
+# com.ull.trading.runtime.crypto.CryptoDislocationNode.fallbackZero(double)  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoDislocationNode.java)
+    private static double fallbackZero(final double value) {
+        return Double.isNaN(value) ? 0.0d : value;
+    }
+
+# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.onInit()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)
+    public void onInit() { }
+
+# com.ull.trading.runtime.crypto.CryptoCrossAssetAllocationNode.onClose()  (value=0.21, cost=20t, platform-runtime/src/main/java/com/ull/trading/runtime/crypto/CryptoCrossAssetAllocationNode.java)
+    public void onClose() { }
+
+... (49 more symbols selected, sources omitted)
+
+# Relevant Search Hits
+
+## R-003
+[{'file': 'repo-memory/ROADMAP.md', 'line_number': 41, 'content': '### [R-003] Crypto-domain config + diagnostics parity'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 92, 'content': '- **Depends on:** [R-003].'}]
+
+## crypto-domain
+[{'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 18, 'content': "# crypto-domain historical serving so this Track's R-015 acceptance scenario"}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 34, 'content': '- **Goal:** All crypto-domain responses carry the full `TrustPayload` (`freshnessMs`, `graphStatus`, `sourceStatus`, `warnings`, `deploymentId`, `deploymentVersion`, `configVersion`, `replayComparable`, `replayWindowId`, `alertIds`, `alertCount`).'}]
+
+## config
+[{'file': 'AGENTS.md', 'line_number': 18, 'content': '- YAML is deployment/runtime configuration only.'}, {'file': 'AGENTS.md', 'line_number': 66, 'content': '  - multiple graph instances/shards from config'}, {'file': 'AGENTS.md', 'line_number': 111, 'content': '- local startup/profile changes must update `docs/UI_LOCAL_PROFILES.md` and any relevant deployment/config docs'}, {'file': 'AGENTS.md', 'line_number': 143, 'content': '- Assume the environment is offline during the agent phase unless explicitly configured otherwise.'}, {'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'README.md', 'line_number': 75, 'content': '- `platform-runtime/` — runtime nodes, state, config, queries, and benchmarks (including ingress bindings and feature-node wiring for Phase 1 news/market-status/option-OI sources, plus the BTC/ETH crypto-cycle runtime, refined regime-aware allocation and take-profit logic, crypto query state, and dedicated crypto-node JMH coverage)'}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 4, 'content': 'import org.springframework.boot.autoconfigure.SpringBootApplication;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreConfig.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 16, 'content': '    private String configVersion = "cfg-local-1";'}]
+
+## diagnostics
+[{'file': 'README.md', 'line_number': 9, 'content': 'Recent control-plane hardening also includes domain-aware crypto scope handling for config and diagnostics API responses so crypto selector views no longer mirror equities identifiers by default.'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/AdminShellService.java', 'line_number': 84, 'content': '                    "Read-only shell access across config, deployments, and diagnostics surfaces.");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/AdminShellService.java', 'line_number': 89, 'content': '                    "Read-only shell access across config, deployments, and diagnostics surfaces.");'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 29, 'content': '        return hotViewReadService.diagnosticsAlertsCurrentJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 33, 'content': '        return hotViewReadService.diagnosticsAlertsHistoryJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 38, 'content': '            return hotViewReadService.diagnosticsOverviewJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 45, 'content': '            return hotViewReadService.diagnosticsOverviewHistoryJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 53, 'content': '            return hotViewReadService.diagnosticsServicesJson(domain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 55, 'content': '        return filterServicesJson(hotViewReadService.diagnosticsServicesJson(), resolvedDomain);'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 73, 'content': '                ? hotViewReadService.diagnosticsOverviewHistoryJson()'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 74, 'content': '                : hotViewReadService.diagnosticsOverviewJson());'}, {'file': 'app-api/src/main/java/com/ull/app/api/service/DerivedDiagnosticsService.java', 'line_number': 319, 'content': '        return hotViewReadService.diagnosticsGraphsJson(domain);'}]
+
+## parity
+[{'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 335, 'content': '      - app-api/src/test/java/com/ull/app/api/llm/ToolRegistryParityTest.java         # CI parity check'}, {'file': 'plans/IMPLEMENTATION_PROMPT.yaml', 'line_number': 356, 'content': '      - Single Java tool registry generates both the MCP `tools/list` response and the OpenAPI document; CI parity check fails the build if names/params/required fields disagree.'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 74, 'content': '        B001[R-001 Crypto explainability parity]'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 75, 'content': '        B002[R-002 Crypto trust parity]'}, {'file': 'plans/IMPLEMENTATION_PROMPTS_README.md', 'line_number': 112, 'content': '2. **Track B R-001, R-002, R-007 → main** (parity + ingest hardening — small'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 313, 'content': '      - app-api/src/test/java/com/ull/app/api/llm/ToolRegistryParityTest.java         # CI parity check'}, {'file': 'plans/IMPLEMENTATION_PROMPT_TRACK_A_CONTINUATION.yaml', 'line_number': 334, 'content': '      - Single Java tool registry generates BOTH the MCP `tools/list` response AND the OpenAPI document; CI parity check fails the build if names/params/required fields disagree.'}, {'file': 'platform-runtime/src/main/java/com/ull/trading/runtime/features/DerivativeMetricPassThroughNode.java', 'line_number': 7, 'content': ' * This preserves indexed source ordering and replay/live parity until downstream metric features are added.'}, {'file': 'platform-runtime/src/main/java/com/ull/trading/runtime/features/OnchainMetricPassThroughNode.java', 'line_number': 7, 'content': ' * This preserves indexed source ordering and replay/live parity until downstream metric features are added.'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 5, 'content': "**Theme:** Complete BTC/ETH crypto runtime to parity with equities on the Phase 1 explainability/trust contracts AND pull equities up to crypto's level on source-help/provenance depth; wire macro + proxy-equity input lanes; implement the QuestDB historical store (decision closed 2026-04-23, see `specs/HISTORICAL_STORE_DECISION.md`); stand up the UI-driven backtest runner + LLM-authored signal loop (`specs/SIGNAL_SPEC.md`) so trading alpha can be proposed by an LLM and promoted by a human operator; then extend into altcoins, options, and macro signal graphs."}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 21, 'content': '### [R-001] Crypto explainability contract parity with Phase 1 equities'}, {'file': 'repo-memory/ROADMAP.md', 'line_number': 31, 'content': '### [R-002] Crypto trust payload parity'}]
+
+## api
+[{'file': 'AGENTS.md', 'line_number': 78, 'content': '- Read path is an out-of-process server (QuestDB PGWire / HTTP) accessed by `app-api` and `platform-research` via a thin Java client.'}, {'file': 'README.md', 'line_number': 8, 'content': 'The repository currently contains a real runtime, ingest, replay/research, UI codebase, and the first live serving slice: a separate `app-core` runtime publisher process feeding Redis hot views and an `app-api` Spring Boot process serving UI-facing `/api/*` endpoints from Redis (including opportunities list/detail and a Phase 1 signals catalog contract with derivation + replay-comparability detail payload fields).'}, {'file': 'README.md', 'line_number': 71, 'content': '- `app-api/` — Spring Boot API process that serves UI-facing `/api/*` routes from Redis hot views and owns the consumer-side QuestDB historical-read layer, including real `/api/opportunities/{id}/history`, `/api/backtests`, `/api/performance/summary`, `/api/decisions`, `/api/risk/summary`, `/api/deployments`, and `/api/admin/*` routes'}, {'file': 'app-api/build.gradle', 'line_number': 14, 'content': "    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'"}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 1, 'content': 'package com.ull.app.api;'}, {'file': 'app-api/src/main/java/com/ull/app/api/TradeResearchApiApplication.java', 'line_number': 10, 'content': '@ConfigurationPropertiesScan(basePackages = "com.ull.app.api")'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreConfig.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/HistoricalStoreProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 3, 'content': 'import com.ull.app.api.history.QuestDbHistoricalStoreClient;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiConfiguration.java', 'line_number': 4, 'content': 'import com.ull.app.api.redis.RedisHotViewReader;'}, {'file': 'app-api/src/main/java/com/ull/app/api/config/TradeResearchApiProperties.java', 'line_number': 1, 'content': 'package com.ull.app.api.config;'}]
+
+# ROADMAP relevant entry
+
+### [R-003] Crypto-domain config + diagnostics parity
+- **Status:** TODO
+- **Feature id:** null
+- **Goal:** `/api/config/*` and `/api/diagnostics/*` return crypto-scoped runtime metadata instead of falling back to equities identifiers.
+- **Scope:** Thread `?domain=crypto` through config + diagnostics controllers to the crypto runtime's live-config + partition state, expose per-domain `runtimeConfigVersion` + `graphId`, domain-correct venue list.
+- **Out of scope:** New diagnostics endpoints, config mutation (read-only parity pass).
+- **Acceptance:** Every config + diagnostics endpoint returns correct data for both `domain=equities` and `domain=crypto`, Playwright selector-switch covers both.
+- **Depends on:** none.
+- **Notes:** Crypto graph id today comes from `CryptoPartitionedRuntime` — thread that through instead of hardcoding the equities `runtimeConfigVersion`.
+
+# DECISIONS relevant excerpt
+
+**Decision:** Redis is the hot serving layer — latest snapshots, rankings, short time windows — written by `app-core` as projections from the runtime graph. A columnar time-series store is the canonical historical and replay store; replay feeds back into the graph for research workflows. `app-api` reads only from Redis and the historical store; it never writes to either.
+**Consequences:** `app-api` is allocation-light and read-only. Any change that adds a DB write path in `app-api` or a direct historical-store read from the UI is a boundary violation and needs a new DECISIONS entry. Rules out adding Postgres / SQLite / Prisma / Drizzle as an OLTP layer — persistence is Redis + the historical store.
+**Decision:** Adopt **QuestDB** (Apache 2.0) as the canonical historical store. Pair it with a date-partitioned **Apache Parquet lake** as the authoritative capture substrate and the research-notebook surface (DuckDB / Polars read from the lake directly). A background bulk-loader moves captured Parquet partitions into QuestDB for replay cursors and API historical reads.
+**Context:** The event graph runtime is `dag-framework`, a sibling repo. Early in the project it was tempting to copy nodes into `platform-runtime` for quick iteration, which would fork the allocation invariants and the replay semantics.
+**Decision:** `dag-framework` is a published GitHub-Packages dependency (`com.joshorig.ull.dag:...`), bumped via a coordinated upstream release. `platform-dsl` + `platform-runtime` + `platform-events` layer on top of it but never fork it. Breaking changes originate in `dag-framework` and propagate down.
+**Consequences:** Any API change needed for trade-research-platform's graphs goes to `dag-framework` first. Pinning a local snapshot of dag-framework here is forbidden. Rules out "we'll patch dag-framework locally and upstream later" — those patches rot.
+**Context:** The app has many routes and many data surfaces. Unit tests alone do not catch routing bugs, URL-param regressions, or proxy desync between the UI and `app-api`. End-to-end Playwright runs are the only way to know the cockpit actually works.
+**Decision:** Vitest owns unit tests (28 files, including `api-contract-snapshots.test.ts` as the API contract gate). Playwright owns end-to-end across Chromium + WebKit + iPhone 13 profiles. The golden-path flow `"cockpit top opportunity launches backtest with the selected symbol"` is the one test that must never break.
+
+# Memory digest
+
+# Token Savior memory observations
+- [guardrail] Breaking change: com (com)
