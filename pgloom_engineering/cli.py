@@ -551,7 +551,7 @@ def _json(value: object) -> str:
 
 
 def _build_dry_run_council(config: CouncilConfig) -> PlannerCouncil:
-    return PlannerCouncil(config=config, provider=EngineeringCLIModelProvider())
+    return PlannerCouncil(config=config, provider=EngineeringCLIModelProvider(record_usage=False))
 
 
 def _project_set_state(

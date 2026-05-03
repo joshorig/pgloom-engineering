@@ -27,8 +27,9 @@ class EngineeringModelInvocationResult(BaseModel):
 class EngineeringCLIModelProvider:
     """CLI model provider that records durable pgloom usage rows and returns their ids."""
 
-    def __init__(self, *, database_url: str | None = None) -> None:
+    def __init__(self, *, database_url: str | None = None, record_usage: bool = True) -> None:
         self._database_url = database_url
+        self._record_usage_enabled = record_usage
 
     def invoke(
         self,
@@ -71,12 +72,13 @@ class EngineeringCLIModelProvider:
             subprocess=completed,
             metadata=metadata,
         )
-        result.model_usage_id = self._record_usage(
-            result=result,
-            profile_name=profile.name,
-            workflow_id=workflow_id,
-            task_id=task_id,
-        )
+        if self._record_usage_enabled:
+            result.model_usage_id = self._record_usage(
+                result=result,
+                profile_name=profile.name,
+                workflow_id=workflow_id,
+                task_id=task_id,
+            )
         return result
 
     def _record_usage(
