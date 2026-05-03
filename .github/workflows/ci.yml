@@ -18,7 +18,7 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: pip install "pgloom>=0.2,<0.3"
+      - run: pip install "pgloom>=0.3,<0.4"
       - run: ruff check pgloom_engineering tests
       - run: mypy pgloom_engineering
       - run: pytest tests/unit -q
