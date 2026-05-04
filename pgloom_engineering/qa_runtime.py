@@ -79,12 +79,36 @@ def prompt_safe_qa_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     ]:
         value = metadata.get(key)
         if isinstance(value, dict):
-            safe[key] = {str(item_key): str(item_value) for item_key, item_value in value.items()}
+            safe[key] = _prompt_safe_value(value)
         elif isinstance(value, list):
-            safe[key] = [item for item in value if isinstance(item, str | list)][:40]
+            safe[key] = [
+                safe_item
+                for item in value[:40]
+                if (safe_item := _prompt_safe_value(item)) is not None
+            ]
         elif isinstance(value, str):
             safe[key] = value
     return safe
+
+
+def _prompt_safe_value(value: object) -> object:
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    if isinstance(value, list):
+        return [
+            safe_item
+            for item in value[:40]
+            if (safe_item := _prompt_safe_value(item)) is not None
+        ]
+    if isinstance(value, dict):
+        safe: dict[str, object] = {}
+        for item_key, item_value in list(value.items())[:40]:
+            if isinstance(item_key, str):
+                safe_value = _prompt_safe_value(item_value)
+                if safe_value is not None:
+                    safe[item_key] = safe_value
+        return safe
+    return None
 
 
 def validate_required_qa_gates(
@@ -516,20 +540,47 @@ def _spring_annotation_routes(text: str) -> list[dict[str, str]]:
         "Patch": "PATCH",
         "Request": "ANY",
     }
-    for match in pattern.finditer(text):
+    matches = list(pattern.finditer(text))
+    class_prefixes: list[str] = []
+    for index, match in enumerate(matches):
         method = method_by_annotation[match.group(1)]
         body = match.group(2)
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        following = text[match.end() : next_start]
         explicit_method = re.search(r"method\s*=\s*RequestMethod\.([A-Z]+)", body)
         if explicit_method is not None:
             method = explicit_method.group(1)
+        route_paths = _quoted_paths(body)
+        if match.group(1) == "Request" and re.search(r"\b(class|interface)\s+\w+", following):
+            class_prefixes = [path for path in route_paths if path.startswith("/")]
+            continue
         for route_path in _quoted_paths(body):
             if route_path.startswith("/api/"):
                 routes.append({"method": method, "path": route_path, "source": ""})
+                continue
+            for class_prefix in class_prefixes:
+                combined = _join_route_paths(class_prefix, route_path)
+                if combined.startswith("/api/"):
+                    routes.append({"method": method, "path": combined, "source": ""})
     return routes
 
 
+def _join_route_paths(prefix: str, suffix: str) -> str:
+    if not suffix:
+        return prefix
+    if not suffix.startswith("/"):
+        suffix = f"/{suffix}"
+    return f"{prefix.rstrip('/')}{suffix}"
+
+
 def _quoted_api_paths(text: str) -> list[str]:
-    return [path for path in _quoted_paths(text) if path.startswith("/api/")]
+    paths: list[str] = []
+    for match in re.finditer(r"""["'](/api/[^"']*)["']""", text):
+        prefix = text[max(0, match.start() - 80) : match.start()]
+        if re.search(r"@(Get|Post|Put|Delete|Patch|Request)Mapping\s*\([^)]*$", prefix):
+            continue
+        paths.append(match.group(1))
+    return paths
 
 
 def _quoted_paths(text: str) -> list[str]:
