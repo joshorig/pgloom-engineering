@@ -172,6 +172,35 @@ def test_discover_route_inventory_composes_relative_spring_method_mappings(
     ]
 
 
+def test_discover_route_inventory_handles_no_arg_spring_method_mappings(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app-api/src/main/java/example/RuntimeController.java"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "\n".join(
+            [
+                '@RequestMapping("/api/runtime")',
+                "class RuntimeController {",
+                "  @GetMapping",
+                "  Object runtime() { return null; }",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = discover_route_inventory(
+        tmp_path,
+        {"qa": {"endpoint_roots": ["app-api/src/main/java"]}},
+        api_prefixes=["/api/runtime"],
+    )
+
+    assert route_inventory_for_prompt(routes) == [
+        "GET /api/runtime (app-api/src/main/java/example/RuntimeController.java)",
+    ]
+
+
 def test_prompt_safe_qa_metadata_preserves_structured_required_gates() -> None:
     metadata = {
         "required_gates": [
@@ -221,6 +250,35 @@ def test_validate_required_qa_gates_reports_configured_evidence(tmp_path: Path) 
             ],
             "missing": [],
         }
+    ]
+
+
+def test_validate_required_qa_gates_accepts_shell_wrapper_commands(tmp_path: Path) -> None:
+    tmp_path.joinpath("qa").mkdir()
+    tmp_path.joinpath("qa/smoke.sh").write_text(
+        "./gradlew :benchmarks:jmhSmokeCheck\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_required_qa_gates(
+        tmp_path,
+        {
+            "qa": {
+                "required_gates": [
+                    {
+                        "id": "smoke",
+                        "command": ["bash", "qa/smoke.sh"],
+                        "must_cover": ["benchmark_smoke"],
+                    }
+                ]
+            }
+        },
+    )
+
+    assert validation[0]["status"] == "configured"
+    assert validation[0]["evidence"] == [
+        "command_file:qa/smoke.sh",
+        "covers:benchmark_smoke",
     ]
 
 

@@ -158,13 +158,11 @@ def validate_required_qa_gates(
 
 
 def _gate_command_path(command: list[str]) -> Path | None:
-    if not command:
-        return None
-    first = command[0]
-    if first.startswith("./"):
-        return Path(first)
-    if "/" in first:
-        return Path(first)
+    for item in command:
+        if item.startswith("./"):
+            return Path(item)
+        if "/" in item:
+            return Path(item)
     return None
 
 
@@ -604,7 +602,7 @@ def _iter_route_source_files(root: Path) -> list[Path]:
 
 def _spring_annotation_routes(text: str) -> list[dict[str, str]]:
     routes: list[dict[str, str]] = []
-    pattern = re.compile(r"@(Get|Post|Put|Delete|Patch|Request)Mapping\s*\(([^)]*)\)")
+    pattern = re.compile(r"@(Get|Post|Put|Delete|Patch|Request)Mapping(?:\s*\(([^)]*)\))?")
     method_by_annotation = {
         "Get": "GET",
         "Post": "POST",
@@ -617,17 +615,19 @@ def _spring_annotation_routes(text: str) -> list[dict[str, str]]:
     class_prefixes: list[str] = []
     for index, match in enumerate(matches):
         method = method_by_annotation[match.group(1)]
-        body = match.group(2)
+        body = match.group(2) or ""
         next_start = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         following = text[match.end() : next_start]
         explicit_method = re.search(r"method\s*=\s*RequestMethod\.([A-Z]+)", body)
         if explicit_method is not None:
             method = explicit_method.group(1)
         route_paths = _quoted_paths(body)
+        if not route_paths and match.group(1) != "Request":
+            route_paths = [""]
         if match.group(1) == "Request" and re.search(r"\b(class|interface)\s+\w+", following):
             class_prefixes = [path for path in route_paths if path.startswith("/")]
             continue
-        for route_path in _quoted_paths(body):
+        for route_path in route_paths:
             if route_path.startswith("/api/"):
                 routes.append({"method": method, "path": route_path, "source": ""})
                 continue
