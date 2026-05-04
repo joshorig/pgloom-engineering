@@ -11,6 +11,7 @@ from pgloom_engineering.contracts import (
     TaskSliceContract,
 )
 from pgloom_engineering.qa_author_runtime import (
+    api_prefixes_from_text,
     build_qa_author_prompt,
     normalize_qa_author_payload,
     path_violations,
@@ -51,6 +52,13 @@ def test_qa_author_runtime_path_and_command_helpers_are_shared() -> None:
     assert verification_command(task) == [sys.executable, "-m", "pytest", "tests", "-q"]
     assert path_violations(["src/feature.py", "tests/test_feature.py"], task) == [
         {"path": "src/feature.py", "reason": "outside_allowed_paths"}
+    ]
+
+
+def test_api_prefixes_preserve_full_versioned_route_prefix() -> None:
+    assert api_prefixes_from_text("Cover /api/v1/orders and /api/v2/orders/{id}.") == [
+        "/api/v1/orders",
+        "/api/v2/orders/{id}",
     ]
 
 

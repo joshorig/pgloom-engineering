@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from pgloom_engineering.qa_runtime import project_qa_metadata
+
 Severity = Literal["blocking", "warning"]
 
 
@@ -51,8 +53,7 @@ def review_semantic_quality(
 
 
 def _qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:
-    qa = project_metadata.get("qa")
-    return qa if isinstance(qa, dict) else {}
+    return project_qa_metadata(project_metadata)
 
 
 def _semantic_conventions(qa_metadata: dict[str, Any]) -> dict[str, Any]:

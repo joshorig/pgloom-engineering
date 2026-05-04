@@ -171,9 +171,16 @@ def _gate_command_path(command: list[str]) -> Path | None:
 def _gate_coverage_tokens(coverage_id: str) -> list[str]:
     tokens = {
         "allocation": ["gc.alloc.rate.norm", "alloc.rate", "allocation"],
-        "benchmark_smoke": ["jmhSmokeCheck", "jmhSmoke", "jmh"],
-        "benchmark_full": [":benchmarks:jmh", "jmh"],
-        "unit_regression": ["test", "regression"],
+        "benchmark_smoke": ["jmhSmokeCheck", "jmhSmoke"],
+        "benchmark_full": [":benchmarks:jmh", "benchmark_full"],
+        "unit_regression": [
+            "./gradlew test",
+            "gradle test",
+            "mvn test",
+            "pytest",
+            "unit_regression",
+            "regression",
+        ],
     }
     return tokens.get(coverage_id, [coverage_id])
 

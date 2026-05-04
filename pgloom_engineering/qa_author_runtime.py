@@ -277,11 +277,14 @@ def route_coverage_requirements(
 def api_prefixes_from_text(text: str) -> list[str]:
     prefixes: set[str] = set()
     for raw in text.replace("*", " ").replace(",", " ").split():
-        token = raw.strip("`'\"()[]{}.,;:")
+        token = raw.strip("`'\"()[].,;:")
         if not token.startswith("/api/"):
             continue
         parts = [part for part in token.split("/") if part and part != "..."]
-        prefixes.add("/" + "/".join(parts[:2]) if len(parts) >= 2 else token.rstrip("/"))
+        if len(parts) >= 2:
+            prefixes.add("/" + "/".join(parts))
+        else:
+            prefixes.add(token.rstrip("/"))
     return sorted(prefixes)
 
 
