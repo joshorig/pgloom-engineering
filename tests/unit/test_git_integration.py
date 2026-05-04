@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from pgloom.harness.subprocess import run_bounded
@@ -97,6 +98,39 @@ def test_create_task_worktree_reuses_existing_task_worktree(tmp_path: Path) -> N
 
     assert second.branch == first.branch
     assert second.worktree == first.worktree
+
+
+def test_create_task_worktree_recreates_missing_prunable_worktree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    _run(["git", "init", "-b", "main", str(repo)])
+    _run(["git", "config", "user.email", "test@example.com"], cwd=repo)
+    _run(["git", "config", "user.name", "Test User"], cwd=repo)
+    repo.joinpath("README.md").write_text("hello\n", encoding="utf-8")
+    _run(["git", "add", "README.md"], cwd=repo)
+    _run(["git", "commit", "-m", "initial"], cwd=repo)
+    first = create_task_worktree(
+        repo=repo,
+        worktree_root=worktrees,
+        feature_id="feature-1",
+        task_id="task-1",
+        slice_id="qa-author",
+        base_ref="main",
+    )
+    shutil.rmtree(first.worktree)
+
+    second = create_task_worktree(
+        repo=repo,
+        worktree_root=worktrees,
+        feature_id="feature-1",
+        task_id="task-1",
+        slice_id="qa-author",
+        base_ref="main",
+    )
+
+    assert second.branch == first.branch
+    assert second.worktree == first.worktree
+    assert second.worktree.exists()
 
 
 def test_changed_files_reports_new_and_old_paths_for_renames(tmp_path: Path) -> None:

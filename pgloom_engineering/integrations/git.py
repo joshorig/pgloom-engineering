@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from pgloom.harness.subprocess import SubprocessResult, run_bounded
@@ -20,6 +21,12 @@ class WorktreeHandle:
         self.repo = repo
         self.worktree = worktree
         self.branch = branch
+
+
+@dataclass(frozen=True)
+class _ExistingWorktree:
+    path: Path
+    prunable: bool = False
 
 
 def git_status(repo: Path, *, timeout_seconds: float = 30) -> SubprocessResult:
@@ -55,12 +62,15 @@ def create_task_worktree(
     worktree.parent.mkdir(parents=True, exist_ok=True)
     existing = _worktree_for_branch(repo, branch, timeout_seconds=timeout_seconds)
     if existing is not None:
-        if existing.resolve() != worktree.resolve():
+        if existing.path.resolve() != worktree.resolve():
             raise RuntimeError(
-                f"branch {branch!r} is already attached to worktree {existing}, "
+                f"branch {branch!r} is already attached to worktree {existing.path}, "
                 f"not expected path {worktree}"
             )
-        return WorktreeHandle(repo=repo, worktree=worktree, branch=branch)
+        if existing.prunable or not existing.path.exists():
+            _git(repo, ["worktree", "prune"], timeout_seconds=timeout_seconds)
+        else:
+            return WorktreeHandle(repo=repo, worktree=worktree, branch=branch)
     _git(
         repo,
         ["worktree", "add", "-B", branch, str(worktree), base_ref],
@@ -144,15 +154,27 @@ def _git(repo: Path, args: list[str], *, timeout_seconds: float) -> SubprocessRe
     return result
 
 
-def _worktree_for_branch(repo: Path, branch: str, *, timeout_seconds: float) -> Path | None:
+def _worktree_for_branch(
+    repo: Path,
+    branch: str,
+    *,
+    timeout_seconds: float,
+) -> _ExistingWorktree | None:
     result = _git(repo, ["worktree", "list", "--porcelain"], timeout_seconds=timeout_seconds)
-    current_path: Path | None = None
     expected_branch = f"refs/heads/{branch}"
-    for line in result.stdout.splitlines():
-        if line.startswith("worktree "):
-            current_path = Path(line.removeprefix("worktree "))
-        elif line == f"branch {expected_branch}" and current_path is not None:
-            return current_path
+    for block in result.stdout.strip().split("\n\n"):
+        path: Path | None = None
+        branch_matches = False
+        prunable = False
+        for line in block.splitlines():
+            if line.startswith("worktree "):
+                path = Path(line.removeprefix("worktree "))
+            elif line == f"branch {expected_branch}":
+                branch_matches = True
+            elif line.startswith("prunable"):
+                prunable = True
+        if branch_matches and path is not None:
+            return _ExistingWorktree(path=path, prunable=prunable)
     return None
 
 
