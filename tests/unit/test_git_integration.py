@@ -84,6 +84,21 @@ def test_create_task_worktree_reuses_existing_task_worktree(tmp_path: Path) -> N
     assert second.worktree == first.worktree
 
 
+def test_changed_files_reports_new_path_for_renames(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _run(["git", "init", "-b", "main", str(repo)])
+    _run(["git", "config", "user.email", "test@example.com"], cwd=repo)
+    _run(["git", "config", "user.name", "Test User"], cwd=repo)
+    repo.joinpath("tests").mkdir()
+    repo.joinpath("tests/test_old.py").write_text("def test_old():\n    assert True\n")
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(["git", "commit", "-m", "initial"], cwd=repo)
+    repo.joinpath("src").mkdir()
+    _run(["git", "mv", "tests/test_old.py", "src/test_old.py"], cwd=repo)
+
+    assert changed_files(repo) == ["src/test_old.py"]
+
+
 def _run(argv: list[str], *, cwd: Path | None = None) -> None:
     result = run_bounded(argv, cwd=cwd, timeout_seconds=30)
     assert result.exit_code == 0, result.stderr

@@ -372,11 +372,11 @@ def canonical_red_proof(result: QAVerificationResult) -> list[dict[str, Any]]:
 
 def verification_infra_error(stdout: str, stderr: str) -> str | None:
     combined = f"{stdout}\n{stderr}".lower()
+    stderr_lower = stderr.lower()
     patterns = [
         "unable to locate a java runtime",
         "java_home is not set",
         "command not found",
-        "no such file or directory",
         "could not find or load main class org.gradle.wrapper.gradlewrappermain",
         "node: command not found",
         "npm: command not found",
@@ -387,7 +387,26 @@ def verification_infra_error(stdout: str, stderr: str) -> str | None:
     for pattern in patterns:
         if pattern in combined:
             return pattern
+    if _missing_executable_error(stderr_lower):
+        return "no such file or directory"
     return None
+
+
+def _missing_executable_error(stderr: str) -> bool:
+    if "no such file or directory" not in stderr:
+        return False
+    if "filenotfounderror" in stderr and "subprocess" not in stderr:
+        return False
+    executable_markers = [
+        "env:",
+        "exec:",
+        "spawn",
+        "subprocess",
+        "failed to run",
+        "cannot execute",
+        "[errno 2]",
+    ]
+    return any(marker in stderr for marker in executable_markers)
 
 
 def red_proof_infra_error(red_proof: list[dict[str, Any]]) -> str | None:

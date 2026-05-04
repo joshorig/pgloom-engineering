@@ -195,6 +195,18 @@ def test_no_tests_found_is_not_an_infra_error() -> None:
     assert verification_infra_error("collected 0 items\nno tests found", "") is None
 
 
+def test_file_not_found_assertion_is_not_an_infra_error() -> None:
+    stderr = "FileNotFoundError: [Errno 2] No such file or directory: '/tmp/input.json'"
+
+    assert verification_infra_error("", stderr) is None
+
+
+def test_missing_executable_is_an_infra_error() -> None:
+    stderr = "env: definitely-missing-command: No such file or directory"
+
+    assert verification_infra_error("", stderr) == "no such file or directory"
+
+
 def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
     assert relevant_changed_files(
         [

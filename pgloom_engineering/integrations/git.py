@@ -164,10 +164,10 @@ def _parse_porcelain_z(output: str) -> list[str]:
         status = entry[:2]
         path = entry[3:]
         if "R" in status or "C" in status:
+            paths.append(path)
             index += 1
-            if index < len(entries):
-                path = entries[index]
-        paths.append(path)
+        else:
+            paths.append(path)
         index += 1
     return sorted(dict.fromkeys(paths))
 
