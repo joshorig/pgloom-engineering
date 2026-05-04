@@ -124,6 +124,19 @@ class TaskResultContract(BaseModel):
     token_savior_usage_ids: list[int] = Field(default_factory=list)
 
 
+class QAAuthorContract(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    feature_id: str
+    task_id: str
+    tests_added: list[str] = Field(default_factory=list)
+    matrix_coverage: dict[str, list[str]] = Field(default_factory=dict)
+    red_proof: list[dict[str, Any]] = Field(default_factory=list)
+    paths_touched: list[str] = Field(default_factory=list)
+    branch: str | None = None
+    worktree_path: str | None = None
+    model_usage_ids: list[int] = Field(default_factory=list)
+
+
 class ReviewVerdictContract(BaseModel):
     contract_version: str = CONTRACT_VERSION
     feature_id: str

@@ -1,0 +1,50 @@
+{
+  "name": "qa-author-model-baseline",
+  "defaults": {
+    "projects_file": "docs/evals/project-registry.yaml",
+    "timeout_seconds": 900
+  },
+  "models": [
+    {
+      "backend": "codex",
+      "model": "gpt-5.4",
+      "reasoning": "medium"
+    },
+    {
+      "backend": "codex",
+      "model": "gpt-5.5",
+      "reasoning": "low"
+    }
+  ],
+  "acceptance": {
+    "required_verdict": "accept",
+    "max_api_equivalent_cost_usd": 2.00
+  },
+  "cases": [
+    {
+      "id": "lvc-r003-small",
+      "project": "lvc-standard",
+      "from_plan_outcome": "docs/reports/live-planner-suite-2026-05-03-013448-live-planner-autonomy-baseline/lvc-r003-small__codex-gpt-5.5-high/outcome.json",
+      "verification_index": 0
+    },
+    {
+      "id": "lvc-r002-jmh-wide",
+      "project": "lvc-standard",
+      "from_plan_outcome": "docs/evals/plan-outcomes/lvc-r002-jmh-qa-author.json",
+      "verification_index": 0
+    },
+    {
+      "id": "trp-r003-small",
+      "project": "trade-research-platform",
+      "from_plan_outcome": "docs/reports/live-planner-suite-2026-05-03-token-economy-parity-codex/trp-r003-small__codex-gpt-5.5-high/outcome.json",
+      "verification_index": 0,
+      "max_api_equivalent_cost_usd": 3.25
+    },
+    {
+      "id": "dag-r003-small",
+      "project": "dag-framework",
+      "from_plan_outcome": "docs/reports/live-planner-suite-2026-05-03-013448-live-planner-autonomy-baseline/dag-r003-small__codex-gpt-5.5-high/outcome.json",
+      "verification_index": 0
+    }
+  ]
+}

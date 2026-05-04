@@ -1,0 +1,266 @@
+projects:
+  - name: lvc-standard
+    root: /Volumes/devssd/repos/ull/lvc-standard
+    base_branch: main
+    smoke_command:
+      - ./qa/smoke.sh
+    regression_command:
+      - ./qa/regression.sh
+    agent_topology:
+      planning: multi_agent
+      review: multi_agent
+      implementation: council_decides
+    state: active
+    metadata:
+      planning_only: true
+      roadmap_path: repo-memory/ROADMAP.md
+      relevant_paths:
+        - core/
+        - store/
+        - signal/
+        - guaranteed-aeron/
+        - guaranteed-inproc/
+        - sbe-adapters/
+        - conformance-tests/
+        - benchmarks/
+        - docs/
+        - qa/
+      qa:
+        env:
+          JAVA_HOME: /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+        path_prepend:
+          - $JAVA_HOME/bin
+        source_roots:
+          - core/src/main/java
+          - store/src/main/java
+          - signal/src/main/java
+          - guaranteed-aeron/src/main/java
+          - guaranteed-inproc/src/main/java
+          - sbe-adapters/src/main/java
+          - benchmarks/src/jmh/java
+        test_roots:
+          - core/src/test/java
+          - store/src/test/java
+          - signal/src/test/java
+          - guaranteed-aeron/src/test/java
+          - guaranteed-inproc/src/test/java
+          - sbe-adapters/src/test/java
+          - conformance-tests/src/test/java
+        benchmark_roots:
+          - benchmarks/src/jmh/java
+        benchmark_frameworks:
+          - jmh
+        example_tests:
+          - store/src/test/java
+          - conformance-tests/src/test/java
+        quality_gates:
+          - Preserve zero-allocation hot paths for store and publish behavior.
+          - Prefer module-local Gradle tests over detached top-level tests.
+          - Use qa/smoke.sh for allocation-sensitive smoke validation.
+          - JMH benchmark methods must allocate no garbage after @Setup.
+          - Cold restore JMH benchmarks must use SingleShotTime with enough preallocated fresh targets for warmup plus measurement, or an explicit project-approved reset outside measured methods.
+          - Failed or staged journal writes must not advance restored durable cursors.
+          - Byte and memory payload tests should use structured byte-array assertions.
+        required_gates:
+          - id: smoke
+            command:
+              - ./qa/smoke.sh
+            must_cover:
+              - allocation
+              - benchmark_smoke
+          - id: regression
+            command:
+              - ./qa/regression.sh
+            must_cover:
+              - benchmark_full
+              - unit_regression
+        avoid_patterns:
+          - Tests that bypass store public APIs for acceptance behavior.
+          - Benchmarks that do not run through the existing JMH smoke gate.
+          - Tests that prove benchmark wiring by string-checking Gradle files instead of behavior.
+        semantic_conventions:
+          journal:
+            failed_publish_must_not_advance_cursor: true
+          restore_benchmark:
+            cold_start_semantics: true
+            fresh_target_strategy: preallocated_target_pool
+          binary_assertions:
+            prefer_assert_array_equals: true
+          build_hook_tests:
+            allow_build_file_string_assertions: false
+            deterministic_gate_validation_required: true
+
+  - name: trade-research-platform
+    root: /Volumes/devssd/repos/apps/trade-research-platform
+    base_branch: main
+    smoke_command:
+      - ./qa/smoke.sh
+    regression_command:
+      - ./qa/regression.sh
+    agent_topology:
+      planning: multi_agent
+      review: multi_agent
+      implementation: council_decides
+    state: active
+    metadata:
+      planning_only: true
+      roadmap_path: repo-memory/ROADMAP.md
+      relevant_paths:
+        - app-api/
+        - app-core/
+        - platform-dsl/
+        - platform-runtime/
+        - platform-research/
+        - ui/
+        - specs/
+        - docs/
+        - qa/
+      qa:
+        env:
+          JAVA_HOME: /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+        path_prepend:
+          - $JAVA_HOME/bin
+        dependency_hydration:
+          - node_modules
+          - ui/node_modules
+        source_roots:
+          - app-api/src/main/java
+          - app-core/src/main/java
+          - platform-dsl/src/main/java
+          - platform-runtime/src/main/java
+          - platform-research/src/main/java
+          - ui/src
+        endpoint_roots:
+          - app-api/src/main/java
+        test_roots:
+          - app-api/src/test/java
+          - app-core/src/test/java
+          - platform-dsl/src/test/java
+          - platform-runtime/src/test/java
+          - platform-research/src/test/java
+          - ui/src/__tests__
+          - ui/src/test
+          - ui/tests/e2e
+        browser_test_roots:
+          - ui/tests/e2e
+        example_tests:
+          - app-api/src/test/java
+          - ui/src/__tests__
+          - ui/tests/e2e
+        helper_files:
+          - ui/src/test
+        quality_gates:
+          - API acceptance must be covered at controller or HTTP route level.
+          - Spring route acceptance must use MockMvc, WebTestClient, or TestRestTemplate when route/query/status semantics matter.
+          - UI acceptance must cover user-visible behavior and request shape.
+          - Prefer existing Gradle and npm test conventions for the owning module.
+          - Generated UI acceptance should use focused task-specific specs, not broad flow files.
+        avoid_patterns:
+          - Service-only tests for endpoint acceptance.
+          - Fully mocked browser tests without request-shape assertions.
+          - Route inventory tests that only assert a hardcoded list without invoking controller or HTTP behavior.
+          - Editing broad existing UI flow specs for a narrow acceptance slice.
+          - Direct controller method calls for API route/query/status acceptance.
+        semantic_conventions:
+          endpoint_acceptance:
+            require_http_harness: true
+          payload_assertions:
+            prefer_structured_json_paths: true
+            max_raw_contains_per_file: 6
+        ui_acceptance:
+          min_level: request_shape
+          prefer_task_specific_spec: true
+          allow_route_mocks: true
+          integration_when_available: true
+        preferred_test_skeletons:
+          endpoint_all_routes:
+            style: parameterized_route_case_loop
+            guidance: Build route case records that pair each required route literal with a controller or HTTP call and behavior assertions for each required domain.
+          browser_domain_switch:
+            style: request_shape_plus_visible_state
+            guidance: If Playwright mocks APIs, assert request URLs/query parameters and visible domain-specific UI state; prefer existing mockApi helpers.
+        preferred_helpers:
+          endpoint:
+            - app-api/src/test/java/com/ull/app/api/web/CryptoDomainControllersTest.java
+            - app-api/src/test/java/com/ull/app/api/service/ConfigStateServiceDomainTest.java
+            - app-api/src/test/java/com/ull/app/api/service/DerivedDiagnosticsServiceDomainTest.java
+          browser:
+            - ui/tests/e2e/mockApi.ts
+            - ui/src/test/fixtures
+        behavior_coverage_rules:
+          - Every required route must appear in a route case that invokes a controller/HTTP call, not only in an inventory assertion.
+          - Route inventory constants are allowed only as audit support after behavior coverage exists.
+          - Broad endpoint coverage should use table-driven route cases instead of one assertion-only route list.
+        model_routing:
+          default:
+            backend: codex
+            model: gpt-5.4
+            reasoning: medium
+          escalate:
+            backend: codex
+            model: gpt-5.5
+            reasoning: low
+
+  - name: dag-framework
+    root: /Volumes/devssd/repos/ull/dag_framework
+    base_branch: main
+    smoke_command:
+      - ./qa/smoke.sh
+    regression_command:
+      - ./qa/regression.sh
+    agent_topology:
+      planning: multi_agent
+      review: multi_agent
+      implementation: council_decides
+    state: active
+    metadata:
+      planning_only: true
+      roadmap_path: repo-memory/ROADMAP.md
+      relevant_paths:
+        - dag-framework-api/
+        - runtime-core/
+        - compiler-core/
+        - deployment-core/
+        - dag-framework-lvc/
+        - benchmarks/
+        - examples/
+        - docs/
+        - qa/
+      qa:
+        env:
+          JAVA_HOME: /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+        path_prepend:
+          - $JAVA_HOME/bin
+        source_roots:
+          - dag-framework-api/src/main/java
+          - runtime-core/src/main/java
+          - compiler-core/src/main/java
+          - deployment-core/src/main/java
+          - dag-framework-lvc/src/main/java
+          - benchmarks/src/main/java
+          - examples/src/main/java
+        test_roots:
+          - dag-framework-api/src/test/java
+          - dag-framework-api/src/testFixtures/java
+          - runtime-core/src/test/java
+          - compiler-core/src/test/java
+          - deployment-core/src/test/java
+          - dag-framework-lvc/src/test/java
+          - benchmarks/src/test/java
+          - examples/src/test/java
+        benchmark_roots:
+          - benchmarks/src/main/java
+          - benchmarks/src/test/java
+        benchmark_frameworks:
+          - jmh
+        example_tests:
+          - dag-framework-api/src/test/java
+          - dag-framework-api/src/testFixtures/java
+          - runtime-core/src/test/java
+        quality_gates:
+          - Prefer module-local tests under the affected Gradle module.
+          - Use test fixtures for reusable DAG/runtime scenarios.
+          - Cover backpressure, ordering, and lifecycle semantics at runtime boundaries.
+        avoid_patterns:
+          - Tests that assert only compiler output shape when runtime behavior is required.
+          - Detached top-level tests not wired into Gradle.

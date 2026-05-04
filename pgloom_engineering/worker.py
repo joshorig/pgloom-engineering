@@ -16,6 +16,7 @@ from pgloom_engineering.contract_store import (
     upsert_task_contract,
 )
 from pgloom_engineering.contracts import (
+    QAAuthorContract,
     QAResultContract,
     RecoveryDecisionContract,
     ReviewVerdictContract,
@@ -212,7 +213,9 @@ def _post_execution_gate(
                 )
         elif task["task_type"] == "engineering.review":
             ReviewVerdictContract.model_validate(result.result.get("review_verdict_contract"))
-        elif task["task_type"] == "engineering.qa":
+        elif task["task_type"] == "engineering.qa.author":
+            QAAuthorContract.model_validate(result.result.get("qa_author_contract"))
+        elif task["task_type"] in {"engineering.qa", "engineering.qa.verify"}:
             QAResultContract.model_validate(result.result.get("qa_result_contract"))
     except Exception as exc:
         return _blocked_with_recovery(
@@ -233,7 +236,7 @@ def _task_contract_from_row(row: dict[str, Any]) -> Any:
 
 
 def _requires_handoff(task: dict[str, Any]) -> bool:
-    return task["task_type"] in {"engineering.review", "engineering.qa"}
+    return task["task_type"] in {"engineering.review", "engineering.qa", "engineering.qa.verify"}
 
 
 def _project_name(task: dict[str, Any], feature: dict[str, Any] | None) -> str | None:
