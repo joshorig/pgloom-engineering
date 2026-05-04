@@ -139,6 +139,35 @@ def test_discover_route_inventory_composes_spring_class_and_method_mappings(
     ]
 
 
+def test_discover_route_inventory_composes_relative_spring_method_mappings(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app-api/src/main/java/example/RuntimeController.java"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "\n".join(
+            [
+                '@RequestMapping("/api/runtime")',
+                "class RuntimeController {",
+                '  @GetMapping("health")',
+                "  Object health() { return null; }",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = discover_route_inventory(
+        tmp_path,
+        {"qa": {"endpoint_roots": ["app-api/src/main/java"]}},
+        api_prefixes=["/api/runtime"],
+    )
+
+    assert route_inventory_for_prompt(routes) == [
+        "GET /api/runtime/health (app-api/src/main/java/example/RuntimeController.java)",
+    ]
+
+
 def test_prompt_safe_qa_metadata_preserves_structured_required_gates() -> None:
     metadata = {
         "required_gates": [

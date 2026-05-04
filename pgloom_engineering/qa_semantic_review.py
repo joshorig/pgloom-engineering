@@ -150,7 +150,7 @@ def _spring_endpoint_harness_findings(
     java_tests = {
         path: text
         for path, text in files.items()
-        if path.endswith(".java") and "/web/" in path
+        if path.endswith(".java")
     }
     findings: list[SemanticFinding] = []
     for path, text in java_tests.items():

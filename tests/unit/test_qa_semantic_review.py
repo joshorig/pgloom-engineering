@@ -93,6 +93,36 @@ def test_semantic_review_merges_qa_author_semantic_conventions() -> None:
     ]
 
 
+def test_semantic_review_blocks_direct_controller_calls_outside_web_package() -> None:
+    path = "changed-files/app-api/src/test/java/com/example/controller/ConfigControllerTest.java"
+    findings = review_semantic_quality(
+        files={
+            path: """
+            class ConfigControllerTest {
+                @Test
+                void callsControllerDirectly() {
+                    ConfigController controller = new ConfigController();
+                    controller.runtime("crypto");
+                }
+            }
+            """
+        },
+        plan_text="Every /api/config route preserves domain query semantics.",
+        task_text="Write endpoint route tests.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "endpoint_acceptance": {"require_http_harness": True}
+                }
+            }
+        },
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_direct_spring_controller_call"
+    ]
+
+
 def test_semantic_review_blocks_brittle_payload_string_assertions() -> None:
     path = "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java"
     findings = review_semantic_quality(

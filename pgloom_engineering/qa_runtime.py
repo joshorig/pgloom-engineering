@@ -614,7 +614,7 @@ def _quoted_paths(text: str) -> list[str]:
     for quote in ['"', "'"]:
         parts = text.split(quote)
         for index, part in enumerate(parts):
-            if index % 2 == 1 and part.startswith("/"):
+            if index % 2 == 1:
                 paths.append(part)
     return paths
 

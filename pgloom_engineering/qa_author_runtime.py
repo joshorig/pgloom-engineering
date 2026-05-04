@@ -230,6 +230,12 @@ def route_path(route_line: str) -> str:
     return parts[1] if len(parts) > 1 else route_line
 
 
+def route_matches_prefix(route_line: str, prefix: str) -> bool:
+    path = route_path(route_line)
+    normalized_prefix = prefix.rstrip("/")
+    return path == normalized_prefix or path.startswith(f"{normalized_prefix}/")
+
+
 def route_coverage_requirements(
     plan: PlanContract,
     task_contract: TaskContract,
@@ -263,7 +269,9 @@ def route_coverage_requirements(
     return [
         {
             "api_prefix": prefix,
-            "required_routes": [route for route in routes if f" {prefix.rstrip('/')}" in route],
+            "required_routes": [
+                route for route in routes if route_matches_prefix(route, prefix)
+            ],
             "coverage_rule": "all_routes" if require_all else "representative_routes",
             "authoring_instruction": (
                 "For all_routes, include each route literal or equivalent route tail token "

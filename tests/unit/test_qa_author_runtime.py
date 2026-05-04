@@ -15,6 +15,7 @@ from pgloom_engineering.qa_author_runtime import (
     build_qa_author_prompt,
     normalize_qa_author_payload,
     path_violations,
+    route_matches_prefix,
     verification_command,
 )
 
@@ -60,6 +61,15 @@ def test_api_prefixes_preserve_full_versioned_route_prefix() -> None:
         "/api/v1/orders",
         "/api/v2/orders/{id}",
     ]
+
+
+def test_route_prefix_matching_uses_path_boundary() -> None:
+    assert route_matches_prefix("GET /api/orders (OrdersController.java)", "/api/orders")
+    assert route_matches_prefix("GET /api/orders/123 (OrdersController.java)", "/api/orders")
+    assert not route_matches_prefix(
+        "GET /api/orders-admin (OrdersAdminController.java)",
+        "/api/orders",
+    )
 
 
 def _plan() -> PlanContract:
