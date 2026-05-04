@@ -236,7 +236,12 @@ def _task_contract_from_row(row: dict[str, Any]) -> Any:
 
 
 def _requires_handoff(task: dict[str, Any]) -> bool:
-    return task["task_type"] in {"engineering.review", "engineering.qa", "engineering.qa.verify"}
+    return task["task_type"] in {
+        "engineering.review",
+        "engineering.qa",
+        "engineering.qa.author",
+        "engineering.qa.verify",
+    }
 
 
 def _project_name(task: dict[str, Any], feature: dict[str, Any] | None) -> str | None:

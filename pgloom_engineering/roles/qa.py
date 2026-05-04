@@ -84,10 +84,11 @@ class QAHandler:
                 blocker_code="engineering.project_unregistered",
                 blocker_reason=f"Project is not registered: {plan.project}",
             )
+        verify_root = _qa_verify_worktree(task_contract, project.root)
         verification_results = [
             run_qa_verification(
                 command,
-                worktree=project.root,
+                worktree=verify_root,
                 project_metadata=project.metadata,
                 timeout_seconds=get_settings().qa_author_invocation_timeout_seconds,
                 database_url=database_url,
@@ -299,6 +300,18 @@ class QAHandler:
             for verification in verification_results
             if is_red_test_failure(verification)
         ]
+        if not touched:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.qa_no_changes",
+                blocker_reason="qa.author did not produce any relevant QA file changes",
+                result={
+                    "commands": [
+                        verification.original.argv for verification in verification_results
+                    ],
+                    "changed_files": touched,
+                },
+            )
         if not red_verifications:
             return HandlerResult(
                 status="blocked",
@@ -339,3 +352,13 @@ class QAHandler:
                 "gate_validation": gate_validation,
             }
         )
+
+
+def _qa_verify_worktree(task_contract: TaskContract, fallback: Path) -> Path:
+    raw_contract = task_contract.inputs.get("qa_author_contract")
+    if isinstance(raw_contract, dict) and raw_contract.get("worktree_path"):
+        return Path(str(raw_contract["worktree_path"]))
+    raw_path = task_contract.inputs.get("worktree_path")
+    if raw_path:
+        return Path(str(raw_path))
+    return fallback

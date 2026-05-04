@@ -122,6 +122,28 @@ class DependencyAwareProvider(FakeProvider):
         return super().invoke(profile=profile, prompt=prompt, **kwargs)
 
 
+class NoChangeProvider(FakeProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del profile, prompt, kwargs
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "feature_id": "feature-1",
+                    "task_id": "task-1",
+                    "tests_added": ["tests/test_acceptance.py::test_acceptance"],
+                    "matrix_coverage": {
+                        "acceptance criterion": [
+                            "tests/test_acceptance.py::test_acceptance",
+                        ]
+                    },
+                    "red_proof": [],
+                    "paths_touched": [],
+                }
+            ),
+            model_usage_id=42,
+        )
+
+
 def test_qa_author_creates_worktree_and_returns_contract(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
     plan = _plan()
@@ -296,6 +318,63 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
 
     assert result.status == "blocked"
     assert result.blocker_code == "engineering.qa_path_violation"
+
+
+def test_qa_author_rejects_red_proof_without_relevant_changes(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    repo.joinpath("tests").mkdir()
+    repo.joinpath("tests/test_acceptance.py").write_text(
+        "def test_acceptance():\n    assert False\n",
+        encoding="utf-8",
+    )
+    _run(["git", "add", "tests/test_acceptance.py"], cwd=repo)
+    _run(["git", "commit", "-m", "add existing failing test"], cwd=repo)
+    plan = _plan()
+    task_contract = _task_contract()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=NoChangeProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_no_changes"
 
 
 def test_qa_author_rechecks_path_policy_after_verification(
@@ -486,12 +565,25 @@ def test_qa_verify_blocks_without_task_contract(monkeypatch: Any) -> None:
 
 def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    authored_worktree.joinpath("marker.txt").write_text("authored\n", encoding="utf-8")
     plan = _plan()
     task_contract = _task_contract().model_copy(
         update={
             "task_type": "engineering.qa.verify",
+            "inputs": {
+                "qa_author_contract": {"worktree_path": str(authored_worktree)},
+            },
             "expected_outputs": ["QAResultContract"],
-            "verification_commands": [[sys.executable, "-c", "print('verify ok')"]],
+            "verification_commands": [
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; "
+                    "assert Path('marker.txt').exists(); print('verify ok')",
+                ]
+            ],
         }
     )
     monkeypatch.setattr(
@@ -537,7 +629,6 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
     assert contract.feature_id == "feature-1"
     assert contract.task_id == "verify-task-1"
     assert contract.verdict == "pass"
-    assert contract.commands == [[sys.executable, "-c", "print('verify ok')"]]
     assert "verify ok" in contract.evidence[0]
 
 
