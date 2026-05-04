@@ -626,7 +626,7 @@ def _spring_annotation_routes(text: str) -> list[dict[str, str]]:
         explicit_method = re.search(r"method\s*=\s*RequestMethod\.([A-Z]+)", body)
         if explicit_method is not None:
             method = explicit_method.group(1)
-        route_paths = _quoted_paths(body)
+        route_paths = _spring_route_paths(body)
         if not route_paths and match.group(1) != "Request":
             route_paths = [""]
         if match.group(1) == "Request" and re.search(r"\b(class|interface)\s+\w+", following):
@@ -659,6 +659,22 @@ def _quoted_api_paths(text: str) -> list[str]:
             continue
         paths.append(match.group(1))
     return paths
+
+
+def _spring_route_paths(text: str) -> list[str]:
+    stripped = text.strip()
+    paths: list[str] = []
+    if stripped.startswith(("'", '"')):
+        quoted = _quoted_paths(stripped)
+        if quoted:
+            paths.append(quoted[0])
+    for match in re.finditer(
+        r"""\b(?:path|value)\s*=\s*(?:\{([^}]*)\}|(["'][^"']*["']))""",
+        text,
+    ):
+        segment = match.group(1) or match.group(2) or ""
+        paths.extend(_quoted_paths(segment))
+    return list(dict.fromkeys(paths))
 
 
 def _quoted_paths(text: str) -> list[str]:

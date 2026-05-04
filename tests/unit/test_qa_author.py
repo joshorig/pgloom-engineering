@@ -465,7 +465,59 @@ def test_qa_author_hydrates_dependencies_before_invoking_provider(
     assert result.status == "done"
 
 
-def test_qa_verify_returns_valid_inconclusive_result_contract() -> None:
+def test_qa_verify_blocks_without_task_contract() -> None:
+    result = QAHandler().handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.task_contract_missing"
+
+
+def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify",
+            "expected_outputs": ["QAResultContract"],
+            "verification_commands": [[sys.executable, "-c", "print('verify ok')"]],
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+
     result = QAHandler().handle(
         {
             "id": "verify-task-1",
@@ -479,7 +531,9 @@ def test_qa_verify_returns_valid_inconclusive_result_contract() -> None:
     contract = QAResultContract.model_validate(result.result["qa_result_contract"])
     assert contract.feature_id == "feature-1"
     assert contract.task_id == "verify-task-1"
-    assert contract.verdict == "inconclusive"
+    assert contract.verdict == "pass"
+    assert contract.commands == [[sys.executable, "-c", "print('verify ok')"]]
+    assert "verify ok" in contract.evidence[0]
 
 
 def test_qa_author_blocks_script_string_assertions_when_gate_validation_required(

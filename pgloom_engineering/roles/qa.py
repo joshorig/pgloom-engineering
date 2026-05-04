@@ -58,18 +58,76 @@ class QAHandler:
         )
 
     def _handle_verify(self, task: dict[str, Any]) -> HandlerResult:
+        payload = dict(task.get("payload") or {})
+        database_url = payload.get("database_url")
         task_id = str(task.get("id") or "")
-        feature_id = str(
-            (task.get("payload") or {}).get("feature_id") or task.get("workflow_id") or ""
-        )
+        task_row = get_task_contract(task_id, database_url=database_url)
+        if task_row is None:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.task_contract_missing",
+                blocker_reason="qa.verify requires a persisted TaskContract",
+            )
+        task_contract = TaskContract.model_validate(task_row["input_contract"])
+        plan_row = get_active_plan_contract(task_contract.feature_id, database_url=database_url)
+        if plan_row is None:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.active_plan_missing",
+                blocker_reason="qa.verify requires an active PlanContract",
+            )
+        plan = PlanContract.model_validate(plan_row["contract"])
+        project = get_project(plan.project, database_url=database_url)
+        if project is None:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.project_unregistered",
+                blocker_reason=f"Project is not registered: {plan.project}",
+            )
+        verification_results = [
+            run_qa_verification(
+                command,
+                worktree=project.root,
+                project_metadata=project.metadata,
+                timeout_seconds=get_settings().qa_author_invocation_timeout_seconds,
+                database_url=database_url,
+                workflow_id=task.get("workflow_id"),
+                task_id=task_id,
+                feature_id=task_contract.feature_id,
+            )
+            for command in select_verification_commands(task_contract)
+        ]
         contract = QAResultContract(
-            feature_id=feature_id,
+            feature_id=task_contract.feature_id,
             task_id=task_id,
-            verdict="inconclusive",
-            commands=[],
-            evidence=[],
-            findings=["engineering.qa.verify handler is not implemented yet"],
+            verdict="pass"
+            if all(item.original.exit_code == 0 for item in verification_results)
+            else "fail",
+            commands=[item.original.argv for item in verification_results],
+            evidence=[
+                item.stdout_excerpt or item.stderr_excerpt or f"exit_code={item.original.exit_code}"
+                for item in verification_results
+            ],
+            findings=[
+                item.infra_error
+                for item in verification_results
+                if item.infra_error is not None
+            ],
         )
+        if contract.findings:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.project_unhealthy",
+                blocker_reason=contract.findings[0],
+                result={"qa_result_contract": contract.model_dump(mode="json")},
+            )
+        if contract.verdict != "pass":
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.qa_verify_failed",
+                blocker_reason="qa.verify command failed",
+                result={"qa_result_contract": contract.model_dump(mode="json")},
+            )
         return HandlerResult.done(
             {
                 "role": "qa",
