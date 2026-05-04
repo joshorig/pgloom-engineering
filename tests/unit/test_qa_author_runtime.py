@@ -58,6 +58,14 @@ def test_qa_author_runtime_path_and_command_helpers_are_shared() -> None:
     ]
 
 
+def test_path_violations_rejects_non_qa_paths_even_when_allowed() -> None:
+    task = _task_contract().model_copy(update={"allowed_paths": ["src/"]})
+
+    assert path_violations(["src/feature.py"], task) == [
+        {"path": "src/feature.py", "reason": "not_a_qa_write_path"}
+    ]
+
+
 def test_api_prefixes_preserve_full_versioned_route_prefix() -> None:
     assert api_prefixes_from_text("Cover /api/v1/orders and /api/v2/orders/{id}.") == [
         "/api/v1/orders",

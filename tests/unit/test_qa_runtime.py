@@ -315,6 +315,31 @@ def test_validate_required_qa_gates_accepts_shell_wrapper_commands(tmp_path: Pat
     ]
 
 
+def test_validate_required_qa_gates_uses_command_args_for_coverage(tmp_path: Path) -> None:
+    tmp_path.joinpath("gradlew").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    validation = validate_required_qa_gates(
+        tmp_path,
+        {
+            "qa": {
+                "required_gates": [
+                    {
+                        "id": "smoke",
+                        "command": ["./gradlew", ":benchmarks:jmhSmokeCheck"],
+                        "must_cover": ["benchmark_smoke"],
+                    }
+                ]
+            }
+        },
+    )
+
+    assert validation[0]["status"] == "configured"
+    assert validation[0]["evidence"] == [
+        "command_file:gradlew",
+        "covers:benchmark_smoke",
+    ]
+
+
 def test_required_qa_gates_reject_generic_benchmark_and_test_tokens(tmp_path: Path) -> None:
     tmp_path.joinpath("qa").mkdir()
     tmp_path.joinpath("qa/weak.sh").write_text(

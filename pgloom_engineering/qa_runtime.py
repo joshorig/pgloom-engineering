@@ -138,10 +138,11 @@ def validate_required_qa_gates(
             elif full_path.is_file():
                 text = full_path.read_text(encoding="utf-8", errors="replace")
                 evidence.append(f"command_file:{command_path}")
+        coverage_text = "\n".join([*command_list, text])
         for coverage in raw_gate.get("must_cover", []):
             coverage_id = str(coverage)
             tokens = _gate_coverage_tokens(coverage_id)
-            if text and any(token in text for token in tokens):
+            if any(token in coverage_text for token in tokens):
                 evidence.append(f"covers:{coverage_id}")
             else:
                 missing.append(f"coverage:{coverage_id}")

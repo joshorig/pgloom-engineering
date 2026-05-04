@@ -311,7 +311,7 @@ def path_violations(paths: list[str], task_contract: TaskContract) -> list[dict[
     for path in paths:
         allowed = any(path_matches(path, root) for root in task_contract.allowed_paths)
         forbidden = any(path_matches(path, root) for root in task_contract.forbidden_paths)
-        qa_path = is_qa_write_path(path, task_contract.allowed_paths)
+        qa_path = is_qa_write_path(path)
         if not allowed or forbidden or not qa_path:
             violations.append(
                 {
