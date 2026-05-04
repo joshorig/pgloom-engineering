@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -80,7 +81,7 @@ def task_branch_name(
             _slug(prefix),
             _slug(feature_id),
             _slug(slice_id),
-            _slug(task_id)[:16],
+            _branch_task_component(task_id),
         ]
     )
 
@@ -175,3 +176,9 @@ def _parse_porcelain_z(output: str) -> list[str]:
 def _slug(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip("-._")
     return slug.lower() or "item"
+
+
+def _branch_task_component(task_id: str) -> str:
+    slug = _slug(task_id)
+    digest = hashlib.sha1(task_id.encode("utf-8")).hexdigest()[:10]
+    return f"{slug[:24]}-{digest}"

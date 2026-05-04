@@ -34,6 +34,7 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     command_with_env,
     hydrate_dependencies,
+    is_red_test_failure,
     qa_env,
     relevant_changed_files,
     run_qa_verification,
@@ -229,7 +230,7 @@ class QAHandler:
         red_verifications = [
             verification
             for verification in verification_results
-            if verification.original.exit_code != 0 and verification.infra_error is None
+            if is_red_test_failure(verification)
         ]
         if not red_verifications:
             return HandlerResult(

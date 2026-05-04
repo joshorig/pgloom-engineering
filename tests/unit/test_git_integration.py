@@ -15,8 +15,23 @@ from pgloom_engineering.integrations.git import (
 
 def test_task_branch_name_is_stable_and_safe() -> None:
     assert task_branch_name(feature_id="Feature 1", task_id="task/abc", slice_id="qa author") == (
-        "pgloom/feature-1/qa-author/task-abc"
+        "pgloom/feature-1/qa-author/task-abc-f1c94f45da"
     )
+
+
+def test_task_branch_name_avoids_truncated_task_id_collisions() -> None:
+    first = task_branch_name(
+        feature_id="feature",
+        slice_id="qa",
+        task_id="same-very-long-task-prefix-alpha",
+    )
+    second = task_branch_name(
+        feature_id="feature",
+        slice_id="qa",
+        task_id="same-very-long-task-prefix-beta",
+    )
+
+    assert first != second
 
 
 def test_worktree_change_commit_and_push_round_trip(tmp_path: Path) -> None:

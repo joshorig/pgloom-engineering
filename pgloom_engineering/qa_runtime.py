@@ -377,6 +377,22 @@ def canonical_red_proof(result: QAVerificationResult) -> list[dict[str, Any]]:
     ]
 
 
+def is_red_test_failure(result: QAVerificationResult) -> bool:
+    if result.infra_error is not None or result.original.exit_code == 0:
+        return False
+    combined = f"{result.original.stdout}\n{result.original.stderr}".lower()
+    if "no tests collected" in combined or "collected 0 items" in combined:
+        return False
+    command_text = " ".join(result.original.argv).lower()
+    if _is_pytest_command(command_text):
+        return result.original.exit_code == 1
+    return result.original.exit_code != 0
+
+
+def _is_pytest_command(command_text: str) -> bool:
+    return "pytest" in command_text
+
+
 def verification_infra_error(stdout: str, stderr: str) -> str | None:
     combined = f"{stdout}\n{stderr}".lower()
     stderr_lower = stderr.lower()

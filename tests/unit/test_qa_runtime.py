@@ -4,11 +4,15 @@ import os
 import sys
 from pathlib import Path
 
+from pgloom.harness.subprocess import SubprocessResult
+
 from pgloom_engineering.qa_runtime import (
+    QAVerificationResult,
     canonical_red_proof,
     discover_route_inventory,
     hydrate_dependencies,
     is_generated_tool_artifact,
+    is_red_test_failure,
     prompt_safe_qa_metadata,
     qa_env,
     relevant_changed_files,
@@ -264,6 +268,44 @@ def test_missing_executable_is_an_infra_error() -> None:
     stderr = "env: definitely-missing-command: No such file or directory"
 
     assert verification_infra_error("", stderr) == "no such file or directory"
+
+
+def test_pytest_no_collection_exit_is_not_red_test_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=[sys.executable, "-m", "pytest", "tests", "-q"],
+            exit_code=5,
+            stdout="collected 0 items\nno tests collected\n",
+            stderr="",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="collected 0 items\nno tests collected\n",
+        stderr_excerpt="",
+        infra_error=None,
+    )
+
+    assert not is_red_test_failure(result)
+
+
+def test_pytest_assertion_failure_exit_is_red_test_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=[sys.executable, "-m", "pytest", "tests", "-q"],
+            exit_code=1,
+            stdout="FAILED tests/test_feature.py::test_feature - AssertionError",
+            stderr="",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="FAILED tests/test_feature.py::test_feature - AssertionError",
+        stderr_excerpt="",
+        infra_error=None,
+    )
+
+    assert is_red_test_failure(result)
 
 
 def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
