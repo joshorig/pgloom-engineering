@@ -253,7 +253,6 @@ def _requires_handoff(task: dict[str, Any]) -> bool:
         "engineering.review",
         "engineering.qa",
         "engineering.qa.author",
-        "engineering.qa.verify",
     }
 
 

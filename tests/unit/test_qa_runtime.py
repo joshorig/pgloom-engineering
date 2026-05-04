@@ -399,6 +399,34 @@ def test_required_qa_gates_reject_generic_benchmark_and_test_tokens(tmp_path: Pa
     ]
 
 
+def test_required_qa_gates_do_not_accept_regression_filename_as_unit_gate(
+    tmp_path: Path,
+) -> None:
+    tmp_path.joinpath("qa").mkdir()
+    tmp_path.joinpath("qa/regression.sh").write_text(
+        "echo only named regression\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_required_qa_gates(
+        tmp_path,
+        {
+            "qa": {
+                "required_gates": [
+                    {
+                        "id": "regression",
+                        "command": ["./qa/regression.sh"],
+                        "must_cover": ["unit_regression"],
+                    }
+                ]
+            }
+        },
+    )
+
+    assert validation[0]["status"] == "missing"
+    assert validation[0]["missing"] == ["coverage:unit_regression"]
+
+
 def test_no_tests_found_is_not_an_infra_error() -> None:
     assert verification_infra_error("collected 0 items\nno tests found", "") is None
 

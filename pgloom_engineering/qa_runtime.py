@@ -178,7 +178,6 @@ def _gate_coverage_tokens(coverage_id: str) -> list[str]:
             "mvn test",
             "pytest",
             "unit_regression",
-            "regression",
         ],
     }
     return tokens.get(coverage_id, [coverage_id])
