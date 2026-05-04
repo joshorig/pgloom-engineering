@@ -289,7 +289,7 @@ def relevant_changed_files(
         if "__pycache__/" not in path
         and not path.endswith((".pyc", ".pyo"))
         and path not in {"node_modules", "ui/node_modules"}
-        and path not in hydrated_paths
+        and not _is_hydrated_dependency_path(path, hydrated_paths)
         and not is_generated_tool_artifact(path)
     ]
 
@@ -300,6 +300,14 @@ def _dependency_hydration_paths(project_metadata: dict[str, Any]) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [str(item).strip("/") for item in raw if isinstance(item, str)]
+
+
+def _is_hydrated_dependency_path(path: str, hydrated_paths: set[str]) -> bool:
+    normalized = path.strip("/")
+    return any(
+        normalized == hydrated_path or normalized.startswith(f"{hydrated_path}/")
+        for hydrated_path in hydrated_paths
+    )
 
 
 def is_generated_tool_artifact(path: str) -> bool:

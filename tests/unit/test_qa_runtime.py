@@ -535,6 +535,10 @@ def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
 
 def test_relevant_changed_files_filters_metadata_dependency_hydration_paths() -> None:
     assert relevant_changed_files(
-        ["frontend/node_modules", "tests/test_feature.py"],
+        [
+            "frontend/node_modules",
+            "frontend/node_modules/.cache/tool/state.json",
+            "tests/test_feature.py",
+        ],
         {"qa": {"dependency_hydration": ["frontend/node_modules"]}},
     ) == ["tests/test_feature.py"]
