@@ -17,6 +17,7 @@ from pgloom_engineering.qa_author_runtime import (
     path_violations,
     route_matches_prefix,
     verification_command,
+    verification_commands,
 )
 
 
@@ -51,6 +52,7 @@ def test_qa_author_runtime_path_and_command_helpers_are_shared() -> None:
     task = _task_contract()
 
     assert verification_command(task) == [sys.executable, "-m", "pytest", "tests", "-q"]
+    assert verification_commands(task) == [[sys.executable, "-m", "pytest", "tests", "-q"]]
     assert path_violations(["src/feature.py", "tests/test_feature.py"], task) == [
         {"path": "src/feature.py", "reason": "outside_allowed_paths"}
     ]

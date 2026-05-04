@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from pgloom_engineering.planner.eval_runtime import (
+    DirectProvider,
     command_for_planner_model,
     model_result_text,
     usage_record,
@@ -16,6 +18,7 @@ def test_planner_eval_runtime_builds_codex_command() -> None:
         model="gpt-5.5",
         reasoning="high",
         claude_max_budget_usd="5.00",
+        cwd=Path("/tmp/pgloom-engineering"),
     ) == [
         "codex",
         "exec",
@@ -26,11 +29,26 @@ def test_planner_eval_runtime_builds_codex_command() -> None:
         "-s",
         "read-only",
         "-C",
-        "/Volumes/devssd/repos/oss/pgloom-engineering",
+        "/tmp/pgloom-engineering",
         "--ephemeral",
         "--json",
         "-",
     ]
+
+
+def test_planner_eval_provider_uses_configurable_cwd(tmp_path: Path) -> None:
+    provider = DirectProvider(
+        backend="codex",
+        output_dir=tmp_path,
+        model="gpt-5.5",
+        reasoning="high",
+        mechanical_model=None,
+        mechanical_reasoning=None,
+        claude_max_budget_usd="5.00",
+        cwd=tmp_path,
+    )
+
+    assert provider.cwd == tmp_path
 
 
 def test_planner_eval_runtime_extracts_codex_usage_and_result_text() -> None:

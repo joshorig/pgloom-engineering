@@ -28,6 +28,7 @@ class DirectProvider:
         mechanical_model: str | None,
         mechanical_reasoning: str | None,
         claude_max_budget_usd: str,
+        cwd: Path | None = None,
     ) -> None:
         self.backend = backend
         self.output_dir = output_dir
@@ -36,6 +37,7 @@ class DirectProvider:
         self.mechanical_model = mechanical_model
         self.mechanical_reasoning = mechanical_reasoning
         self.claude_max_budget_usd = claude_max_budget_usd
+        self.cwd = cwd or Path.cwd()
         self.counts: dict[str, int] = {}
         self.usage_path = output_dir / "model_usage.jsonl"
 
@@ -60,6 +62,7 @@ class DirectProvider:
             model=self._model_for_profile(profile.name),
             reasoning=self._reasoning_for_profile(profile.name),
             claude_max_budget_usd=self.claude_max_budget_usd,
+            cwd=self.cwd,
         )
         started = time.monotonic()
         completed = subprocess.run(
@@ -67,7 +70,7 @@ class DirectProvider:
             input=prompt,
             text=True,
             capture_output=True,
-            cwd="/Volumes/devssd/repos/oss/pgloom-engineering",
+            cwd=self.cwd,
             timeout=600,
             check=False,
         )
@@ -112,6 +115,7 @@ def command_for_planner_model(
     model: str,
     reasoning: str,
     claude_max_budget_usd: str,
+    cwd: Path | None = None,
 ) -> list[str]:
     if backend == "claude":
         return [
@@ -135,7 +139,7 @@ def command_for_planner_model(
         "-s",
         "read-only",
         "-C",
-        "/Volumes/devssd/repos/oss/pgloom-engineering",
+        str(cwd or Path.cwd()),
         "--ephemeral",
         "--json",
         "-",

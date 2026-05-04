@@ -28,7 +28,7 @@ from pgloom_engineering.qa_author_runtime import (
     semantic_quality_findings,
 )
 from pgloom_engineering.qa_author_runtime import (
-    verification_command as select_verification_command,
+    verification_commands as select_verification_commands,
 )
 from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
@@ -192,39 +192,56 @@ class QAHandler:
                     "changed_files": touched,
                 },
             )
-        verification_command = select_verification_command(task_contract)
-        verification = run_qa_verification(
-            verification_command,
-            worktree=handle.worktree,
-            project_metadata=project.metadata,
-            timeout_seconds=settings.qa_author_invocation_timeout_seconds,
-            database_url=database_url,
-            workflow_id=task.get("workflow_id"),
-            task_id=task_id,
-            feature_id=task_contract.feature_id,
+        verification_results = [
+            run_qa_verification(
+                command,
+                worktree=handle.worktree,
+                project_metadata=project.metadata,
+                timeout_seconds=settings.qa_author_invocation_timeout_seconds,
+                database_url=database_url,
+                workflow_id=task.get("workflow_id"),
+                task_id=task_id,
+                feature_id=task_contract.feature_id,
+            )
+            for command in select_verification_commands(task_contract)
+        ]
+        infra_verification = next(
+            (
+                verification
+                for verification in verification_results
+                if verification.infra_error is not None
+            ),
+            None,
         )
-        if verification.infra_error is not None:
+        if infra_verification is not None:
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.project_unhealthy",
-                blocker_reason=verification.infra_error,
+                blocker_reason=infra_verification.infra_error,
                 result={
-                    "command": verification_command,
-                    "exit_code": verification.original.exit_code,
-                    "stdout_excerpt": verification.stdout_excerpt,
-                    "stderr_excerpt": verification.stderr_excerpt,
+                    "command": infra_verification.original.argv,
+                    "exit_code": infra_verification.original.exit_code,
+                    "stdout_excerpt": infra_verification.stdout_excerpt,
+                    "stderr_excerpt": infra_verification.stderr_excerpt,
                     "changed_files": touched,
                 },
             )
-        if verification.original.exit_code == 0:
+        red_verifications = [
+            verification
+            for verification in verification_results
+            if verification.original.exit_code != 0 and verification.infra_error is None
+        ]
+        if not red_verifications:
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.qa_tests_not_red",
-                blocker_reason="qa.author verification command passed; expected failing tests",
+                blocker_reason="qa.author verification commands passed; expected failing tests",
                 result={
-                    "command": verification_command,
-                    "stdout_excerpt": verification.stdout_excerpt,
-                    "stderr_excerpt": verification.stderr_excerpt,
+                    "commands": [
+                        verification.original.argv for verification in verification_results
+                    ],
+                    "stdout_excerpt": verification_results[-1].stdout_excerpt,
+                    "stderr_excerpt": verification_results[-1].stderr_excerpt,
                     "changed_files": touched,
                 },
             )
@@ -232,7 +249,11 @@ class QAHandler:
             update={
                 "feature_id": task_contract.feature_id,
                 "task_id": task_id,
-                "red_proof": canonical_red_proof(verification),
+                "red_proof": [
+                    proof
+                    for verification in red_verifications
+                    for proof in canonical_red_proof(verification)
+                ],
                 "paths_touched": sorted(set([*contract.paths_touched, *touched])),
                 "branch": handle.branch,
                 "worktree_path": str(handle.worktree),

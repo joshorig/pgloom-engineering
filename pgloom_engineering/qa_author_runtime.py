@@ -297,9 +297,13 @@ def api_prefixes_from_text(text: str) -> list[str]:
 
 
 def verification_command(task_contract: TaskContract) -> list[str]:
+    return verification_commands(task_contract)[0]
+
+
+def verification_commands(task_contract: TaskContract) -> list[list[str]]:
     if task_contract.verification_commands:
-        return task_contract.verification_commands[0]
-    return ["pytest"]
+        return task_contract.verification_commands
+    return [["pytest"]]
 
 
 def path_violations(paths: list[str], task_contract: TaskContract) -> list[dict[str, str]]:
