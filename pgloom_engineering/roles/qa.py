@@ -206,6 +206,15 @@ class QAHandler:
             )
             for command in select_verification_commands(task_contract)
         ]
+        touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+        violations = path_violations(touched, task_contract)
+        if violations:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.qa_path_violation",
+                blocker_reason="qa.author touched paths outside its contract",
+                result={"violations": violations, "changed_files": touched},
+            )
         infra_verification = next(
             (
                 verification

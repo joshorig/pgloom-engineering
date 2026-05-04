@@ -298,6 +298,71 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
     assert result.blocker_code == "engineering.qa_path_violation"
 
 
+def test_qa_author_rechecks_path_policy_after_verification(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "verification_commands": [
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('src').mkdir(); "
+                    "Path('src/app.py').write_text('print(1)\\n')",
+                ],
+                [sys.executable, "-m", "pytest", "tests/test_acceptance.py", "-q"],
+            ]
+        }
+    )
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=FakeProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_path_violation"
+    assert result.result["violations"] == [
+        {"path": "src/app.py", "reason": "outside_allowed_paths"}
+    ]
+
+
 def test_qa_author_filters_generated_artifacts_before_path_policy(
     tmp_path: Path,
     monkeypatch: Any,

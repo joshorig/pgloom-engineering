@@ -614,6 +614,10 @@ def _spring_annotation_routes(text: str) -> list[dict[str, str]]:
     matches = list(pattern.finditer(text))
     class_prefixes: list[str] = []
     for index, match in enumerate(matches):
+        if index > 0 and matches[index - 1].group(1) != "Request":
+            preceding = text[matches[index - 1].end() : match.start()]
+            if re.search(r"\b(class|interface)\s+\w+", preceding):
+                class_prefixes = []
         method = method_by_annotation[match.group(1)]
         body = match.group(2) or ""
         next_start = matches[index + 1].start() if index + 1 < len(matches) else len(text)

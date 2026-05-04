@@ -201,6 +201,39 @@ def test_discover_route_inventory_handles_no_arg_spring_method_mappings(
     ]
 
 
+def test_discover_route_inventory_clears_prefix_between_spring_controllers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app-api/src/main/java/example/Controllers.java"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "\n".join(
+            [
+                '@RequestMapping("/api/runtime")',
+                "class RuntimeController {",
+                "  @GetMapping",
+                "  Object runtime() { return null; }",
+                "}",
+                "class InternalController {",
+                '  @GetMapping("/internal")',
+                "  Object internal() { return null; }",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = discover_route_inventory(
+        tmp_path,
+        {"qa": {"endpoint_roots": ["app-api/src/main/java"]}},
+        api_prefixes=["/api/runtime"],
+    )
+
+    assert route_inventory_for_prompt(routes) == [
+        "GET /api/runtime (app-api/src/main/java/example/Controllers.java)",
+    ]
+
+
 def test_prompt_safe_qa_metadata_preserves_structured_required_gates() -> None:
     metadata = {
         "required_gates": [
