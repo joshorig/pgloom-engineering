@@ -280,15 +280,28 @@ def hydrate_dependencies(
         target.symlink_to(source, target_is_directory=source.is_dir())
 
 
-def relevant_changed_files(paths: list[str]) -> list[str]:
+def relevant_changed_files(
+    paths: list[str],
+    project_metadata: dict[str, Any] | None = None,
+) -> list[str]:
+    hydrated_paths = set(_dependency_hydration_paths(project_metadata or {}))
     return [
         path
         for path in paths
         if "__pycache__/" not in path
         and not path.endswith((".pyc", ".pyo"))
         and path not in {"node_modules", "ui/node_modules"}
+        and path not in hydrated_paths
         and not is_generated_tool_artifact(path)
     ]
+
+
+def _dependency_hydration_paths(project_metadata: dict[str, Any]) -> list[str]:
+    metadata = project_qa_metadata(project_metadata)
+    raw = metadata.get("dependency_hydration")
+    if not isinstance(raw, list):
+        return []
+    return [str(item).strip("/") for item in raw if isinstance(item, str)]
 
 
 def is_generated_tool_artifact(path: str) -> bool:
@@ -386,11 +399,29 @@ def is_red_test_failure(result: QAVerificationResult) -> bool:
     command_text = " ".join(result.original.argv).lower()
     if _is_pytest_command(command_text):
         return result.original.exit_code == 1
-    return result.original.exit_code != 0
+    return _has_test_failure_signal(combined)
 
 
 def _is_pytest_command(command_text: str) -> bool:
     return "pytest" in command_text
+
+
+def _has_test_failure_signal(output: str) -> bool:
+    signals = [
+        "assertionerror",
+        "assertion failed",
+        "expected:",
+        "expected <",
+        "expected but was",
+        "comparisonfailure",
+        "there were failing tests",
+        "test failed",
+        "tests failed",
+        "failures:",
+        "failed tests:",
+        "failed:",
+    ]
+    return any(signal in output for signal in signals)
 
 
 def verification_infra_error(stdout: str, stderr: str) -> str | None:

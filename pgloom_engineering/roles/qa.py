@@ -154,7 +154,7 @@ class QAHandler:
                 blocker_reason=str(exc),
                 result={"raw_response": response.text},
             )
-        touched = relevant_changed_files(changed_files(handle.worktree))
+        touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
         violations = path_violations(touched, task_contract)
         if violations:
             return HandlerResult(

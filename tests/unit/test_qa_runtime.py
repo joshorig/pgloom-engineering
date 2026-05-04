@@ -308,6 +308,44 @@ def test_pytest_assertion_failure_exit_is_red_test_failure() -> None:
     assert is_red_test_failure(result)
 
 
+def test_non_pytest_build_error_is_not_red_test_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./qa/regression.sh"],
+            exit_code=1,
+            stdout="Compilation failed; cannot find symbol",
+            stderr="",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="Compilation failed; cannot find symbol",
+        stderr_excerpt="",
+        infra_error=None,
+    )
+
+    assert not is_red_test_failure(result)
+
+
+def test_non_pytest_test_failure_signal_is_red_test_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./qa/regression.sh"],
+            exit_code=1,
+            stdout="There were failing tests. AssertionError: expected <1> but was <2>",
+            stderr="",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="There were failing tests.",
+        stderr_excerpt="",
+        infra_error=None,
+    )
+
+    assert is_red_test_failure(result)
+
+
 def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
     assert relevant_changed_files(
         [
@@ -320,3 +358,10 @@ def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
         ]
     ) == ["tests/test_feature.py", "ui/tests/e2e/domain-switch.spec.ts"]
     assert is_generated_tool_artifact("test-results/.last-run.json")
+
+
+def test_relevant_changed_files_filters_metadata_dependency_hydration_paths() -> None:
+    assert relevant_changed_files(
+        ["frontend/node_modules", "tests/test_feature.py"],
+        {"qa": {"dependency_hydration": ["frontend/node_modules"]}},
+    ) == ["tests/test_feature.py"]

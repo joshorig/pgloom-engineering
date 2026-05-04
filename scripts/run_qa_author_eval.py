@@ -35,6 +35,7 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     discover_route_inventory,
     hydrate_dependencies,
+    is_red_test_failure,
     project_qa_metadata,
     prompt_safe_qa_metadata,
     qa_env,
@@ -1228,7 +1229,7 @@ def _evaluate(
     model_error = _model_error(stdout)
     if model_error is not None:
         findings.append(model_error)
-    touched = _relevant_changed_files(worktree)
+    touched = _relevant_changed_files(worktree, project_metadata)
     findings.extend(path_violations(touched, task_contract))
     contract: QAAuthorContract | None = None
     if model_error is None:
@@ -1264,11 +1265,11 @@ def _evaluate(
                 "command": verification_command,
             }
         )
-    if verification.original.exit_code == 0:
+    if not is_red_test_failure(verification):
         findings.append(
             {
                 "code": "tests_not_red",
-                "message": "verification command unexpectedly passed",
+                "message": "verification command did not prove a real failing test",
                 "command": verification_command,
             }
         )
@@ -2356,8 +2357,8 @@ def _string_or_list_to_list(value: object) -> object:
     return value
 
 
-def _relevant_changed_files(worktree: Path) -> list[str]:
-    return relevant_changed_files(changed_files(worktree))
+def _relevant_changed_files(worktree: Path, project_metadata: dict[str, Any]) -> list[str]:
+    return relevant_changed_files(changed_files(worktree), project_metadata)
 
 
 def _int_or_none(value: Any) -> int | None:
