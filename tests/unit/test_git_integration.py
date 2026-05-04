@@ -53,6 +53,37 @@ def test_worktree_change_commit_and_push_round_trip(tmp_path: Path) -> None:
     assert pushed.exit_code == 0
 
 
+def test_create_task_worktree_reuses_existing_task_worktree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    _run(["git", "init", "-b", "main", str(repo)])
+    _run(["git", "config", "user.email", "test@example.com"], cwd=repo)
+    _run(["git", "config", "user.name", "Test User"], cwd=repo)
+    repo.joinpath("README.md").write_text("hello\n", encoding="utf-8")
+    _run(["git", "add", "README.md"], cwd=repo)
+    _run(["git", "commit", "-m", "initial"], cwd=repo)
+
+    first = create_task_worktree(
+        repo=repo,
+        worktree_root=worktrees,
+        feature_id="feature-1",
+        task_id="task-1",
+        slice_id="qa-author",
+        base_ref="main",
+    )
+    second = create_task_worktree(
+        repo=repo,
+        worktree_root=worktrees,
+        feature_id="feature-1",
+        task_id="task-1",
+        slice_id="qa-author",
+        base_ref="main",
+    )
+
+    assert second.branch == first.branch
+    assert second.worktree == first.worktree
+
+
 def _run(argv: list[str], *, cwd: Path | None = None) -> None:
     result = run_bounded(argv, cwd=cwd, timeout_seconds=30)
     assert result.exit_code == 0, result.stderr

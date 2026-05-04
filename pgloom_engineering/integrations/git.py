@@ -52,6 +52,14 @@ def create_task_worktree(
     )
     worktree = worktree_root / branch.replace("/", "__")
     worktree.parent.mkdir(parents=True, exist_ok=True)
+    existing = _worktree_for_branch(repo, branch, timeout_seconds=timeout_seconds)
+    if existing is not None:
+        if existing.resolve() != worktree.resolve():
+            raise RuntimeError(
+                f"branch {branch!r} is already attached to worktree {existing}, "
+                f"not expected path {worktree}"
+            )
+        return WorktreeHandle(repo=repo, worktree=worktree, branch=branch)
     _git(
         repo,
         ["worktree", "add", "-B", branch, str(worktree), base_ref],
@@ -133,6 +141,18 @@ def _git(repo: Path, args: list[str], *, timeout_seconds: float) -> SubprocessRe
     if result.exit_code != 0 or result.timed_out or result.killed:
         raise GitCommandError(result)
     return result
+
+
+def _worktree_for_branch(repo: Path, branch: str, *, timeout_seconds: float) -> Path | None:
+    result = _git(repo, ["worktree", "list", "--porcelain"], timeout_seconds=timeout_seconds)
+    current_path: Path | None = None
+    expected_branch = f"refs/heads/{branch}"
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            current_path = Path(line.removeprefix("worktree "))
+        elif line == f"branch {expected_branch}" and current_path is not None:
+            return current_path
+    return None
 
 
 def _parse_porcelain_z(output: str) -> list[str]:

@@ -12,6 +12,7 @@ from pgloom_engineering.qa_runtime import (
     route_inventory_for_prompt,
     run_qa_verification,
     validate_required_qa_gates,
+    verification_infra_error,
 )
 
 
@@ -139,3 +140,7 @@ def test_validate_required_qa_gates_reports_configured_evidence(tmp_path: Path) 
             "missing": [],
         }
     ]
+
+
+def test_no_tests_found_is_not_an_infra_error() -> None:
+    assert verification_infra_error("collected 0 items\nno tests found", "") is None

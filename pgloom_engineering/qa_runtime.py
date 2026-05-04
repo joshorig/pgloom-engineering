@@ -323,7 +323,6 @@ def verification_infra_error(stdout: str, stderr: str) -> str | None:
         "cannot find package",
         "getaddrinfo enotfound",
         "npm error network",
-        "no tests found",
     ]
     for pattern in patterns:
         if pattern in combined:

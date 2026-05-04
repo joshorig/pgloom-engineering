@@ -11,6 +11,7 @@ from pgloom.harness.subprocess import run_bounded
 from pgloom_engineering.contracts import (
     DesignContract,
     PlanContract,
+    QAResultContract,
     TaskContract,
     TaskSliceContract,
 )
@@ -211,6 +212,23 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
 
     assert result.status == "blocked"
     assert result.blocker_code == "engineering.qa_path_violation"
+
+
+def test_qa_verify_returns_valid_inconclusive_result_contract() -> None:
+    result = QAHandler().handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+    contract = QAResultContract.model_validate(result.result["qa_result_contract"])
+    assert contract.feature_id == "feature-1"
+    assert contract.task_id == "verify-task-1"
+    assert contract.verdict == "inconclusive"
 
 
 def test_qa_author_blocks_script_string_assertions_when_gate_validation_required(

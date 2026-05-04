@@ -9,7 +9,12 @@ from pgloom.models.cli import CLIModelProfile
 
 from pgloom_engineering.config import get_settings
 from pgloom_engineering.contract_store import get_active_plan_contract, get_task_contract
-from pgloom_engineering.contracts import PlanContract, QAAuthorContract, TaskContract
+from pgloom_engineering.contracts import (
+    PlanContract,
+    QAAuthorContract,
+    QAResultContract,
+    TaskContract,
+)
 from pgloom_engineering.integrations.git import changed_files, create_task_worktree
 from pgloom_engineering.model_provider import EngineeringCLIModelProvider
 from pgloom_engineering.path_policy import is_qa_write_path
@@ -37,11 +42,32 @@ class QAHandler:
         if task["task_type"] == "engineering.qa.author":
             return self._handle_author(task)
         if task["task_type"] in {"engineering.qa", "engineering.qa.verify"}:
-            return HandlerResult.done({"role": "qa", "task_id": task.get("id")})
+            return self._handle_verify(task)
         return HandlerResult(
             status="blocked",
             blocker_code="engineering.qa_unknown_task_type",
             blocker_reason=f"unsupported task_type: {task['task_type']}",
+        )
+
+    def _handle_verify(self, task: dict[str, Any]) -> HandlerResult:
+        task_id = str(task.get("id") or "")
+        feature_id = str(
+            (task.get("payload") or {}).get("feature_id") or task.get("workflow_id") or ""
+        )
+        contract = QAResultContract(
+            feature_id=feature_id,
+            task_id=task_id,
+            verdict="inconclusive",
+            commands=[],
+            evidence=[],
+            findings=["engineering.qa.verify handler is not implemented yet"],
+        )
+        return HandlerResult.done(
+            {
+                "role": "qa",
+                "task_id": task_id,
+                "qa_result_contract": contract.model_dump(mode="json"),
+            }
         )
 
     def _handle_author(self, task: dict[str, Any]) -> HandlerResult:
