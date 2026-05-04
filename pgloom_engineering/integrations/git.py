@@ -167,6 +167,8 @@ def _parse_porcelain_z(output: str) -> list[str]:
         if "R" in status or "C" in status:
             paths.append(path)
             index += 1
+            if index < len(entries):
+                paths.append(entries[index])
         else:
             paths.append(path)
         index += 1

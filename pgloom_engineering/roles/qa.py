@@ -84,7 +84,13 @@ class QAHandler:
                 blocker_code="engineering.project_unregistered",
                 blocker_reason=f"Project is not registered: {plan.project}",
             )
-        verify_root = _qa_verify_worktree(task_contract, project.root)
+        verify_root = _qa_verify_worktree(task_contract)
+        if verify_root is None:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.qa_verify_worktree_missing",
+                blocker_reason="qa.verify requires an authored worktree path from QA handoff",
+            )
         verification_results = [
             run_qa_verification(
                 command,
@@ -354,11 +360,11 @@ class QAHandler:
         )
 
 
-def _qa_verify_worktree(task_contract: TaskContract, fallback: Path) -> Path:
+def _qa_verify_worktree(task_contract: TaskContract) -> Path | None:
     raw_contract = task_contract.inputs.get("qa_author_contract")
     if isinstance(raw_contract, dict) and raw_contract.get("worktree_path"):
         return Path(str(raw_contract["worktree_path"]))
     raw_path = task_contract.inputs.get("worktree_path")
     if raw_path:
         return Path(str(raw_path))
-    return fallback
+    return None
