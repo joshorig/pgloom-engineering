@@ -214,7 +214,20 @@ def _post_execution_gate(
         elif task["task_type"] == "engineering.review":
             ReviewVerdictContract.model_validate(result.result.get("review_verdict_contract"))
         elif task["task_type"] == "engineering.qa.author":
-            QAAuthorContract.model_validate(result.result.get("qa_author_contract"))
+            qa_author_contract = QAAuthorContract.model_validate(
+                result.result.get("qa_author_contract")
+            )
+            row = get_task_contract(task["id"], database_url=database_url)
+            if row is not None:
+                upsert_task_contract(
+                    task["id"],
+                    _task_contract_from_row(row),
+                    output_contract={
+                        "qa_author_contract": qa_author_contract.model_dump(mode="json")
+                    },
+                    status="completed",
+                    database_url=database_url,
+                )
         elif task["task_type"] in {"engineering.qa", "engineering.qa.verify"}:
             QAResultContract.model_validate(result.result.get("qa_result_contract"))
     except Exception as exc:

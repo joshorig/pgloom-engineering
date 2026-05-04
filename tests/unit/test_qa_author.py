@@ -166,6 +166,10 @@ def test_qa_author_creates_worktree_and_returns_contract(tmp_path: Path, monkeyp
         lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
     )
     monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_active_plan_contract",
         lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
     )
@@ -232,6 +236,10 @@ def test_qa_author_runs_all_verification_commands(tmp_path: Path, monkeypatch: A
         lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
     )
     monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_active_plan_contract",
         lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
     )
@@ -293,6 +301,10 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_task_contract",
         lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
     )
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_active_plan_contract",
@@ -569,12 +581,17 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
     authored_worktree.mkdir()
     authored_worktree.joinpath("marker.txt").write_text("authored\n", encoding="utf-8")
     plan = _plan()
+    qa_author_output = {
+        "qa_author_contract": {
+            "feature_id": "feature-1",
+            "task_id": "qa-author-task-1",
+            "worktree_path": str(authored_worktree),
+        }
+    }
     task_contract = _task_contract().model_copy(
         update={
             "task_type": "engineering.qa.verify",
-            "inputs": {
-                "qa_author_contract": {"worktree_path": str(authored_worktree)},
-            },
+            "dependencies": ["qa-author-task-1"],
             "expected_outputs": ["QAResultContract"],
             "verification_commands": [
                 [
@@ -598,9 +615,22 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
             qa_author_claude_model="haiku",
         ),
     )
+
+    def get_contract(task_id: str, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
+        del args, kwargs
+        if task_id == "verify-task-1":
+            return {"input_contract": task_contract.model_dump(mode="json")}
+        if task_id == "qa-author-task-1":
+            return {"output_contract": qa_author_output}
+        return None
+
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_task_contract",
-        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+        get_contract,
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
     )
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_active_plan_contract",
@@ -632,6 +662,81 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
     assert "verify ok" in contract.evidence[0]
 
 
+def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "handoff-worktree"
+    authored_worktree.mkdir()
+    authored_worktree.joinpath("marker.txt").write_text("authored\n", encoding="utf-8")
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify",
+            "expected_outputs": ["QAResultContract"],
+            "verification_commands": [
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; "
+                    "assert Path('marker.txt').read_text() == 'authored\\n'",
+                ]
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [
+            {
+                "contract": {
+                    "qa_author_contract": {
+                        "feature_id": "feature-1",
+                        "task_id": "qa-author-task-1",
+                        "worktree_path": str(authored_worktree),
+                    }
+                }
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+
+    result = QAHandler().handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+
+
 def test_qa_verify_blocks_without_authored_worktree(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
     plan = _plan()
@@ -657,6 +762,10 @@ def test_qa_verify_blocks_without_authored_worktree(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_task_contract",
         lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
     )
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_active_plan_contract",

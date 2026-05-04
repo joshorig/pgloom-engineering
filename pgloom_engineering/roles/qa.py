@@ -7,7 +7,11 @@ from pgloom.harness.result import HandlerResult
 from pgloom.models.cli import CLIModelProfile
 
 from pgloom_engineering.config import get_settings
-from pgloom_engineering.contract_store import get_active_plan_contract, get_task_contract
+from pgloom_engineering.contract_store import (
+    get_active_plan_contract,
+    get_task_contract,
+    list_task_handoffs,
+)
 from pgloom_engineering.contracts import (
     PlanContract,
     QAAuthorContract,
@@ -84,7 +88,11 @@ class QAHandler:
                 blocker_code="engineering.project_unregistered",
                 blocker_reason=f"Project is not registered: {plan.project}",
             )
-        verify_root = _qa_verify_worktree(task_contract)
+        verify_root = _qa_verify_worktree(
+            task_contract,
+            task_id=task_id,
+            database_url=database_url,
+        )
         if verify_root is None:
             return HandlerResult(
                 status="blocked",
@@ -360,11 +368,38 @@ class QAHandler:
         )
 
 
-def _qa_verify_worktree(task_contract: TaskContract) -> Path | None:
-    raw_contract = task_contract.inputs.get("qa_author_contract")
+def _qa_verify_worktree(
+    task_contract: TaskContract,
+    *,
+    task_id: str,
+    database_url: str | None,
+) -> Path | None:
+    input_path = _worktree_path_from_payload(task_contract.inputs)
+    if input_path is not None:
+        return input_path
+
+    for handoff in list_task_handoffs(task_id, database_url=database_url):
+        handoff_path = _worktree_path_from_payload(handoff.get("contract"))
+        if handoff_path is not None:
+            return handoff_path
+
+    for dependency_task_id in task_contract.dependencies:
+        dependency_row = get_task_contract(dependency_task_id, database_url=database_url)
+        if dependency_row is None:
+            continue
+        dependency_path = _worktree_path_from_payload(dependency_row.get("output_contract"))
+        if dependency_path is not None:
+            return dependency_path
+    return None
+
+
+def _worktree_path_from_payload(payload: Any) -> Path | None:
+    if not isinstance(payload, dict):
+        return None
+    raw_contract = payload.get("qa_author_contract")
     if isinstance(raw_contract, dict) and raw_contract.get("worktree_path"):
         return Path(str(raw_contract["worktree_path"]))
-    raw_path = task_contract.inputs.get("worktree_path")
+    raw_path = payload.get("worktree_path")
     if raw_path:
         return Path(str(raw_path))
     return None
