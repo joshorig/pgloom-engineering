@@ -34,6 +34,7 @@ from pgloom_engineering.qa_runtime import (
     prompt_safe_qa_metadata,
     qa_env,
     red_proof_infra_error,
+    relevant_changed_files,
     route_inventory_for_prompt,
     run_qa_verification,
     validate_required_qa_gates,
@@ -309,8 +310,12 @@ def main() -> int:
                         encoding="utf-8",
                     )
                     repair_started = time.monotonic()
-                    repair_final_message_path = output_dir / "qa-author-quality-contract-repair.final.txt"
-                    repair_event_log_path = output_dir / "qa-author-quality-contract-repair.events.jsonl"
+                    repair_final_message_path = (
+                        output_dir / "qa-author-quality-contract-repair.final.txt"
+                    )
+                    repair_event_log_path = (
+                        output_dir / "qa-author-quality-contract-repair.events.jsonl"
+                    )
                     repair = subprocess.run(
                         _model_command(
                             args,
@@ -727,7 +732,8 @@ def _qa_author_brief(
                 )
             if ui_acceptance.get("prefer_task_specific_spec"):
                 quality_gates.append(
-                    "Prefer a focused task-specific browser spec over editing a broad existing flow file."
+                    "Prefer a focused task-specific browser spec over editing a broad "
+                    "existing flow file."
                 )
     if targets.get("requires_benchmark_coverage"):
         quality_gates.extend(
@@ -1001,7 +1007,8 @@ def _deterministic_test_skeleton(
                 "required_assertions": [
                     "benchmark fixture state is created before measured iterations",
                     "measured benchmark method performs only the operation under test",
-                    "no collections, temp files, object graphs, or fixture data are allocated in the measured method",
+                    "no collections, temp files, object graphs, or fixture data are "
+                    "allocated in the measured method",
                     "benchmark variants cover every implementation family named by acceptance",
                 ],
                 "allocation_rule": (
@@ -1779,7 +1786,8 @@ def _ui_quality_findings(
         mocked_files = [
             path for path, text in ts_files.items() if "page.route(" in text and "/api/" in text
         ]
-        if mocked_files and not any(_playwright_has_real_api_wait(text) for text in ts_files.values()):
+        has_real_api_wait = any(_playwright_has_real_api_wait(text) for text in ts_files.values())
+        if mocked_files and not has_real_api_wait:
             findings.append(
                 {
                     "code": "qa_review_playwright_integration_required",
@@ -1887,7 +1895,9 @@ def _benchmark_variant_findings(
         return []
     combined = "\n".join(benchmark_files.values()).lower()
     missing = [token for token in required if token not in combined]
-    has_parameterization = "@param" in combined or "arguments.of" in combined or "stream.of" in combined
+    has_parameterization = (
+        "@param" in combined or "arguments.of" in combined or "stream.of" in combined
+    )
     if missing or not has_parameterization:
         return [
             {
@@ -2088,7 +2098,8 @@ def _quality_repair_prompt(
         {
             "role": "qa.author.quality_repair",
             "instructions": [
-                "Edit only the files listed in repair_files unless removing an unconsumed fixture is explicitly required.",
+                "Edit only the files listed in repair_files unless removing an "
+                "unconsumed fixture is explicitly required.",
                 "Do not edit production source files.",
                 "Keep existing acceptance coverage; make the smallest targeted repair.",
                 (
@@ -2387,39 +2398,7 @@ def _string_or_list_to_list(value: object) -> object:
 
 
 def _relevant_changed_files(worktree: Path) -> list[str]:
-    return [
-        path
-        for path in changed_files(worktree)
-        if "__pycache__/" not in path
-        and not path.endswith((".pyc", ".pyo"))
-        and path not in {"node_modules", "ui/node_modules"}
-        and not _is_generated_tool_artifact(path)
-    ]
-
-
-def _is_generated_tool_artifact(path: str) -> bool:
-    normalized = path.strip("/")
-    if normalized in {
-        ".pytest_cache",
-        "test-results/.last-run.json",
-        "playwright-report/index.html",
-    }:
-        return True
-    ignored_prefixes = (
-        ".pytest_cache/",
-        ".gradle/",
-        "build/",
-        "test-results/",
-        "playwright-report/",
-        "ui/test-results/",
-        "ui/playwright-report/",
-    )
-    ignored_suffixes = (
-        ".class",
-        ".log",
-        ".tmp",
-    )
-    return normalized.startswith(ignored_prefixes) or normalized.endswith(ignored_suffixes)
+    return relevant_changed_files(changed_files(worktree))
 
 
 def _int_or_none(value: Any) -> int | None:

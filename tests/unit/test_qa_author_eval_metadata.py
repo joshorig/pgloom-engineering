@@ -396,13 +396,13 @@ def test_quality_repair_file_set_extracts_artifact_paths() -> None:
 
 
 def test_generated_tool_artifacts_are_excluded_from_changed_files() -> None:
-    module = _load_eval_module()
+    from pgloom_engineering.qa_runtime import is_generated_tool_artifact
 
-    assert module._is_generated_tool_artifact("test-results/.last-run.json")
-    assert module._is_generated_tool_artifact("ui/playwright-report/index.html")
-    assert module._is_generated_tool_artifact(".gradle/file-system.probe")
-    assert not module._is_generated_tool_artifact("ui/tests/e2e/domain-switch.spec.ts")
-    assert not module._is_generated_tool_artifact(
+    assert is_generated_tool_artifact("test-results/.last-run.json")
+    assert is_generated_tool_artifact("ui/playwright-report/index.html")
+    assert is_generated_tool_artifact(".gradle/file-system.probe")
+    assert not is_generated_tool_artifact("ui/tests/e2e/domain-switch.spec.ts")
+    assert not is_generated_tool_artifact(
         "app-api/src/test/java/com/example/AcceptanceTest.java"
     )
 

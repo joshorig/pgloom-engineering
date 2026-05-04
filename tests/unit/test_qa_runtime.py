@@ -8,7 +8,9 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     discover_route_inventory,
     hydrate_dependencies,
+    is_generated_tool_artifact,
     qa_env,
+    relevant_changed_files,
     route_inventory_for_prompt,
     run_qa_verification,
     validate_required_qa_gates,
@@ -144,3 +146,17 @@ def test_validate_required_qa_gates_reports_configured_evidence(tmp_path: Path) 
 
 def test_no_tests_found_is_not_an_infra_error() -> None:
     assert verification_infra_error("collected 0 items\nno tests found", "") is None
+
+
+def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
+    assert relevant_changed_files(
+        [
+            "tests/test_feature.py",
+            "playwright-report/index.html",
+            "ui/test-results/domain-switch/error-context.md",
+            ".gradle/file-system.probe",
+            "build/classes/java/test/Foo.class",
+            "ui/tests/e2e/domain-switch.spec.ts",
+        ]
+    ) == ["tests/test_feature.py", "ui/tests/e2e/domain-switch.spec.ts"]
+    assert is_generated_tool_artifact("test-results/.last-run.json")

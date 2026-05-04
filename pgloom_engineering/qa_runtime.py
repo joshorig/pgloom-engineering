@@ -249,6 +249,42 @@ def hydrate_dependencies(
         target.symlink_to(source, target_is_directory=source.is_dir())
 
 
+def relevant_changed_files(paths: list[str]) -> list[str]:
+    return [
+        path
+        for path in paths
+        if "__pycache__/" not in path
+        and not path.endswith((".pyc", ".pyo"))
+        and path not in {"node_modules", "ui/node_modules"}
+        and not is_generated_tool_artifact(path)
+    ]
+
+
+def is_generated_tool_artifact(path: str) -> bool:
+    normalized = path.strip("/")
+    if normalized in {
+        ".pytest_cache",
+        "test-results/.last-run.json",
+        "playwright-report/index.html",
+    }:
+        return True
+    ignored_prefixes = (
+        ".pytest_cache/",
+        ".gradle/",
+        "build/",
+        "test-results/",
+        "playwright-report/",
+        "ui/test-results/",
+        "ui/playwright-report/",
+    )
+    ignored_suffixes = (
+        ".class",
+        ".log",
+        ".tmp",
+    )
+    return normalized.startswith(ignored_prefixes) or normalized.endswith(ignored_suffixes)
+
+
 def run_qa_verification(
     command: list[str],
     *,

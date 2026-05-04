@@ -101,6 +101,29 @@ class ScriptStringCheckProvider(FakeProvider):
         )
 
 
+class GeneratedArtifactProvider(FakeProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        worktree = Path(profile.command[-1])
+        worktree.joinpath("playwright-report").mkdir()
+        worktree.joinpath("playwright-report/index.html").write_text(
+            "<html></html>\n",
+            encoding="utf-8",
+        )
+        worktree.joinpath("ui/test-results/domain-switch").mkdir(parents=True)
+        worktree.joinpath("ui/test-results/domain-switch/error-context.md").write_text(
+            "debug artifact\n",
+            encoding="utf-8",
+        )
+        return super().invoke(profile=profile, prompt=prompt, **kwargs)
+
+
+class DependencyAwareProvider(FakeProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        worktree = Path(profile.command[-1])
+        assert worktree.joinpath("ui/node_modules").is_symlink()
+        return super().invoke(profile=profile, prompt=prompt, **kwargs)
+
+
 def test_qa_author_creates_worktree_and_returns_contract(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
     plan = _plan()
@@ -212,6 +235,108 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
 
     assert result.status == "blocked"
     assert result.blocker_code == "engineering.qa_path_violation"
+
+
+def test_qa_author_filters_generated_artifacts_before_path_policy(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=GeneratedArtifactProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert result.result["qa_author_contract"]["paths_touched"] == ["tests/test_acceptance.py"]
+
+
+def test_qa_author_hydrates_dependencies_before_invoking_provider(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    repo.joinpath("ui/node_modules").mkdir(parents=True)
+    repo.joinpath("ui/node_modules/.keep").write_text("dependency\n", encoding="utf-8")
+    plan = _plan()
+    task_contract = _task_contract()
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={
+                "worktree_root": str(tmp_path / "worktrees"),
+                "qa": {"dependency_hydration": ["ui/node_modules"]},
+            },
+        ),
+    )
+
+    result = QAHandler(provider=DependencyAwareProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
 
 
 def test_qa_verify_returns_valid_inconclusive_result_contract() -> None:

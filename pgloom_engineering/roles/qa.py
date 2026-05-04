@@ -24,9 +24,11 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     command_with_env,
     discover_route_inventory,
+    hydrate_dependencies,
     project_qa_metadata,
     prompt_safe_qa_metadata,
     qa_env,
+    relevant_changed_files,
     route_inventory_for_prompt,
     run_qa_verification,
     validate_required_qa_gates,
@@ -110,6 +112,7 @@ class QAHandler:
             slice_id=str(task_contract.inputs.get("task_slice_id") or "qa-author"),
             base_ref=project.base_branch,
         )
+        hydrate_dependencies(project.root, handle.worktree, project.metadata)
 
         profile = CLIModelProfile(
             name=settings.qa_author_profile,
@@ -145,7 +148,7 @@ class QAHandler:
                 blocker_reason=str(exc),
                 result={"raw_response": response.text},
             )
-        touched = changed_files(handle.worktree)
+        touched = relevant_changed_files(changed_files(handle.worktree))
         violations = _path_violations(touched, task_contract)
         if violations:
             return HandlerResult(
