@@ -465,7 +465,12 @@ def test_qa_author_hydrates_dependencies_before_invoking_provider(
     assert result.status == "done"
 
 
-def test_qa_verify_blocks_without_task_contract() -> None:
+def test_qa_verify_blocks_without_task_contract(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: None,
+    )
+
     result = QAHandler().handle(
         {
             "id": "verify-task-1",
