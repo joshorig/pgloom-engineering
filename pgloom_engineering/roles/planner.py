@@ -217,7 +217,7 @@ class PlannerHandler:
                 workflow_id=contract.feature_id,
                 domain="engineering",
                 task_type=task_slice.task_type,
-                slot=task_slice.role,
+                slot="qa-engineer" if task_slice.role == "qa" else task_slice.role,
                 payload={
                     "feature_id": contract.feature_id,
                     "plan_contract_id": plan_row["id"],

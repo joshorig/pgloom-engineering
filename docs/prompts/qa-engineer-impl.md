@@ -1,10 +1,10 @@
-# Implementor brief — QA Engineer (test author + verify + sign‑off)
+# Implementor brief — QA Engineer (test author + verify + sign-off)
 
-> **Status: CONTRACT READY; HANDLER BLOCKED.** The planner now has explicit `qa.author`
-> and `qa.verify` task-slice contracts enforced by checks 7b/7c/7d, so this brief is the
-> QA contract source for the next handler. Do not implement the QA worker yet: it still
-> depends on Track D worktree/GitHub support, shared rubric extraction, and a concrete
-> `engineering.feature_finalize` pre-gate consumer.
+> **Status: QA AUTHOR LIVE; QA VERIFY PENDING.** The `engineering.qa.author`
+> path now runs in isolated worktrees, writes tests, validates required project
+> gates, runs deterministic semantic quality checks, and emits a
+> `QAAuthorContract`. The remaining work in this brief is `engineering.qa.verify`
+> sign-off, full-app/resource-lock execution, and finalization gating.
 
 ---
 
@@ -66,6 +66,34 @@ This is the load‑bearing safety mechanism. QA's `allowed_paths` is restricted 
 The post‑gate's `enforce_add_or_strengthen(diff: str) -> list[Violation]` runs against the unified diff between the QA branch and its base. v1 implementation is regex‑based with conservative defaults — flagged‑but‑uncertain cases become advisory findings rather than hard rejects. The 80/20 cut is fine; the QA critic rubric covers the remaining edge cases.
 
 Violations transition the QA task to `blocked` with `RecoveryDecisionContract(blocker_code="engineering.qa_test_weakening", action="block_execution")` and the violation list serialized into `outcome`.
+
+### 2.3a Required gate validation and semantic QA review
+
+The QA author path has two deterministic gates after model generation and
+before the task can report success:
+
+1. `validate_required_qa_gates(worktree, project_metadata)` checks that every
+   project-declared required QA gate has a concrete script or command in the
+   worktree. Runtime, smoke, regression, UI, and benchmark commands must come
+   from project metadata, not model inference.
+2. `review_semantic_quality(changed_files, project_metadata)` blocks weak tests
+   that only inspect scripts/build files, call Spring controllers directly when
+   HTTP routing is the contract, use brittle raw JSON/stringification checks,
+   mismatch journal cursor semantics, or create JMH benchmarks that reuse targets
+   or allocate measured-state objects after setup.
+
+Project metadata is the source of truth for generic conventions. Examples:
+
+- `required_gates` names smoke/regression/full-app commands that must exist.
+- `qa_metadata.test_roots`, `source_roots`, and `explicit_test_examples` bound
+  discovery without asking the model to guess.
+- `semantic_conventions.build_hook_tests.deterministic_gate_validation_required`
+  prevents tests from pretending script-string assertions are runtime coverage.
+- `semantic_conventions.benchmarks` declares project-neutral JMH expectations
+  such as cold restore setup and zero garbage after benchmark setup.
+
+The live worker uses the same gate and semantic modules as the eval harness, so
+an eval pass corresponds to production dispatch behavior.
 
 ### 2.4 Sign‑off table
 
@@ -164,12 +192,21 @@ Both methods use a worktree (Track D — must be done before this brief), `CLIMo
 
 ## 3. Hard prerequisites
 
-This handler implementation is unsafe to start until all of these are true:
+`engineering.qa.author` has satisfied the first implementation threshold. The
+remaining handler work is unsafe to start until all of these are true:
 
-1. The planner brief at `docs/prompts/planner-impl-and-review.md` is fully landed; planner produces valid `PlanContract`s containing both `qa.author` and `qa.verify` slices for `lvc-standard` R‑002 (planner critic checks 7b/7c/7d enforce this). **Status: satisfied at contract level; keep the live R‑002 verification as the regression gate.**
-2. Track D (worktree + git + GitHub integration) is at least partially landed — QA needs to create branches, push, and either open PRs or attach commits to the existing feature branch.
-3. The shared rubric layer extracted from the planner critic (`CheckDefinition`, `RubricRunner`, `RubricVerdict`, `revise_until_clean`) is available; QA reuses it for its own per‑gap critique loop.
-4. `engineering.feature_finalize` task type spec exists (even as a stub) so the sign‑off pre‑gate has a concrete consumer.
+1. The planner brief at `docs/prompts/planner-impl-and-review.md` remains the
+   source of valid `qa.author` and `qa.verify` slices. The live QA eval suite now
+   covers LVC R-003, LVC R-002 JMH, TRP R-003, and DAG R-003 from real planner
+   outputs/fixtures.
+2. Track D worktree support is partially landed for local eval and QA author.
+   The next production step is branch commit/push/PR wiring for worker-created
+   worktrees.
+3. The shared rubric layer is still desirable for `qa.verify`, but QA author v1
+   uses deterministic semantic checks plus targeted repair instead of a full
+   model rubric loop.
+4. `engineering.feature_finalize` task type spec exists (even as a stub) so the
+   sign-off pre-gate has a concrete consumer.
 
 If any prerequisite is missing, write the missing piece first and come back.
 
@@ -181,6 +218,9 @@ If any prerequisite is missing, write the missing piece first and come back.
 - `tests/unit/test_qa_diff_policy.py` — exhaustive: each allowed transformation, each refused transformation, edge cases around parametrize / fixtures / docstring‑only changes / whitespace / rename‑with‑content‑intact.
 - `tests/unit/test_qa_engineer_handler.py` — both entry points with FakeCLIModelProvider; assert structured outputs match the contract schemas.
 - `tests/unit/test_qa_signoffs.py` — table CRUD + unique index enforcement + cascade on feature delete.
+- `tests/unit/test_qa_runtime.py` — required-gate metadata and prompt-safe metadata extraction.
+- `tests/unit/test_qa_semantic_review.py` — generic semantic checks for endpoint, payload, journal, benchmark, and script-string anti-patterns.
+- `tests/unit/test_qa_author_eval_metadata.py` — eval prompt context, route coverage inventory, and project metadata consumption.
 
 ### Integration tests (Postgres‑gated)
 - `tests/integration/test_qa_author_lvc_r002.py` — given a persisted `PlanContract` for R‑002 (snapshot/restore), `engineering.qa.author` writes ≥ 1 test per acceptance criterion, proves each red on the as‑read worktree, persists `QAAuthorContract`, records `qa_author` handoff to each downstream implementer task.
@@ -191,6 +231,29 @@ If any prerequisite is missing, write the missing piece first and come back.
 ### CLI smoke
 - `pgloom-engineering qa author --feature <id>` and `pgloom-engineering qa verify --feature <id>` — mirror the planner `plan dry-run` pattern.
 
+### Live eval
+
+The repeatable QA author suite is:
+
+```bash
+uv run python scripts/run_qa_author_eval_suite.py \
+  --suite docs/evals/qa-author-model-suite.json \
+  --output-dir docs/reports/<run-name> \
+  --model gpt-5.5 \
+  --jobs 2
+```
+
+The current production threshold is one accepted QA author result for each
+configured case, no deterministic semantic findings, required gates present,
+and per-case API-equivalent cost under the suite threshold. The last reviewed
+full run accepted all four cases after raising the TRP threshold to reflect the
+real endpoint/UI coverage cost:
+
+- LVC R-003 range: accepted, API-equivalent cost about `$0.80`.
+- LVC R-002 JMH snapshot/restore: accepted, about `$1.25`.
+- TRP R-003 config/diagnostics parity: accepted, about `$3.09`.
+- DAG R-003 YAML loader: accepted, about `$1.03`.
+
 ---
 
 ## 5. Acceptance gate (preliminary — to be hardened on full write‑up)
@@ -198,7 +261,7 @@ If any prerequisite is missing, write the missing piece first and come back.
 1. `ruff check` + `mypy` clean across new modules.
 2. All new unit + integration tests green; existing test suite unaffected.
 3. Migration `007_qa_signoffs.sql` applied idempotently; unique partial index enforced (concurrent insert of two `approved` rows for the same feature fails the second).
-4. End‑to‑end happy path on `lvc-standard` R‑002: planner produces plan with both QA phases → qa.author writes ≥ 5 red tests covering snapshot/restore acceptance criteria → implementer (mocked or real) turns them green → reviewer approves → qa.verify runs full app under resource lock → signoff row with `approved` verdict → finalize pre‑gate accepts.
+4. End‑to‑end happy path on `lvc-standard` R‑002: planner produces plan with both QA phases → qa.author writes stateful acceptance tests and cold/zero-garbage JMH coverage for snapshot/restore → implementer (mocked or real) turns them green → reviewer approves → qa.verify runs full app under resource lock → signoff row with `approved` verdict → finalize pre‑gate accepts.
 5. Add‑or‑strengthen enforcement: a parallel test feeds a weakening diff and asserts the gate refuses with a structured violation list.
 6. Slot routing: a worker registered with `--slot qa-engineer` claims both `qa.author` and `qa.verify` tasks; a worker registered with any other slot does not claim them.
 7. Resource lock: two concurrent `qa.verify` tasks for the same project serialize on the project lock; for different projects they run in parallel.
@@ -226,7 +289,21 @@ If any prerequisite is missing, write the missing piece first and come back.
 
 ## 7. Until implementation starts
 
-- The planner critic enforces that every plan includes both `qa.author` and `qa.verify` slices with disjoint paths from Implementer (planner brief §4 checks 7b/7c/7d).
-- The Reviewer brief, when written, must consume QA's red tests as the definition‑of‑done signal — Implementer's `TaskResultContract.checks` should include the QA‑authored tests' exit codes flipping from non‑zero to zero.
-- If during planner shipping you discover that the QA contract surface needs additions (e.g. flake history, coverage targets, tolerance budgets), record them in `docs/reports/planner-impl-and-review-completion.md` under a "QA contract gaps" section so this brief picks them up when fully written.
-- Do not begin handler implementation until Track D, shared rubric extraction, and `engineering.feature_finalize` are specified enough for QA sign-off to have a concrete branch and merge gate to control.
+## 7. Next implementation wave
+
+The next autonomous workflow phase is Implementer, not more QA author tuning.
+Use the accepted QA author outputs as the red tests that Implementer must turn
+green.
+
+1. Complete the Git/worktree foundation for production: create a branch per
+   feature or slice, detect changed files, commit, push, and later open PRs.
+2. Implement `engineering.implement` against existing `TaskContract` and
+   `PlanContract` handoffs. It must preserve QA-authored tests and may only edit
+   allowed implementation paths.
+3. Add an implementer post-gate that fails if tests are weakened, QA files are
+   deleted, generated gate scripts are bypassed, or required project gates are no
+   longer present.
+4. Build an implementer eval suite using the same cases as QA author: LVC R-003,
+   DAG R-003, TRP R-003, then LVC R-002 JMH.
+5. Only after Implementer can reliably turn QA author red tests green should
+   `engineering.qa.verify` and finalization sign-off become the main focus.

@@ -26,6 +26,10 @@ build/
 dist/
 *.egg-info/
 *.egg
+uv.lock
+
+# Generated evaluation artifacts. Keep source fixtures under docs/evals tracked.
+docs/reports/*/
 
 # Tooling and editor files
 .DS_Store

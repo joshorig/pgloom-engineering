@@ -43,6 +43,13 @@ class EngineeringSettings(BaseSettings):
     planner_codex_panelist_reasoning: str = "high"
     planner_codex_consolidator_reasoning: str = "medium"
     planner_codex_critic_reasoning: str = "medium"
+    qa_author_profile: str = "qa-author"
+    qa_author_command: list[str] = Field(default_factory=lambda: ["cat"])
+    qa_author_invocation_timeout_seconds: float = 300.0
+    qa_author_codex_model: str = "gpt-5.4"
+    qa_author_codex_reasoning: str = "medium"
+    qa_author_claude_model: str = "haiku"
+    qa_worktree_root: Path = Path(".local/worktrees")
     rtk_filter_enabled: bool = True
     rtk_passthrough_commands: list[str] = Field(default_factory=list)
     rtk_passthrough_on_success: bool = False

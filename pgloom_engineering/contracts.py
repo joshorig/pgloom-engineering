@@ -124,6 +124,19 @@ class TaskResultContract(BaseModel):
     token_savior_usage_ids: list[int] = Field(default_factory=list)
 
 
+class QAAuthorContract(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    feature_id: str
+    task_id: str
+    tests_added: list[str] = Field(default_factory=list)
+    matrix_coverage: dict[str, list[str]] = Field(default_factory=dict)
+    red_proof: list[dict[str, Any]] = Field(default_factory=list)
+    paths_touched: list[str] = Field(default_factory=list)
+    branch: str | None = None
+    worktree_path: str | None = None
+    model_usage_ids: list[int] = Field(default_factory=list)
+
+
 class ReviewVerdictContract(BaseModel):
     contract_version: str = CONTRACT_VERSION
     feature_id: str
@@ -247,7 +260,7 @@ def _validate_role_task_type(task_slice: TaskSliceContract) -> list[dict[str, st
         "designer": {"engineering.design", "engineering.designer"},
         "implementer": {"engineering.implement", "engineering.implementation"},
         "reviewer": {"engineering.review"},
-        "qa": {"engineering.qa", "engineering.qa.author", "engineering.qa.verify"},
+        "qa": {"engineering.qa.author", "engineering.qa.verify"},
         "historian": {"engineering.history", "engineering.historian"},
     }.get(task_slice.role)
     if allowed is None or task_slice.task_type in allowed:

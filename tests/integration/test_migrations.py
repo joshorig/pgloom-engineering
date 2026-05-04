@@ -549,7 +549,7 @@ def _plan_contract(feature_id: str) -> PlanContract:
             TaskSliceContract(
                 slice_id="slice-2",
                 role="qa",
-                task_type="engineering.qa",
+                task_type="engineering.qa.verify",
                 objective="Verify the contracted feature.",
                 allowed_paths=["tests"],
                 forbidden_paths=["pgloom"],

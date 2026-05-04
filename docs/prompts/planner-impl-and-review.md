@@ -34,6 +34,18 @@ The bring‑up test case is `lvc-standard` R‑002 (§ 5). It is deliberately st
 - Real API calls to Anthropic. Everything must run through `pgloom.models.cli.CLIModelProvider`. The integration test uses a fake CLI script in `tests/fixtures/`.
 - Editing the master plan, the contracts schema, or the worker pre/post gates.
 
+**Current downstream status.**
+
+- `engineering.qa.author` is now implemented enough for live eval and worker
+  dispatch. It consumes real `PlanContract` QA slices, project metadata, and
+  deterministic semantic gates.
+- Plans must continue to give QA author concrete acceptance criteria, test write
+  paths, verification commands, and route/benchmark details. Vague matrix rows
+  force expensive repair loops downstream.
+- The next consumer is `engineering.implement`: plans should preserve a clean
+  handoff from QA author red tests to implementer allowed source paths and then
+  reviewer/QA verify.
+
 ---
 
 ## 3. Required surfaces

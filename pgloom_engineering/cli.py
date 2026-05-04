@@ -151,6 +151,15 @@ def project_register(
         str | None,
         typer.Option("--regression-command", help="Regression command, shell-split into argv."),
     ] = None,
+    metadata_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--metadata-file",
+            exists=True,
+            dir_okay=False,
+            help="Project metadata JSON/YAML.",
+        ),
+    ] = None,
     replace: Annotated[
         bool,
         typer.Option("--replace", help="Replace an existing project."),
@@ -174,6 +183,7 @@ def project_register(
         smoke_command=shlex.split(smoke_command or ""),
         regression_command=shlex.split(regression_command or ""),
         agent_topology=topology,
+        metadata=_load_metadata_file(metadata_file) if metadata_file is not None else {},
     )
     try:
         registered = register_project(project, replace=replace, database_url=database_url)
@@ -548,6 +558,23 @@ def feature_status() -> None:
 
 def _json(value: object) -> str:
     return json.dumps(value, default=str, indent=2, sort_keys=True)
+
+
+def _load_metadata_file(path: Path) -> dict[str, object]:
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        payload = json.loads(text)
+    else:
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise typer.BadParameter(
+                f"{path} requires PyYAML; use JSON or install yaml support"
+            ) from exc
+        payload = yaml.safe_load(text) or {}
+    if not isinstance(payload, dict):
+        raise typer.BadParameter(f"{path} must contain a metadata object")
+    return dict(payload)
 
 
 def _build_dry_run_council(config: CouncilConfig) -> PlannerCouncil:
