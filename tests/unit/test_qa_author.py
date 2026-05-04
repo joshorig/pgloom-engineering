@@ -15,12 +15,12 @@ from pgloom_engineering.contracts import (
     TaskContract,
     TaskSliceContract,
 )
-from pgloom_engineering.roles.qa import (
-    QAHandler,
-    _author_prompt,
-    _qa_model_route,
-    _route_model_command,
+from pgloom_engineering.qa_author_runtime import (
+    build_qa_author_prompt,
+    qa_model_route,
+    route_model_command,
 )
+from pgloom_engineering.roles.qa import QAHandler
 
 
 class FakeProvider:
@@ -83,9 +83,7 @@ class ScriptStringCheckProvider(FakeProvider):
                     "feature_id": "feature-1",
                     "task_id": "task-1",
                     "tests_added": ["tests/BenchmarkWiringTest.java"],
-                    "matrix_coverage": {
-                        "acceptance criterion": ["tests/BenchmarkWiringTest.java"]
-                    },
+                    "matrix_coverage": {"acceptance criterion": ["tests/BenchmarkWiringTest.java"]},
                     "red_proof": [
                         {
                             "test": "tests/BenchmarkWiringTest.java",
@@ -443,7 +441,7 @@ def test_qa_author_blocks_script_string_assertions_when_gate_validation_required
 
 
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:
-    prompt = _author_prompt(
+    prompt = build_qa_author_prompt(
         _plan(),
         _task_contract(),
         project_root=Path("."),
@@ -472,7 +470,7 @@ def test_qa_author_prompt_includes_project_qa_metadata() -> None:
 
 
 def test_qa_author_model_routing_updates_codex_command() -> None:
-    command = _route_model_command(
+    command = route_model_command(
         ["codex", "exec", "-m", "gpt-5.5", "-c", 'model_reasoning_effort="medium"'],
         claude_model="haiku",
         codex_model="gpt-5.4",
@@ -490,7 +488,7 @@ def test_qa_author_model_routing_updates_codex_command() -> None:
 
 
 def test_qa_author_model_route_uses_project_metadata_default() -> None:
-    route = _qa_model_route(
+    route = qa_model_route(
         {
             "qa": {
                 "model_routing": {
@@ -562,9 +560,7 @@ def _task_contract() -> TaskContract:
         allowed_paths=["tests/"],
         forbidden_paths=["src/"],
         expected_outputs=["QAAuthorContract"],
-        verification_commands=[
-            [sys.executable, "-m", "pytest", "tests/test_acceptance.py", "-q"]
-        ],
+        verification_commands=[[sys.executable, "-m", "pytest", "tests/test_acceptance.py", "-q"]],
     )
 
 

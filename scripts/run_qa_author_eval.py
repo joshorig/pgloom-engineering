@@ -23,9 +23,14 @@ from pgloom_engineering.contracts import (
     TaskSliceContract,
 )
 from pgloom_engineering.integrations.git import changed_files, create_task_worktree
-from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.projects import ProjectConfig, get_project, resolve_project_file
+from pgloom_engineering.qa_author_runtime import (
+    build_qa_author_prompt,
+    normalize_qa_author_payload,
+    path_violations,
+    semantic_quality_findings,
+)
 from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     discover_route_inventory,
@@ -39,7 +44,6 @@ from pgloom_engineering.qa_runtime import (
     run_qa_verification,
     validate_required_qa_gates,
 )
-from pgloom_engineering.qa_semantic_review import review_semantic_quality
 
 
 def main() -> int:
@@ -80,16 +84,11 @@ def main() -> int:
         if args.from_plan_outcome:
             hydrate_dependencies(repo, worktree.worktree, project_metadata)
         verification_command = _verification_command(task_contract, args.verification_index)
-        prompt = _prompt(
+        prompt = build_qa_author_prompt(
             plan,
             task_contract,
-            verification_command,
-            qa_author_brief=_qa_author_brief(
-                worktree.worktree,
-                plan,
-                task_contract,
-                project_metadata=project_metadata,
-            ),
+            project_metadata=project_metadata,
+            project_root=worktree.worktree,
         )
         prompt_path = output_dir / "qa-author.prompt.txt"
         response_path = output_dir / "qa-author.response.txt"
@@ -753,9 +752,7 @@ def _qa_author_brief(
         "endpoint_inventory": endpoint_inventory,
         "route_coverage_requirements": route_requirements,
         "deterministic_test_skeleton": deterministic_skeleton,
-        "generated_route_coverage_artifact": _generated_route_coverage_artifact(
-            route_requirements
-        ),
+        "generated_route_coverage_artifact": _generated_route_coverage_artifact(route_requirements),
         "existing_test_examples": _discover_test_examples(worktree, targets, qa_metadata),
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
         "quality_gates": quality_gates,
@@ -1168,7 +1165,7 @@ def _codex_command(
         "-m",
         model,
         "-c",
-        f"model_reasoning_effort=\"{reasoning}\"",
+        f'model_reasoning_effort="{reasoning}"',
         "-s",
         sandbox,
         "-C",
@@ -1232,18 +1229,12 @@ def _evaluate(
     if model_error is not None:
         findings.append(model_error)
     touched = _relevant_changed_files(worktree)
-    for path in touched:
-        if not any(_path_matches(path, root) for root in task_contract.allowed_paths):
-            findings.append({"code": "outside_allowed_paths", "path": path})
-        if any(_path_matches(path, root) for root in task_contract.forbidden_paths):
-            findings.append({"code": "forbidden_path", "path": path})
-        if not is_qa_write_path(path, task_contract.allowed_paths):
-            findings.append({"code": "not_qa_write_path", "path": path})
+    findings.extend(path_violations(touched, task_contract))
     contract: QAAuthorContract | None = None
     if model_error is None:
         try:
             contract = QAAuthorContract.model_validate(
-                _qa_author_payload(extract_json(_model_text(stdout)))
+                normalize_qa_author_payload(extract_json(_model_text(stdout)))
             )
         except Exception as exc:
             findings.append({"code": "invalid_qa_author_contract", "message": str(exc)})
@@ -1416,9 +1407,7 @@ def _review_qa_author_quality(
             )
     if _requires_endpoint_coverage(objective, acceptance):
         code_files = {
-            path: text
-            for path, text in files.items()
-            if Path(path).suffix in _SOURCE_SUFFIXES
+            path: text for path, text in files.items() if Path(path).suffix in _SOURCE_SUFFIXES
         }
         endpoint_tests = [
             path for path, text in code_files.items() if _exercises_endpoint_layer(path, text)
@@ -1512,30 +1501,18 @@ def _review_qa_author_quality(
         if item.get("status") != "configured"
     ]
     blocking.extend(gate_findings)
-    semantic_findings = review_semantic_quality(
-        files=files,
-        plan_text="\n".join(
-            [
-                plan.problem_statement,
-                *plan.acceptance_test_matrix,
-                *plan.risk_register,
-            ]
-        ),
-        task_text="\n".join(
-            [
-                task_contract.objective,
-                *task_contract.expected_outputs,
-                *task_contract.allowed_paths,
-            ]
-        ),
+    semantic_findings = semantic_quality_findings(
+        worktree=worktree,
+        changed_paths=list(files),
+        plan=plan,
+        task_contract=task_contract,
         project_metadata=project_metadata,
     )
     for finding in semantic_findings:
-        payload = finding.asdict()
-        if finding.severity == "blocking":
-            blocking.append(payload)
+        if finding.get("severity") == "blocking":
+            blocking.append(finding)
         else:
-            warnings.append(payload)
+            warnings.append(finding)
     return {
         "blocking_findings": blocking,
         "warnings": warnings,
@@ -1640,10 +1617,7 @@ def _exercises_endpoint_layer(path: str, text: str) -> bool:
             "app.inject",
             "server.inject",
         ]
-        return any(
-            marker in text
-            for marker in endpoint_markers
-        )
+        return any(marker in text for marker in endpoint_markers)
     if suffix == ".py":
         return any(marker in text for marker in ["client.", "TestClient", "requests.", "httpx."])
     return False
@@ -1674,9 +1648,7 @@ def _java_spring_endpoint_harness_preferred(
     code_files: dict[str, str],
     endpoint_tests: list[str],
 ) -> bool:
-    java_endpoint_tests = [
-        path for path in endpoint_tests if Path(path).suffix == ".java"
-    ]
+    java_endpoint_tests = [path for path in endpoint_tests if Path(path).suffix == ".java"]
     if not java_endpoint_tests:
         return False
     combined = "\n".join(code_files.values())
@@ -1710,9 +1682,7 @@ def _java_spring_endpoint_harness_preferred(
 
 
 def _unconsumed_generated_fixtures(files: dict[str, str]) -> list[str]:
-    fixture_paths = sorted(
-        path for path in files if path.startswith("changed-files/qa/fixtures/")
-    )
+    fixture_paths = sorted(path for path in files if path.startswith("changed-files/qa/fixtures/"))
     if not fixture_paths:
         return []
     test_text = "\n".join(
@@ -1749,9 +1719,7 @@ def _ui_quality_findings(
     findings: list[dict[str, Any]] = []
     if config.get("prefer_task_specific_spec"):
         broad_files = [
-            path
-            for path, text in ts_files.items()
-            if _looks_like_broad_browser_flow(path, text)
+            path for path, text in ts_files.items() if _looks_like_broad_browser_flow(path, text)
         ]
         if broad_files:
             findings.append(
@@ -1831,11 +1799,7 @@ def _benchmark_quality_findings(
     task_contract: TaskContract,
     plan: PlanContract,
 ) -> list[dict[str, Any]]:
-    benchmark_files = {
-        path: text
-        for path, text in files.items()
-        if _is_benchmark_file(path, text)
-    }
+    benchmark_files = {path: text for path, text in files.items() if _is_benchmark_file(path, text)}
     allowed_benchmark_roots = [
         path
         for path in task_contract.allowed_paths
@@ -1886,11 +1850,7 @@ def _benchmark_variant_findings(
             *task_contract.expected_outputs,
         ]
     ).lower()
-    required = [
-        token
-        for token in ["single", "double", "direct", "mmap"]
-        if token in text
-    ]
+    required = [token for token in ["single", "double", "direct", "mmap"] if token in text]
     if len(required) < 2:
         return []
     combined = "\n".join(benchmark_files.values()).lower()
@@ -2382,8 +2342,7 @@ def _qa_author_payload(payload: object) -> object:
     matrix = normalized.get("matrix_coverage")
     if isinstance(matrix, dict):
         normalized["matrix_coverage"] = {
-            str(key): _string_or_list_to_list(value)
-            for key, value in matrix.items()
+            str(key): _string_or_list_to_list(value) for key, value in matrix.items()
         }
     for key in ["tests_added", "paths_touched", "model_usage_ids"]:
         if key in normalized:
