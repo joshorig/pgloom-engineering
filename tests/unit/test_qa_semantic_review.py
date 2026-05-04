@@ -64,10 +64,11 @@ def test_semantic_review_allows_mockmvc_for_spring_endpoint_contract() -> None:
     assert findings == []
 
 
-def test_semantic_review_blocks_brittle_payload_string_assertions_when_structured_json_required() -> None:
+def test_semantic_review_blocks_brittle_payload_string_assertions() -> None:
+    path = "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java"
     findings = review_semantic_quality(
         files={
-            "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java": """
+            path: """
             class DiagnosticsControllerTest {
                 @Test
                 void returnsDomainPayload() throws Exception {
@@ -104,10 +105,11 @@ def test_semantic_review_blocks_brittle_payload_string_assertions_when_structure
     assert findings[0].details["raw_contains_count"] == 7
 
 
-def test_semantic_review_allows_contains_on_explicit_textual_fields_with_structured_assertions() -> None:
+def test_semantic_review_allows_contains_on_explicit_textual_fields() -> None:
+    path = "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java"
     findings = review_semantic_quality(
         files={
-            "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java": """
+            path: """
             class DiagnosticsControllerTest {
                 @Test
                 void returnsDomainPayload() throws Exception {
@@ -355,7 +357,8 @@ def test_semantic_review_blocks_sample_time_restore_target_rotation_for_cold_res
 
                     private LvcStore nextRestoreTarget() {
                         LvcStore restoreTarget = restoreTargets[restoreTargetCursor];
-                        restoreTargetCursor = (restoreTargetCursor + 1) & (restoreTargets.length - 1);
+                        restoreTargetCursor =
+                            (restoreTargetCursor + 1) & (restoreTargets.length - 1);
                         return restoreTarget;
                     }
                 }
@@ -459,7 +462,7 @@ def test_semantic_review_warns_on_build_file_string_assertions_when_disallowed()
     assert findings[0].severity == "warning"
 
 
-def test_semantic_review_blocks_build_file_string_assertions_when_gate_validation_required() -> None:
+def test_semantic_review_blocks_build_file_string_assertions_when_gate_required() -> None:
     findings = review_semantic_quality(
         files={
             "changed-files/store/src/test/java/com/example/BenchmarkWiringTest.java": """

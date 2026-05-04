@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Literal
 
 Severity = Literal["blocking", "warning"]
@@ -66,7 +65,9 @@ def _java_array_assertion_findings(
     conventions: dict[str, Any],
 ) -> list[SemanticFinding]:
     binary_config = _mapping(conventions.get("binary_assertions"))
-    severity: Severity = "blocking" if binary_config.get("prefer_assert_array_equals") else "warning"
+    severity: Severity = (
+        "blocking" if binary_config.get("prefer_assert_array_equals") else "warning"
+    )
     findings: list[SemanticFinding] = []
     for path, text in files.items():
         if not path.endswith(".java"):
@@ -98,7 +99,8 @@ def _journal_cursor_findings(
     journal_config = _mapping(conventions.get("journal"))
     if not journal_config.get("failed_publish_must_not_advance_cursor"):
         return []
-    if not any(token in context for token in ["journal", "cursor", "staged", "unjournaled", "aborted"]):
+    journal_terms = ["journal", "cursor", "staged", "unjournaled", "aborted"]
+    if not any(token in context for token in journal_terms):
         return []
     findings: list[SemanticFinding] = []
     for path, text in files.items():
@@ -107,7 +109,8 @@ def _journal_cursor_findings(
         for method in _java_test_methods(text):
             body = method["body"]
             lowered = body.lower()
-            if not any(token in lowered for token in ["abort", "aborted", "fail", "crash", "unjournaled"]):
+            failure_terms = ["abort", "aborted", "fail", "crash", "unjournaled"]
+            if not any(token in lowered for token in failure_terms):
                 continue
             published = _published_sequence_literals(body)
             asserted = _published_seq_assertions(body)
@@ -499,7 +502,10 @@ def _reuses_restore_targets_in_sample_time(text: str) -> bool:
         return False
     lowered = text.lower()
     has_restore_pool = any(token in lowered for token in ["restoretargets", "restore_targets"])
-    has_rotation = any(token in text for token in ["%", "& (restoreTargets.length - 1)", "restoreTargetCursor = 0"])
+    has_rotation = any(
+        token in text
+        for token in ["%", "& (restoreTargets.length - 1)", "restoreTargetCursor = 0"]
+    )
     return has_restore_pool and has_rotation
 
 

@@ -15,7 +15,6 @@ from pgloom_engineering.model_provider import EngineeringCLIModelProvider
 from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.projects import get_project
-from pgloom_engineering.qa_semantic_review import review_semantic_quality
 from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     command_with_env,
@@ -27,6 +26,7 @@ from pgloom_engineering.qa_runtime import (
     run_qa_verification,
     validate_required_qa_gates,
 )
+from pgloom_engineering.qa_semantic_review import review_semantic_quality
 
 
 class QAHandler:

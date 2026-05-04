@@ -314,7 +314,11 @@ def test_benchmark_variant_gap_is_flagged_when_acceptance_names_variants() -> No
     )
 
     findings = module._benchmark_variant_findings(
-        {"changed-files/benchmarks/src/jmh/java/RestoreBenchmark.java": "@Benchmark void directSingle() {}"},
+        {
+            "changed-files/benchmarks/src/jmh/java/RestoreBenchmark.java": (
+                "@Benchmark void directSingle() {}"
+            )
+        },
         plan,
         task,
     )
@@ -333,7 +337,9 @@ def test_playwright_request_capture_is_not_mocked_only() -> None:
         await route.fulfill({ json: {} })
       })
       await page.route('**/api/config/access**', async (route) => route.fulfill({ json: {} }))
-      await page.route('**/api/diagnostics/services**', async (route) => route.fulfill({ json: {} }))
+      await page.route('**/api/diagnostics/services**', async (route) => {
+        route.fulfill({ json: {} })
+      })
       await expect.poll(() => domains.at(-1)).toBe('crypto')
     })
     """
@@ -373,7 +379,9 @@ def test_quality_repair_file_set_extracts_artifact_paths() -> None:
                 },
                 {
                     "code": "qa_review_benchmark_variant_gap",
-                    "benchmark_files": ["changed-files/benchmarks/src/jmh/java/OtherBenchmark.java"],
+                    "benchmark_files": [
+                        "changed-files/benchmarks/src/jmh/java/OtherBenchmark.java"
+                    ],
                 },
             ]
         },
