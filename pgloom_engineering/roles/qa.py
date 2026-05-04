@@ -53,8 +53,17 @@ class QAHandler:
     def handle(self, task: dict[str, Any]) -> HandlerResult:
         if task["task_type"] == "engineering.qa.author":
             return self._handle_author(task)
-        if task["task_type"] in {"engineering.qa", "engineering.qa.verify"}:
+        if task["task_type"] == "engineering.qa.verify":
             return self._handle_verify(task)
+        if task["task_type"] == "engineering.qa":
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.qa_deprecated_task_type",
+                blocker_reason=(
+                    "engineering.qa is deprecated; use engineering.qa.verify with "
+                    "an authored worktree handoff"
+                ),
+            )
         return HandlerResult(
             status="blocked",
             blocker_code="engineering.qa_unknown_task_type",
@@ -378,7 +387,7 @@ def _qa_verify_worktree(
     if input_path is not None:
         return input_path
 
-    for handoff in list_task_handoffs(task_id, database_url=database_url):
+    for handoff in reversed(list_task_handoffs(task_id, database_url=database_url)):
         handoff_path = _worktree_path_from_payload(handoff.get("contract"))
         if handoff_path is not None:
             return handoff_path

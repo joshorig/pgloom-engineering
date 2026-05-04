@@ -664,6 +664,8 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
 
 def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
+    stale_worktree = tmp_path / "stale-worktree"
+    stale_worktree.mkdir()
     authored_worktree = tmp_path / "handoff-worktree"
     authored_worktree.mkdir()
     authored_worktree.joinpath("marker.txt").write_text("authored\n", encoding="utf-8")
@@ -705,6 +707,15 @@ def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> No
                 "contract": {
                     "qa_author_contract": {
                         "feature_id": "feature-1",
+                        "task_id": "qa-author-task-0",
+                        "worktree_path": str(stale_worktree),
+                    }
+                }
+            },
+            {
+                "contract": {
+                    "qa_author_contract": {
+                        "feature_id": "feature-1",
                         "task_id": "qa-author-task-1",
                         "worktree_path": str(authored_worktree),
                     }
@@ -735,6 +746,20 @@ def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> No
     )
 
     assert result.status == "done"
+
+
+def test_legacy_qa_task_type_is_blocked() -> None:
+    result = QAHandler().handle(
+        {
+            "id": "qa-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_deprecated_task_type"
 
 
 def test_qa_verify_blocks_without_authored_worktree(tmp_path: Path, monkeypatch: Any) -> None:

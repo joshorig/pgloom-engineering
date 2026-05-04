@@ -260,7 +260,7 @@ def _validate_role_task_type(task_slice: TaskSliceContract) -> list[dict[str, st
         "designer": {"engineering.design", "engineering.designer"},
         "implementer": {"engineering.implement", "engineering.implementation"},
         "reviewer": {"engineering.review"},
-        "qa": {"engineering.qa", "engineering.qa.author", "engineering.qa.verify"},
+        "qa": {"engineering.qa.author", "engineering.qa.verify"},
         "historian": {"engineering.history", "engineering.historian"},
     }.get(task_slice.role)
     if allowed is None or task_slice.task_type in allowed:
