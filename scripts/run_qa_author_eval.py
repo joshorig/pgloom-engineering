@@ -26,9 +26,12 @@ from pgloom_engineering.integrations.git import changed_files, create_task_workt
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.projects import ProjectConfig, get_project, resolve_project_file
 from pgloom_engineering.qa_author_runtime import (
+    add_configured_gate_matrix_coverage,
+    benchmark_requirements_for_task,
     build_qa_author_prompt,
     normalize_qa_author_payload,
     path_violations,
+    red_proof_verification_commands,
     semantic_quality_findings,
 )
 from pgloom_engineering.qa_runtime import (
@@ -137,7 +140,33 @@ def main() -> int:
         )
         initial_verdict = outcome["verdict"]
         initial_findings = outcome["findings"]
+        repair_state: dict[str, bool] = {
+            "red_repair_attempted": False,
+            "repair_attempted": False,
+            "quality_repair_attempted": False,
+        }
         records = [usage]
+        if (
+            args.repair_missing_contract
+            and outcome["verdict"] != "accept"
+            and _qa_code_repairable(outcome)
+        ):
+            outcome = _run_red_repair_phase(
+                args=args,
+                repo=repo,
+                output_dir=output_dir,
+                file_prefix="qa-author-red-repair",
+                phase="red_repair",
+                worktree=worktree.worktree,
+                plan=plan,
+                task_contract=task_contract,
+                outcome=outcome,
+                records=records,
+                verification_command=verification_command,
+                project_metadata=project_metadata,
+            )
+            repair_state["red_repair_attempted"] = True
+        _apply_repair_state(outcome, repair_state)
         if (
             args.repair_missing_contract
             and outcome["verdict"] != "accept"
@@ -210,9 +239,10 @@ def main() -> int:
                 verification_command=verification_command,
                 project_metadata=project_metadata,
             )
-            outcome["repair_attempted"] = True
+            repair_state["repair_attempted"] = True
+            _apply_repair_state(outcome, repair_state)
         else:
-            outcome["repair_attempted"] = False
+            _apply_repair_state(outcome, repair_state)
         outcome["initial_verdict"] = initial_verdict
         outcome["initial_findings"] = initial_findings
         outcome["artifacts"] = _archive_changed_files(
@@ -367,10 +397,10 @@ def main() -> int:
                         verification_command=verification_command,
                         project_metadata=project_metadata,
                     )
-                outcome["quality_repair_attempted"] = True
+                repair_state["quality_repair_attempted"] = True
+                _apply_repair_state(outcome, repair_state)
                 outcome["initial_verdict"] = initial_verdict
                 outcome["initial_findings"] = initial_findings
-                outcome["repair_attempted"] = bool(outcome.get("repair_attempted"))
                 outcome["artifacts"] = _archive_changed_files(
                     output_dir=output_dir,
                     worktree=worktree.worktree,
@@ -385,10 +415,127 @@ def main() -> int:
                     project_metadata=project_metadata,
                 )
                 outcome["qa_quality_review"] = quality_review
+                if (
+                    args.repair_missing_contract
+                    and outcome["verdict"] != "accept"
+                    and _qa_code_repairable(outcome)
+                ):
+                    outcome = _run_red_repair_phase(
+                        args=args,
+                        repo=repo,
+                        output_dir=output_dir,
+                        file_prefix="qa-author-quality-red-repair",
+                        phase="quality_red_repair",
+                        worktree=worktree.worktree,
+                        plan=plan,
+                        task_contract=task_contract,
+                        outcome=outcome,
+                        records=records,
+                        verification_command=verification_command,
+                        project_metadata=project_metadata,
+                    )
+                    repair_state["red_repair_attempted"] = True
+                    _apply_repair_state(outcome, repair_state)
+                    if _contract_repairable(outcome):
+                        repair_prompt = _repair_prompt(
+                            plan=plan,
+                            task_contract=task_contract,
+                            worktree=worktree.worktree,
+                            changed_files=outcome["changed_files"],
+                            pytest_excerpt=outcome["pytest_stdout_excerpt"],
+                            initial_contract=outcome.get("qa_author_contract"),
+                        )
+                        (
+                            output_dir
+                            / "qa-author-quality-red-contract-repair.prompt.txt"
+                        ).write_text(
+                            repair_prompt,
+                            encoding="utf-8",
+                        )
+                        repair_started = time.monotonic()
+                        repair_final_message_path = (
+                            output_dir / "qa-author-quality-red-contract-repair.final.txt"
+                        )
+                        repair_event_log_path = (
+                            output_dir / "qa-author-quality-red-contract-repair.events.jsonl"
+                        )
+                        repair = subprocess.run(
+                            _model_command(
+                                args,
+                                worktree.worktree,
+                                sandbox="read-only",
+                                output_last_message=repair_final_message_path,
+                            ),
+                            input=repair_prompt,
+                            text=True,
+                            capture_output=True,
+                            timeout=args.timeout_seconds,
+                            check=False,
+                            cwd=worktree.worktree,
+                            env={**os.environ, **qa_env(project_metadata, project_root=repo)},
+                        )
+                        repair_elapsed = round(time.monotonic() - repair_started, 3)
+                        repair_response = _final_model_response(
+                            repair.stdout,
+                            final_message_path=repair_final_message_path,
+                            event_log_path=repair_event_log_path,
+                            backend=args.backend,
+                        )
+                        (
+                            output_dir
+                            / "qa-author-quality-red-contract-repair.response.txt"
+                        ).write_text(
+                            repair_response,
+                            encoding="utf-8",
+                        )
+                        (
+                            output_dir
+                            / "qa-author-quality-red-contract-repair.stderr.txt"
+                        ).write_text(
+                            repair.stderr,
+                            encoding="utf-8",
+                        )
+                        repair_usage = _usage(
+                            backend=args.backend,
+                            model=args.model,
+                            reasoning=args.reasoning,
+                            elapsed_seconds=repair_elapsed,
+                            prompt=repair_prompt,
+                            response=repair.stdout,
+                            pricing=_load_pricing(args.pricing_file),
+                        )
+                        repair_usage["phase"] = "quality_red_contract_repair"
+                        records.append(repair_usage)
+                        outcome = _evaluate(
+                            stdout=repair_response,
+                            subprocess_returncode=repair.returncode,
+                            worktree=worktree.worktree,
+                            plan=plan,
+                            task_contract=task_contract,
+                            usage=_combined_usage(records),
+                            verification_command=verification_command,
+                            project_metadata=project_metadata,
+                        )
+                        repair_state["repair_attempted"] = True
+                        _apply_repair_state(outcome, repair_state)
+                    outcome["artifacts"] = _archive_changed_files(
+                        output_dir=output_dir,
+                        worktree=worktree.worktree,
+                        changed_files=outcome["changed_files"],
+                    )
+                    quality_review = _review_qa_author_quality(
+                        output_dir=output_dir,
+                        worktree=worktree.worktree,
+                        plan=plan,
+                        task_contract=task_contract,
+                        outcome=outcome,
+                        project_metadata=project_metadata,
+                    )
+                    outcome["qa_quality_review"] = quality_review
             else:
-                outcome["quality_repair_attempted"] = False
+                _apply_repair_state(outcome, repair_state)
         else:
-            outcome["quality_repair_attempted"] = False
+            _apply_repair_state(outcome, repair_state)
         if quality_review["blocking_findings"]:
             outcome["findings"].extend(quality_review["blocking_findings"])
             outcome["verdict"] = "revise"
@@ -712,9 +859,11 @@ def _qa_author_brief(
         )
     endpoint_inventory = _discover_endpoint_inventory(worktree, targets, qa_metadata)
     route_requirements = _route_coverage_requirements(targets, endpoint_inventory, plan)
+    benchmark_requirements = benchmark_requirements_for_task(plan, task_contract, qa_metadata)
     deterministic_skeleton = _deterministic_test_skeleton(
         targets=targets,
         route_requirements=route_requirements,
+        benchmark_requirements=benchmark_requirements,
         qa_metadata=qa_metadata,
         plan=plan,
     )
@@ -753,6 +902,7 @@ def _qa_author_brief(
         "endpoint_inventory": endpoint_inventory,
         "route_coverage_requirements": route_requirements,
         "deterministic_test_skeleton": deterministic_skeleton,
+        "benchmark_requirements": benchmark_requirements,
         "generated_route_coverage_artifact": _generated_route_coverage_artifact(route_requirements),
         "existing_test_examples": _discover_test_examples(worktree, targets, qa_metadata),
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
@@ -766,6 +916,7 @@ def _qa_context_capsule(qa_author_brief: dict[str, Any]) -> dict[str, Any]:
         "purpose": "Stable project QA context for this task; prefer this over rediscovery.",
         "coverage_targets": qa_author_brief.get("coverage_targets"),
         "deterministic_test_skeleton": qa_author_brief.get("deterministic_test_skeleton"),
+        "benchmark_requirements": qa_author_brief.get("benchmark_requirements"),
         "generated_route_coverage_artifact": qa_author_brief.get(
             "generated_route_coverage_artifact"
         ),
@@ -921,6 +1072,7 @@ def _deterministic_test_skeleton(
     *,
     targets: dict[str, Any],
     route_requirements: list[dict[str, Any]],
+    benchmark_requirements: list[dict[str, Any]],
     qa_metadata: dict[str, Any],
     plan: PlanContract,
 ) -> dict[str, Any]:
@@ -938,7 +1090,7 @@ def _deterministic_test_skeleton(
         "required_domains": domains,
         "endpoint_behavior_skeleton": [],
         "browser_behavior_skeleton": [],
-        "benchmark_behavior_skeleton": [],
+        "benchmark_behavior_skeleton": list(benchmark_requirements),
     }
     if isinstance(skeletons, dict):
         result["preferred_test_skeletons"] = skeletons
@@ -998,7 +1150,7 @@ def _deterministic_test_skeleton(
                 ),
             }
         )
-    if targets.get("requires_benchmark_coverage"):
+    if targets.get("requires_benchmark_coverage") and not benchmark_requirements:
         result["benchmark_behavior_skeleton"].append(
             {
                 "workflow": "benchmark_acceptance",
@@ -1230,12 +1382,20 @@ def _evaluate(
     if model_error is not None:
         findings.append(model_error)
     touched = _relevant_changed_files(worktree, project_metadata)
-    findings.extend(path_violations(touched, task_contract))
+    findings.extend(path_violations(touched, task_contract, project_metadata))
     contract: QAAuthorContract | None = None
     if model_error is None:
         try:
             contract = QAAuthorContract.model_validate(
                 normalize_qa_author_payload(extract_json(_model_text(stdout)))
+            )
+            contract = _align_matrix_coverage_to_acceptance(contract, plan.acceptance_test_matrix)
+            contract = add_configured_gate_matrix_coverage(
+                contract,
+                plan=plan,
+                worktree=worktree,
+                project_metadata=project_metadata,
+                task_contract=task_contract,
             )
         except Exception as exc:
             findings.append({"code": "invalid_qa_author_contract", "message": str(exc)})
@@ -1249,11 +1409,12 @@ def _evaluate(
             findings.append({"code": "missing_matrix_coverage", "criteria": missing})
         if not contract.tests_added:
             findings.append({"code": "missing_tests_added"})
-    verification = run_qa_verification(
-        verification_command,
+    verification = _best_red_verification(
+        verification_command=verification_command,
+        changed_files=touched,
+        task_contract=task_contract,
         worktree=worktree,
         project_metadata=project_metadata,
-        timeout_seconds=300,
     )
     if contract is not None:
         contract = contract.model_copy(update={"red_proof": canonical_red_proof(verification)})
@@ -1284,6 +1445,107 @@ def _evaluate(
         "usage": usage,
         "qa_author_contract": contract.model_dump(mode="json") if contract is not None else None,
     }
+
+
+def _run_red_repair_phase(
+    *,
+    args: argparse.Namespace,
+    repo: Path,
+    output_dir: Path,
+    file_prefix: str,
+    phase: str,
+    worktree: Path,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    outcome: dict[str, Any],
+    records: list[dict[str, Any]],
+    verification_command: list[str],
+    project_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    prompt = _qa_code_repair_prompt(
+        plan=plan,
+        task_contract=task_contract,
+        worktree=worktree,
+        changed_files=outcome["changed_files"],
+        verification_command=verification_command,
+        stdout_excerpt=outcome["pytest_stdout_excerpt"],
+        stderr_excerpt=outcome["pytest_stderr_excerpt"],
+        current_contract=outcome.get("qa_author_contract"),
+    )
+    (output_dir / f"{file_prefix}.prompt.txt").write_text(prompt, encoding="utf-8")
+    started = time.monotonic()
+    final_message_path = output_dir / f"{file_prefix}.final.txt"
+    event_log_path = output_dir / f"{file_prefix}.events.jsonl"
+    completed = subprocess.run(
+        _model_command(args, worktree, output_last_message=final_message_path),
+        input=prompt,
+        text=True,
+        capture_output=True,
+        timeout=args.timeout_seconds,
+        check=False,
+        cwd=worktree,
+        env={**os.environ, **qa_env(project_metadata, project_root=repo)},
+    )
+    elapsed = round(time.monotonic() - started, 3)
+    response = _final_model_response(
+        completed.stdout,
+        final_message_path=final_message_path,
+        event_log_path=event_log_path,
+        backend=args.backend,
+    )
+    (output_dir / f"{file_prefix}.response.txt").write_text(response, encoding="utf-8")
+    (output_dir / f"{file_prefix}.stderr.txt").write_text(
+        completed.stderr,
+        encoding="utf-8",
+    )
+    repair_usage = _usage(
+        backend=args.backend,
+        model=args.model,
+        reasoning=args.reasoning,
+        elapsed_seconds=elapsed,
+        prompt=prompt,
+        response=completed.stdout,
+        pricing=_load_pricing(args.pricing_file),
+    )
+    repair_usage["phase"] = phase
+    records.append(repair_usage)
+    return _evaluate(
+        stdout=response,
+        subprocess_returncode=completed.returncode,
+        worktree=worktree,
+        plan=plan,
+        task_contract=task_contract,
+        usage=_combined_usage(records),
+        verification_command=verification_command,
+        project_metadata=project_metadata,
+    )
+
+
+def _best_red_verification(
+    *,
+    verification_command: list[str],
+    changed_files: list[str],
+    task_contract: TaskContract,
+    worktree: Path,
+    project_metadata: dict[str, Any],
+) -> Any:
+    results = [
+        run_qa_verification(
+            command,
+            worktree=worktree,
+            project_metadata=project_metadata,
+            timeout_seconds=300,
+        )
+        for command in red_proof_verification_commands(
+            task_contract,
+            changed_files,
+            selected_command=verification_command,
+        )
+    ]
+    for result in results:
+        if is_red_test_failure(result):
+            return result
+    return results[0]
 
 
 def _verification_command(task_contract: TaskContract, index: int) -> list[str]:
@@ -1327,13 +1589,52 @@ def _archive_changed_files(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
         archived.append(str(target.relative_to(output_dir)))
-    diff = run_bounded(["git", "diff", "--", *changed_files], cwd=worktree, timeout_seconds=30)
     diff_path = output_dir / "changed-files.diff"
-    diff_path.write_text(diff.stdout, encoding="utf-8")
+    diff_path.write_text(
+        _changed_files_diff(worktree, changed_files),
+        encoding="utf-8",
+    )
     return {
         "changed_files": archived,
         "diff": str(diff_path.relative_to(output_dir)),
     }
+
+
+def _changed_files_diff(worktree: Path, changed_files: list[str]) -> str:
+    tracked: list[str] = []
+    untracked: list[str] = []
+    for path in changed_files:
+        if _is_git_tracked(worktree, path):
+            tracked.append(path)
+        else:
+            untracked.append(path)
+
+    parts: list[str] = []
+    if tracked:
+        diff = run_bounded(["git", "diff", "--", *tracked], cwd=worktree, timeout_seconds=30)
+        if diff.stdout:
+            parts.append(diff.stdout.rstrip())
+    for path in untracked:
+        source = worktree / path
+        if not source.is_file():
+            continue
+        diff = run_bounded(
+            ["git", "diff", "--no-index", "--", "/dev/null", path],
+            cwd=worktree,
+            timeout_seconds=30,
+        )
+        if diff.stdout:
+            parts.append(diff.stdout.rstrip())
+    return "\n".join(parts) + ("\n" if parts else "")
+
+
+def _is_git_tracked(worktree: Path, path: str) -> bool:
+    result = run_bounded(
+        ["git", "ls-files", "--error-unmatch", "--", path],
+        cwd=worktree,
+        timeout_seconds=10,
+    )
+    return result.exit_code == 0
 
 
 def _review_qa_author_quality(
@@ -2016,6 +2317,136 @@ def _contract_repairable(outcome: dict[str, Any]) -> bool:
     return bool(codes) and codes <= allowed and bool(outcome.get("changed_files"))
 
 
+def _apply_repair_state(outcome: dict[str, Any], repair_state: dict[str, bool]) -> None:
+    for key, value in repair_state.items():
+        outcome[key] = value
+
+
+def _qa_code_repairable(outcome: dict[str, Any]) -> bool:
+    findings = outcome.get("findings", [])
+    if not isinstance(findings, list):
+        return False
+    codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
+    reasons = {
+        reason
+        for finding in findings
+        if isinstance(finding, dict)
+        if (reason := finding.get("reason")) is not None
+    }
+    allowed_codes = {
+        "tests_not_red",
+        "invalid_qa_author_contract",
+        "missing_matrix_coverage",
+        "missing_tests_added",
+        "missing_red_proof",
+    }
+    return (
+        bool(outcome.get("changed_files"))
+        and "tests_not_red" in codes
+        and codes <= allowed_codes
+        and not reasons
+    )
+
+
+def _align_matrix_coverage_to_acceptance(
+    contract: QAAuthorContract,
+    acceptance_test_matrix: list[str],
+) -> QAAuthorContract:
+    matrix = dict(contract.matrix_coverage)
+    aligned: dict[str, list[str]] = {}
+    used_keys: set[str] = set()
+    for criterion in acceptance_test_matrix:
+        if criterion in matrix:
+            aligned[criterion] = matrix[criterion]
+            used_keys.add(criterion)
+            continue
+        match = _single_matrix_key_match(criterion, matrix, used_keys)
+        if match is not None:
+            aligned[criterion] = matrix[match]
+            used_keys.add(match)
+    for key, value in matrix.items():
+        if key not in used_keys and key not in aligned:
+            aligned[key] = value
+    if aligned == matrix:
+        return contract
+    return contract.model_copy(update={"matrix_coverage": aligned})
+
+
+def _single_matrix_key_match(
+    criterion: str,
+    matrix: dict[str, list[str]],
+    used_keys: set[str],
+) -> str | None:
+    criterion_norm = _matrix_key_norm(criterion)
+    matches = [
+        key
+        for key in matrix
+        if key not in used_keys
+        and (
+            criterion_norm.startswith(_matrix_key_norm(key))
+            or _matrix_key_norm(key).startswith(criterion_norm)
+        )
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _matrix_key_norm(value: str) -> str:
+    return " ".join(value.lower().replace(":", " ").split())
+
+
+def _qa_code_repair_prompt(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    worktree: Path,
+    changed_files: list[str],
+    verification_command: list[str],
+    stdout_excerpt: str,
+    stderr_excerpt: str,
+    current_contract: object,
+) -> str:
+    test_contents = {
+        path: (worktree / path).read_text(encoding="utf-8")
+        for path in changed_files
+        if (worktree / path).is_file()
+    }
+    return json.dumps(
+        {
+            "role": "qa.author.red_repair",
+            "instructions": [
+                "Edit only the files listed in changed_files.",
+                "Do not edit production source files.",
+                (
+                    "Make the smallest targeted repair that lets the selected "
+                    "verification command run."
+                ),
+                (
+                    "The selected verification command must fail because the authored acceptance "
+                    "test exposes missing product behavior. Compile errors, import errors, syntax "
+                    "errors, missing dependencies, and sandbox/tool failures do not count as "
+                    "red proof."
+                ),
+                (
+                    "Keep acceptance coverage intact. If you remove a test, replace its matrix "
+                    "coverage with an equivalent behavior assertion in another authored test."
+                ),
+                "Return only a valid QAAuthorContract JSON object for the repaired files.",
+            ],
+            "feature_id": task_contract.feature_id,
+            "task_id": task_contract.inputs["task_id"],
+            "acceptance_test_matrix": plan.acceptance_test_matrix,
+            "selected_verification_command": verification_command,
+            "verification_stdout_excerpt": stdout_excerpt,
+            "verification_stderr_excerpt": stderr_excerpt,
+            "changed_files": changed_files,
+            "file_contents": test_contents,
+            "current_contract": current_contract,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
 def _quality_repairable(quality_review: dict[str, Any]) -> bool:
     findings = quality_review.get("blocking_findings")
     if not isinstance(findings, list) or not findings:
@@ -2172,11 +2603,15 @@ def _repair_prompt(
 
 
 def _combined_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
+    phases = [str(record.get("phase") or "author") for record in records]
+    extra_phases = [phase for phase in phases if phase != "author"]
     combined: dict[str, Any] = {
         "backend": records[0].get("backend"),
         "model": records[0].get("model"),
         "reasoning": records[0].get("reasoning"),
-        "phase": "author_plus_contract_repair",
+        "phase": "author_plus_" + "_plus_".join(extra_phases)
+        if extra_phases
+        else "author",
         "call_count": len(records),
     }
     for key in [

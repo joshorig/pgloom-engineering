@@ -20,7 +20,14 @@ from pgloom_engineering.planner.critic import (
 from pgloom_engineering.planner.exceptions import CandidateInvalid, PlannerCouncilExhausted
 from pgloom_engineering.planner.panelist import PanelistRunner
 from pgloom_engineering.planner.plan_skeleton import build_deterministic_plan_skeleton
-from pgloom_engineering.planner.production_grade import evaluate_production_grade
+from pgloom_engineering.planner.production_grade import (
+    ProductionGradeReport,
+    evaluate_production_grade,
+)
+from pgloom_engineering.planner.substance import (
+    PlannerSubstanceReport,
+    evaluate_planner_substance,
+)
 
 
 class CouncilConfig(BaseModel):
@@ -62,6 +69,7 @@ class ProjectContext(BaseModel):
     qa_regression_path: Path | None = None
     relevant_paths: list[str] = Field(default_factory=list)
     qa_write_paths: list[str] = Field(default_factory=lambda: ["tests/", "qa/fixtures/"])
+    qa_policy_summary: dict[str, Any] = Field(default_factory=dict)
     context_lens: str = "shared"
     lens_focus: list[str] = Field(default_factory=list)
 
@@ -79,6 +87,8 @@ class CouncilIteration(BaseModel):
     consolidated: PlanContract
     critic: CriticVerdict
     validator_errors: list[dict[str, Any]]
+    production_grade: ProductionGradeReport | None = None
+    substance: PlannerSubstanceReport | None = None
 
 
 class CouncilOutcome(BaseModel):
@@ -147,6 +157,10 @@ class PlannerCouncil:
                 consolidated,
                 project_root=project_context.project_root,
             )
+            substance = evaluate_planner_substance(
+                consolidated,
+                project_context=project_context,
+            )
             if (
                 self._config.production_grade_preempts_critic
                 and production_grade.verdict == "accept"
@@ -183,6 +197,8 @@ class PlannerCouncil:
                 consolidated=consolidated,
                 critic=critic,
                 validator_errors=validator_errors,
+                production_grade=production_grade,
+                substance=substance,
             )
             iterations.append(iteration)
             if critic.verdict == "accept" and not validator_errors:
@@ -270,6 +286,16 @@ def _council_reports(iterations: list[CouncilIteration]) -> list[dict[str, Any]]
                 ],
                 "critic": iteration.critic.model_dump(mode="json"),
                 "validator_errors": iteration.validator_errors,
+                "production_grade": (
+                    iteration.production_grade.model_dump(mode="json")
+                    if iteration.production_grade is not None
+                    else None
+                ),
+                "planner_substance": (
+                    iteration.substance.model_dump(mode="json")
+                    if iteration.substance is not None
+                    else None
+                ),
             }
         )
     return reports

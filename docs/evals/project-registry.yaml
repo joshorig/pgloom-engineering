@@ -50,6 +50,11 @@ projects:
           - benchmarks/src/jmh/java
         benchmark_frameworks:
           - jmh
+        benchmark_variants:
+          - single
+          - double
+          - direct
+          - mmap
         example_tests:
           - store/src/test/java
           - conformance-tests/src/test/java
@@ -68,12 +73,12 @@ projects:
             must_cover:
               - allocation
               - benchmark_smoke
+              - unit_regression
           - id: regression
             command:
               - ./qa/regression.sh
             must_cover:
               - benchmark_full
-              - unit_regression
         avoid_patterns:
           - Tests that bypass store public APIs for acceptance behavior.
           - Benchmarks that do not run through the existing JMH smoke gate.

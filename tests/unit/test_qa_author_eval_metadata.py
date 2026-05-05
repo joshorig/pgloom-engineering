@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -395,12 +396,49 @@ def test_quality_repair_file_set_extracts_artifact_paths() -> None:
     ]
 
 
+def test_archive_changed_files_diff_includes_untracked_files(tmp_path: Path) -> None:
+    module = _load_eval_module()
+    repo = tmp_path / "repo"
+    output_dir = tmp_path / "out"
+    repo.mkdir()
+    output_dir.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "qa@example.test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "QA"], cwd=repo, check=True)
+    repo.joinpath("tracked.txt").write_text("old\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
+    repo.joinpath("tracked.txt").write_text("new\n", encoding="utf-8")
+    repo.joinpath("tests").mkdir()
+    repo.joinpath("tests/test_new.py").write_text(
+        "def test_new():\n    assert True\n",
+        encoding="utf-8",
+    )
+
+    artifacts = module._archive_changed_files(
+        output_dir=output_dir,
+        worktree=repo,
+        changed_files=["tracked.txt", "tests/test_new.py"],
+    )
+
+    diff = output_dir.joinpath(artifacts["diff"]).read_text(encoding="utf-8")
+    assert "diff --git a/tracked.txt b/tracked.txt" in diff
+    assert "diff --git a/tests/test_new.py b/tests/test_new.py" in diff
+    assert "new file mode" in diff
+    assert sorted(artifacts["changed_files"]) == [
+        "changed-files/tests/test_new.py",
+        "changed-files/tracked.txt",
+    ]
+
+
 def test_generated_tool_artifacts_are_excluded_from_changed_files() -> None:
     from pgloom_engineering.qa_runtime import is_generated_tool_artifact
 
     assert is_generated_tool_artifact("test-results/.last-run.json")
     assert is_generated_tool_artifact("ui/playwright-report/index.html")
     assert is_generated_tool_artifact(".gradle/file-system.probe")
+    assert is_generated_tool_artifact(".gradle-home/wrapper/dists/gradle.zip.part")
+    assert is_generated_tool_artifact(".gradle-user-home/wrapper/dists/gradle.zip.part")
     assert not is_generated_tool_artifact("ui/tests/e2e/domain-switch.spec.ts")
     assert not is_generated_tool_artifact(
         "app-api/src/test/java/com/example/AcceptanceTest.java"
@@ -417,6 +455,107 @@ def test_contract_repairable_handles_invalid_contract_even_without_red_exit_code
             "pytest_exit_code": 0,
         }
     )
+
+
+def test_qa_code_repairable_handles_non_red_test_failures() -> None:
+    module = _load_eval_module()
+
+    assert module._qa_code_repairable(
+        {
+            "findings": [
+                {"code": "tests_not_red"},
+                {"code": "missing_matrix_coverage"},
+            ],
+            "changed_files": ["tests/test_feature.py"],
+        }
+    )
+    assert not module._qa_code_repairable(
+        {
+            "findings": [{"code": "tests_not_red"}, {"code": "verification_infra_error"}],
+            "changed_files": ["tests/test_feature.py"],
+        }
+    )
+    assert not module._qa_code_repairable(
+        {
+            "findings": [
+                {"code": "tests_not_red"},
+                {"path": "src/main/java/App.java", "reason": "not_a_qa_write_path"},
+            ],
+            "changed_files": ["src/main/java/App.java"],
+        }
+    )
+
+
+def test_repair_state_is_preserved_across_replaced_outcomes() -> None:
+    module = _load_eval_module()
+    state = {
+        "red_repair_attempted": True,
+        "repair_attempted": False,
+        "quality_repair_attempted": False,
+    }
+    outcome = {"verdict": "revise"}
+
+    module._apply_repair_state(outcome, state)
+    assert outcome["red_repair_attempted"]
+
+    next_outcome = {"verdict": "accept"}
+    state["repair_attempted"] = True
+    module._apply_repair_state(next_outcome, state)
+
+    assert next_outcome["red_repair_attempted"]
+    assert next_outcome["repair_attempted"]
+    assert not next_outcome["quality_repair_attempted"]
+
+
+def test_qa_code_repair_prompt_includes_verification_failure_and_file_contents(
+    tmp_path: Path,
+) -> None:
+    module = _load_eval_module()
+    tmp_path.joinpath("tests").mkdir()
+    tmp_path.joinpath("tests/test_feature.py").write_text(
+        "def test_feature():\n    missing import\n",
+        encoding="utf-8",
+    )
+
+    prompt = module._qa_code_repair_prompt(
+        plan=module._fixture_plan(),
+        task_contract=module._fixture_task_contract(),
+        worktree=tmp_path,
+        changed_files=["tests/test_feature.py"],
+        verification_command=["pytest", "tests/test_feature.py"],
+        stdout_excerpt="SyntaxError",
+        stderr_excerpt="invalid syntax",
+        current_contract={"tests_added": ["tests/test_feature.py"]},
+    )
+
+    assert "Compile errors, import errors, syntax errors" in prompt
+    assert "pytest" in prompt
+    assert "invalid syntax" in prompt
+    assert "def test_feature" in prompt
+
+
+def test_matrix_coverage_alignment_expands_unambiguous_short_keys() -> None:
+    module = _load_eval_module()
+    criterion = (
+        "Config endpoint semantic coverage: every existing /api/config/* route is exercised."
+    )
+    contract = module.QAAuthorContract.model_validate(
+        {
+            "contract_version": "engineering.contracts.v1",
+            "feature_id": "F-1",
+            "task_id": "T-1",
+            "tests_added": ["tests/test_feature.py"],
+            "paths_touched": ["tests/test_feature.py"],
+            "matrix_coverage": {
+                "Config endpoint semantic coverage": ["test_config_routes"],
+            },
+            "red_proof": [],
+        }
+    )
+
+    aligned = module._align_matrix_coverage_to_acceptance(contract, [criterion])
+
+    assert aligned.matrix_coverage == {criterion: ["test_config_routes"]}
 
 
 def test_qa_author_payload_normalizes_matrix_coverage_strings() -> None:

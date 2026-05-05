@@ -37,6 +37,7 @@ from pgloom_engineering.planner.context_capsule import (
     upsert_context_capsule,
 )
 from pgloom_engineering.planner.exceptions import PlannerCouncilExhausted
+from pgloom_engineering.planner.substance import planner_qa_policy_summary
 from pgloom_engineering.planner.token_savior_context import (
     TokenSaviorContextResult,
     build_token_savior_project_context,
@@ -457,6 +458,7 @@ def _build_project_context(
         qa_regression_path=root.joinpath("qa/regression.sh"),
         relevant_paths=list(metadata.get("relevant_paths") or []),
         qa_write_paths=list(metadata.get("qa_write_paths") or discover_qa_write_paths(root)),
+        qa_policy_summary=planner_qa_policy_summary(metadata),
     ), None
 
 
@@ -507,6 +509,10 @@ def _merge_project_context_metadata(
                     ]
                 )
             ),
+            "qa_policy_summary": {
+                **context.qa_policy_summary,
+                **planner_qa_policy_summary(metadata),
+            },
         }
     )
 

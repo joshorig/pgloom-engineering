@@ -190,12 +190,18 @@ def _planner_command(
             "claude_max_budget_usd",
             defaults.get("claude_max_budget_usd", "8.00"),
         )
+        invocation_timeout = case.get(
+            "invocation_timeout_seconds",
+            defaults.get("invocation_timeout_seconds"),
+        )
         command.extend(
             [
                 "--claude-max-budget-usd",
                 str(max_budget),
             ]
         )
+        if invocation_timeout:
+            command.extend(["--invocation-timeout-seconds", str(invocation_timeout)])
     return command
 
 

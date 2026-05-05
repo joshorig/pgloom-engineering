@@ -10,6 +10,7 @@ def build_repair_brief(prior_iteration: Any) -> dict[str, Any]:
     validator_errors = _validator_errors(prior_iteration)
     critic_payload = _critic_payload(prior_iteration)
     findings = _critic_findings(critic_payload)
+    findings.extend(_substance_findings(prior_iteration))
     codes = _codes(validator_errors, findings)
     actions = [_action_for_code(code) for code in codes]
     actions = [action for action in actions if action]
@@ -49,6 +50,17 @@ def _critic_findings(critic_payload: dict[str, Any]) -> list[dict[str, Any]]:
                 payload.setdefault("check_id", check_id)
                 findings.append(payload)
     return findings
+
+
+def _substance_findings(prior_iteration: Any) -> list[dict[str, Any]]:
+    substance = getattr(prior_iteration, "substance", None)
+    if substance is None or not hasattr(substance, "model_dump"):
+        return []
+    dumped = substance.model_dump(mode="json")
+    raw_findings = dumped.get("findings") if isinstance(dumped, dict) else None
+    if not isinstance(raw_findings, list):
+        return []
+    return [finding for finding in raw_findings if isinstance(finding, dict)]
 
 
 def _codes(
@@ -111,6 +123,34 @@ def _action_for_code(code: str) -> str:
         "invalid_finalization_policy": (
             "Set finalization_policy to open_final_feature_pr_for_human_merge and do not create a "
             "separate finalization task slice."
+        ),
+        "planner_broad_gate_without_module_local_command": (
+            "Replace broad-only slice verification with module-local build/test commands while "
+            "keeping smoke/regression gates for final QA verification."
+        ),
+        "planner_non_verification_command": (
+            "Remove grep/cat/echo/list-only/dry-run commands as verification proof; use commands "
+            "that compile, test, benchmark, or run configured QA gates."
+        ),
+        "planner_endpoint_harness_guidance_missing": (
+            "For endpoint acceptance, make the QA author slice require MockMvc, WebTestClient, "
+            "TestRestTemplate, or equivalent HTTP harness coverage."
+        ),
+        "planner_structured_assertion_guidance_missing": (
+            "For payload acceptance, make the QA author slice require structured JSON/YAML "
+            "field/path assertions instead of broad string containment."
+        ),
+        "planner_benchmark_variant_guidance_missing": (
+            "For benchmark acceptance, make the QA author slice enumerate all configured "
+            "benchmark variants and generate coverage for each variant."
+        ),
+        "planner_qa_expected_outputs_too_generic": (
+            "Replace generic QA author expected_outputs with concrete test files, fixtures, "
+            "or benchmark artifacts."
+        ),
+        "planner_implementation_outputs_too_generic": (
+            "Replace generic implementer expected_outputs with concrete APIs, classes, files, "
+            "or behavior artifacts."
         ),
     }
     return actions.get(code, "")

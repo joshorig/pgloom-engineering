@@ -49,6 +49,23 @@ def test_planner_eval_provider_uses_configurable_cwd(tmp_path: Path) -> None:
     )
 
     assert provider.cwd == tmp_path
+    assert provider.timeout_seconds == 600
+
+
+def test_planner_eval_provider_accepts_invocation_timeout(tmp_path: Path) -> None:
+    provider = DirectProvider(
+        backend="claude",
+        output_dir=tmp_path,
+        model="sonnet",
+        reasoning="",
+        mechanical_model=None,
+        mechanical_reasoning=None,
+        claude_max_budget_usd="5.00",
+        timeout_seconds=1800,
+        cwd=tmp_path,
+    )
+
+    assert provider.timeout_seconds == 1800
 
 
 def test_planner_eval_runtime_extracts_codex_usage_and_result_text() -> None:

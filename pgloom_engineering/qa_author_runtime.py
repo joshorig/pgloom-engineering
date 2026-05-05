@@ -4,13 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pgloom_engineering.contracts import PlanContract, TaskContract
+from pgloom_engineering.contracts import PlanContract, QAAuthorContract, TaskContract
 from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.qa_runtime import (
     discover_route_inventory,
     project_qa_metadata,
     prompt_safe_qa_metadata,
     route_inventory_for_prompt,
+    validate_required_qa_gates,
 )
 from pgloom_engineering.qa_semantic_review import review_semantic_quality
 
@@ -59,6 +60,60 @@ def semantic_quality_findings(
     return [finding.asdict() for finding in findings]
 
 
+def add_configured_gate_matrix_coverage(
+    contract: QAAuthorContract,
+    *,
+    plan: PlanContract,
+    worktree: Path,
+    project_metadata: dict[str, Any],
+    task_contract: TaskContract | None = None,
+) -> QAAuthorContract:
+    configured_gates = [
+        item
+        for item in validate_required_qa_gates(worktree, project_metadata)
+        if item.get("status") == "configured"
+    ]
+    if not configured_gates and task_contract is None:
+        return contract
+    matrix = dict(contract.matrix_coverage)
+    for criterion in plan.acceptance_test_matrix:
+        if matrix.get(criterion) or not _criterion_is_configured_gate(criterion):
+            continue
+        evidence = [
+            str(command[0])
+            for item in configured_gates
+            if isinstance(command := item.get("command"), list) and command
+        ]
+        if not evidence and task_contract is not None:
+            evidence = [
+                " ".join(command)
+                for command in verification_commands(task_contract)
+                if _command_is_gate(command)
+            ]
+        if evidence:
+            matrix[criterion] = evidence
+    if matrix == contract.matrix_coverage:
+        return contract
+    return contract.model_copy(update={"matrix_coverage": matrix})
+
+
+def _criterion_is_configured_gate(criterion: str) -> bool:
+    lowered = criterion.lower()
+    return (
+        "qa gate" in lowered
+        or "qa gates" in lowered
+        or "qa/smoke" in lowered
+        or "qa/regression" in lowered
+        or "allocation gate" in lowered
+        or "configured" in lowered and ("gate" in lowered or "gates" in lowered)
+    )
+
+
+def _command_is_gate(command: list[str]) -> bool:
+    text = " ".join(command).lower()
+    return "qa/smoke" in text or "qa/regression" in text or "gradlew" in text
+
+
 def build_qa_author_prompt(
     plan: PlanContract,
     task_contract: TaskContract,
@@ -73,6 +128,7 @@ def build_qa_author_prompt(
         project_metadata=project_metadata,
         project_root=project_root,
     )
+    benchmark_requirements = benchmark_requirements_for_task(plan, task_contract, qa_metadata)
     payload = {
         "role": "qa.author",
         "instructions": [
@@ -98,6 +154,10 @@ def build_qa_author_prompt(
                 "For benchmark acceptance, use the project's benchmark harness; measured "
                 "benchmark methods must allocate no garbage after setup."
             ),
+            (
+                "If deterministic_test_skeleton has benchmark cases, parameterize generated "
+                "benchmark coverage over every required variant."
+            ),
             "The orchestrator will run verification and create canonical red_proof.",
             "Return only a QAAuthorContract JSON object.",
             (
@@ -107,14 +167,17 @@ def build_qa_author_prompt(
         ],
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
         "route_coverage_requirements": route_requirements,
+        "benchmark_requirements": benchmark_requirements,
         "deterministic_test_skeleton": deterministic_test_skeleton(
             plan=plan,
             route_requirements=route_requirements,
+            benchmark_requirements=benchmark_requirements,
             qa_metadata=qa_metadata,
         ),
         "generated_route_coverage_artifact": generated_route_coverage_artifact(route_requirements),
         "qa_context_capsule": build_qa_context_capsule(
             route_requirements=route_requirements,
+            benchmark_requirements=benchmark_requirements,
             qa_metadata=qa_metadata,
             plan=plan,
         ),
@@ -142,6 +205,7 @@ def build_qa_author_prompt(
 def build_qa_context_capsule(
     *,
     route_requirements: list[dict[str, Any]],
+    benchmark_requirements: list[dict[str, Any]] | None = None,
     qa_metadata: dict[str, Any],
     plan: PlanContract,
 ) -> dict[str, Any]:
@@ -150,6 +214,7 @@ def build_qa_context_capsule(
         "purpose": "Stable project QA context for this task; prefer this over rediscovery.",
         "required_domains": domains_from_plan(plan),
         "generated_route_coverage_artifact": generated_route_coverage_artifact(route_requirements),
+        "benchmark_requirements": benchmark_requirements or [],
         "preferred_helpers": qa_metadata.get("preferred_helpers"),
         "behavior_coverage_rules": qa_metadata.get("behavior_coverage_rules"),
         "quality_gates": qa_metadata.get("quality_gates"),
@@ -178,6 +243,7 @@ def deterministic_test_skeleton(
     *,
     plan: PlanContract,
     route_requirements: list[dict[str, Any]],
+    benchmark_requirements: list[dict[str, Any]] | None = None,
     qa_metadata: dict[str, Any],
 ) -> dict[str, Any]:
     skeleton: dict[str, Any] = {
@@ -187,6 +253,7 @@ def deterministic_test_skeleton(
         ),
         "required_domains": domains_from_plan(plan),
         "endpoint_behavior_skeleton": [],
+        "benchmark_behavior_skeleton": benchmark_requirements or [],
     }
     for key in ["preferred_test_skeletons", "preferred_helpers", "behavior_coverage_rules"]:
         value = qa_metadata.get(key)
@@ -212,6 +279,71 @@ def deterministic_test_skeleton(
             }
         )
     return skeleton
+
+
+def benchmark_requirements_for_task(
+    plan: PlanContract,
+    task_contract: TaskContract,
+    qa_metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    text = "\n".join(
+        [
+            plan.problem_statement,
+            task_contract.objective,
+            *plan.acceptance_test_matrix,
+            *task_contract.expected_outputs,
+            *task_contract.allowed_paths,
+        ]
+    ).lower()
+    if not any(token in text for token in ["benchmark", "jmh", "latency", "p99"]):
+        return []
+    variants = benchmark_variants_from_text(text, qa_metadata)
+    roots = [
+        str(root)
+        for root in qa_metadata.get("benchmark_roots", [])
+        if isinstance(root, str)
+    ]
+    return [
+        {
+            "workflow": "benchmark_acceptance",
+            "framework": "jmh" if "jmh" in text else "project_benchmark_harness",
+            "benchmark_roots": roots,
+            "required_variants": variants,
+            "authoring_requirements": [
+                "create benchmark fixture state before measured iterations",
+                "measured benchmark methods perform only the operation under test",
+                (
+                    "do not allocate object graphs, collections, temp files, or stores "
+                    "in @Benchmark methods"
+                ),
+                "parameterize benchmark coverage over every required variant",
+            ],
+        }
+    ]
+
+
+def benchmark_variants_from_text(text: str, qa_metadata: dict[str, Any]) -> list[str]:
+    configured = _configured_benchmark_variants(qa_metadata)
+    if configured:
+        return configured
+    known = ["single", "double", "direct", "mmap"]
+    return [variant for variant in known if variant in text]
+
+
+def _configured_benchmark_variants(qa_metadata: dict[str, Any]) -> list[str]:
+    raw = qa_metadata.get("benchmark_variants")
+    if isinstance(raw, list):
+        return [str(item) for item in raw if isinstance(item, str)]
+    conventions = qa_metadata.get("semantic_conventions")
+    if not isinstance(conventions, dict):
+        return []
+    benchmark = conventions.get("restore_benchmark")
+    if not isinstance(benchmark, dict):
+        return []
+    variants = benchmark.get("variants")
+    if isinstance(variants, list):
+        return [str(item) for item in variants if isinstance(item, str)]
+    return []
 
 
 def domains_from_plan(plan: PlanContract) -> list[str]:
@@ -306,12 +438,59 @@ def verification_commands(task_contract: TaskContract) -> list[list[str]]:
     return [["pytest"]]
 
 
-def path_violations(paths: list[str], task_contract: TaskContract) -> list[dict[str, str]]:
+def red_proof_verification_commands(
+    task_contract: TaskContract,
+    changed_paths: list[str],
+    *,
+    selected_command: list[str] | None = None,
+) -> list[list[str]]:
+    commands = (
+        [selected_command]
+        if selected_command is not None
+        else verification_commands(task_contract)
+    )
+    result = [command for command in commands if command]
+    for command in _module_local_gradle_test_commands(changed_paths):
+        if command not in result:
+            result.append(command)
+    return result
+
+
+def _module_local_gradle_test_commands(changed_paths: list[str]) -> list[list[str]]:
+    commands: list[list[str]] = []
+    for path in changed_paths:
+        marker = "/src/test/java/"
+        if marker not in path or not path.endswith(".java"):
+            continue
+        module = path.split(marker, 1)[0]
+        if not module or "/" in module:
+            continue
+        class_name = path.split(marker, 1)[1].removesuffix(".java").replace("/", ".")
+        commands.append(
+            [
+                "./gradlew",
+                "--no-daemon",
+                "--console=plain",
+                f":{module}:test",
+                "--tests",
+                class_name,
+            ]
+        )
+    return commands
+
+
+def path_violations(
+    paths: list[str],
+    task_contract: TaskContract,
+    project_metadata: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    metadata = project_qa_metadata(project_metadata or {})
+    qa_write_paths = _metadata_qa_write_paths(metadata)
     violations: list[dict[str, str]] = []
     for path in paths:
         allowed = any(path_matches(path, root) for root in task_contract.allowed_paths)
         forbidden = any(path_matches(path, root) for root in task_contract.forbidden_paths)
-        qa_path = is_qa_write_path(path)
+        qa_path = is_qa_write_path(path, qa_write_paths)
         if not allowed or forbidden or not qa_path:
             violations.append(
                 {
@@ -324,6 +503,20 @@ def path_violations(paths: list[str], task_contract: TaskContract) -> list[dict[
                 }
             )
     return violations
+
+
+def _metadata_qa_write_paths(qa_metadata: dict[str, Any]) -> list[str]:
+    paths: list[str] = ["tests/", "qa/fixtures/"]
+    for key in ["test_roots", "browser_test_roots", "benchmark_roots"]:
+        raw = qa_metadata.get(key)
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if isinstance(item, str):
+                normalized = item.rstrip("/") + "/"
+                if normalized not in paths:
+                    paths.append(normalized)
+    return paths
 
 
 def path_matches(path: str, root: str) -> bool:

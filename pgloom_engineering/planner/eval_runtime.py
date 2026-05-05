@@ -28,6 +28,7 @@ class DirectProvider:
         mechanical_model: str | None,
         mechanical_reasoning: str | None,
         claude_max_budget_usd: str,
+        timeout_seconds: int = 600,
         cwd: Path | None = None,
     ) -> None:
         self.backend = backend
@@ -37,6 +38,7 @@ class DirectProvider:
         self.mechanical_model = mechanical_model
         self.mechanical_reasoning = mechanical_reasoning
         self.claude_max_budget_usd = claude_max_budget_usd
+        self.timeout_seconds = timeout_seconds
         self.cwd = cwd or Path.cwd()
         self.counts: dict[str, int] = {}
         self.usage_path = output_dir / "model_usage.jsonl"
@@ -71,7 +73,7 @@ class DirectProvider:
             text=True,
             capture_output=True,
             cwd=self.cwd,
-            timeout=600,
+            timeout=self.timeout_seconds,
             check=False,
         )
         elapsed_seconds = time.monotonic() - started
