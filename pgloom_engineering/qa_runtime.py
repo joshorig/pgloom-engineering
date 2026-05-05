@@ -29,6 +29,9 @@ def project_qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:
         metadata = _deep_merge_dicts(metadata, qa_author)
     for key in [
         "test_roots",
+        "benchmark_roots",
+        "benchmark_frameworks",
+        "benchmark_variants",
         "source_roots",
         "endpoint_roots",
         "browser_test_roots",
@@ -58,6 +61,9 @@ def prompt_safe_qa_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
     for key in [
         "test_roots",
+        "benchmark_roots",
+        "benchmark_frameworks",
+        "benchmark_variants",
         "source_roots",
         "endpoint_roots",
         "browser_test_roots",
@@ -174,7 +180,9 @@ def _gate_coverage_tokens(coverage_id: str) -> list[str]:
         "benchmark_full": [":benchmarks:jmh", "benchmark_full"],
         "unit_regression": [
             "./gradlew test",
+            "./gradlew --no-daemon test",
             "gradle test",
+            "gradlew test",
             "mvn test",
             "pytest",
             "unit_regression",
@@ -321,6 +329,8 @@ def is_generated_tool_artifact(path: str) -> bool:
     ignored_prefixes = (
         ".pytest_cache/",
         ".gradle/",
+        ".gradle-home/",
+        ".gradle-user-home/",
         "build/",
         "test-results/",
         "playwright-report/",

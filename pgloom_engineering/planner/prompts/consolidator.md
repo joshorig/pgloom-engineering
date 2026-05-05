@@ -25,6 +25,10 @@ Rules:
 - Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
   slices. If candidates use generic QA slices, split them into test-first
   authoring before implementers and verification after reviewers.
+- Preserve QA policy guidance from candidate contexts and summaries: endpoint
+  harness requirements, structured payload assertions, benchmark variants,
+  required gates, behavior coverage rules, and avoid patterns must survive in QA
+  author objectives/outputs when relevant.
 - QA author/verify write paths must be restricted to the QA/test roots shown in
   candidate project contexts. Implementer write paths must not include those
   paths.
@@ -42,6 +46,12 @@ Rules:
   acceptance entries for unrelated features.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
+- Prefer module-local commands for QA author and implementer slices. Broad
+  `qa/smoke.sh` and `qa/regression.sh` may remain as gates, but should not be
+  the only proof for module-specific work when a module-local command is
+  available.
+- Remove exploratory commands (`grep`, `cat`, `echo`), list-only commands, and
+  dry-run-only commands when they are used as verification proof.
 - Dependency IDs must refer only to earlier slices.
 - Use `open_final_feature_pr_for_human_merge` for finalization_policy.
 - The input is summarized to save tokens; do not treat omitted raw JSON as omitted

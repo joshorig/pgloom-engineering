@@ -79,7 +79,11 @@ def build_deterministic_plan_skeleton(
             "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
             "Do not add finalization or merge slices; finalization_policy carries the human gate.",
             "QA author and QA verify write only registered QA/test roots.",
+            "QA author objectives must preserve project QA policy: endpoint harnesses, "
+            "structured assertions, benchmark variants, required gates, and avoid patterns.",
             "Implementers write source/config/docs only and must not claim QA write paths.",
+            "Prefer module-local test/build commands for QA author and implementer slices; "
+            "broad smoke/regression gates belong primarily in final QA verify.",
             "Expand objectives, acceptance matrix, risk register, and verification commands "
             "from feature-specific evidence.",
         ],

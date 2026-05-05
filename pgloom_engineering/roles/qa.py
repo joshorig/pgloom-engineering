@@ -23,16 +23,16 @@ from pgloom_engineering.model_provider import EngineeringCLIModelProvider
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.projects import get_project
 from pgloom_engineering.qa_author_runtime import (
+    add_configured_gate_matrix_coverage,
     build_qa_author_prompt,
     command_for_worktree,
     normalize_qa_author_payload,
     path_violations,
     qa_model_route,
+    red_proof_verification_commands,
     route_model_command,
     semantic_quality_findings,
-)
-from pgloom_engineering.qa_author_runtime import (
-    verification_commands as select_verification_commands,
+    verification_commands,
 )
 from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
@@ -119,7 +119,7 @@ class QAHandler:
                 task_id=task_id,
                 feature_id=task_contract.feature_id,
             )
-            for command in select_verification_commands(task_contract)
+            for command in verification_commands(task_contract)
         ]
         contract = QAResultContract(
             feature_id=task_contract.feature_id,
@@ -237,7 +237,7 @@ class QAHandler:
                 result={"raw_response": response.text},
             )
         touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
-        violations = path_violations(touched, task_contract)
+        violations = path_violations(touched, task_contract, project.metadata)
         if violations:
             return HandlerResult(
                 status="blocked",
@@ -286,10 +286,10 @@ class QAHandler:
                 task_id=task_id,
                 feature_id=task_contract.feature_id,
             )
-            for command in select_verification_commands(task_contract)
+            for command in red_proof_verification_commands(task_contract, touched)
         ]
         touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
-        violations = path_violations(touched, task_contract)
+        violations = path_violations(touched, task_contract, project.metadata)
         if violations:
             return HandlerResult(
                 status="blocked",
@@ -366,6 +366,13 @@ class QAHandler:
                     *([response.model_usage_id] if response.model_usage_id is not None else []),
                 ],
             }
+        )
+        contract = add_configured_gate_matrix_coverage(
+            contract,
+            plan=plan,
+            worktree=handle.worktree,
+            project_metadata=project.metadata,
+            task_contract=task_contract,
         )
         return HandlerResult.done(
             {

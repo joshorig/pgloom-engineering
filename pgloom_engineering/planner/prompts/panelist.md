@@ -57,6 +57,10 @@ Rules:
   when the feature evidence clearly requires it.
 - PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
   to emphasize, but you must still produce a complete PlanContract.
+- PROJECT_CONTEXT.qa_policy_summary is authoritative QA handoff policy. Preserve
+  endpoint harness, structured assertion, benchmark variant, required gate, and
+  avoid-pattern guidance in QA author objectives/outputs when the feature touches
+  those domains.
 - Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
   `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
 - Use the canonical role/task_type mapping:
@@ -71,6 +75,11 @@ Rules:
   `parallel_candidates`, `council_decides`, or `single`.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
+- Prefer module-local verification commands for QA author and implementer slices.
+  Use broad `qa/smoke.sh` and `qa/regression.sh` as final gates or extra gate
+  evidence, not as the only proof for module-specific work.
+- Do not use `grep`, `cat`, `echo`, list-only, or dry-run commands as the only
+  verification evidence for any slice.
 - Dependency IDs must refer only to earlier slices.
 - Use concrete path prefixes only. Do not emit wildcard paths such as
   `platform-ingest-*/`; list the exact directory if it matters.
@@ -83,6 +92,9 @@ Rules:
   - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
     It writes failing tests/fixtures only, so `allowed_paths` must be limited
     to PROJECT_CONTEXT.qa_write_paths.
+    It must name concrete test files/fixtures, required endpoint harnesses,
+    assertion style, benchmark variants, and module-local red commands when
+    PROJECT_CONTEXT.qa_policy_summary provides them.
   - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
     runs smoke plus full regression/full-suite verification. Its `allowed_paths`
     must also be limited to PROJECT_CONTEXT.qa_write_paths.

@@ -55,6 +55,7 @@ def main() -> int:
         mechanical_model=args.mechanical_model,
         mechanical_reasoning=args.mechanical_reasoning,
         claude_max_budget_usd=args.claude_max_budget_usd,
+        timeout_seconds=args.invocation_timeout_seconds,
     )
     council = PlannerCouncil(
         config=CouncilConfig(
@@ -63,7 +64,7 @@ def main() -> int:
             panelist_profile="planner-panelist",
             critic_profile="planner-critic",
             consolidator_profile="planner-consolidator",
-            timeout_seconds_per_invocation=600,
+            timeout_seconds_per_invocation=args.invocation_timeout_seconds,
         ),
         provider=provider,
     )
@@ -133,6 +134,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--workflow-id")
     parser.add_argument("--context-budget-tokens", type=int, default=3000)
     parser.add_argument("--claude-max-budget-usd", default="5.00")
+    parser.add_argument("--invocation-timeout-seconds", type=int, default=600)
     parser.add_argument("--database-url")
     return parser.parse_args()
 

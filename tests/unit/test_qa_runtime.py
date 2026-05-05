@@ -427,6 +427,50 @@ def test_required_qa_gates_do_not_accept_regression_filename_as_unit_gate(
     assert validation[0]["missing"] == ["coverage:unit_regression"]
 
 
+def test_lvc_gate_shape_maps_unit_regression_to_smoke_and_benchmark_full_to_regression(
+    tmp_path: Path,
+) -> None:
+    tmp_path.joinpath("qa").mkdir()
+    tmp_path.joinpath("qa/smoke.sh").write_text(
+        "./gradlew --no-daemon test\n"
+        "./gradlew --no-daemon :benchmarks:jmhSmokeCheck -Pjmh.smoke=true\n"
+        "grep gc.alloc.rate.norm build/reports/jmh/results.txt\n",
+        encoding="utf-8",
+    )
+    tmp_path.joinpath("qa/regression.sh").write_text(
+        "./gradlew --no-daemon :benchmarks:jmh -Pjmh.forks=1\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_required_qa_gates(
+        tmp_path,
+        {
+            "qa": {
+                "required_gates": [
+                    {
+                        "id": "smoke",
+                        "command": ["./qa/smoke.sh"],
+                        "must_cover": [
+                            "allocation",
+                            "benchmark_smoke",
+                            "unit_regression",
+                        ],
+                    },
+                    {
+                        "id": "regression",
+                        "command": ["./qa/regression.sh"],
+                        "must_cover": ["benchmark_full"],
+                    },
+                ]
+            }
+        },
+    )
+
+    assert [item["status"] for item in validation] == ["configured", "configured"]
+    assert "covers:unit_regression" in validation[0]["evidence"]
+    assert "covers:benchmark_full" in validation[1]["evidence"]
+
+
 def test_no_tests_found_is_not_an_infra_error() -> None:
     assert verification_infra_error("collected 0 items\nno tests found", "") is None
 

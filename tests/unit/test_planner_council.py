@@ -332,6 +332,8 @@ def test_production_grade_preempts_model_critic_when_clean() -> None:
     assert outcome.accepted_at_iteration == 1
     assert all(profile_name != "planner-critic" for profile_name, _ in provider.prompts)
     assert "preempted_model_critic=true" in outcome.iterations[0].critic.rationale
+    assert outcome.iterations[0].substance is not None
+    assert outcome.final.council_reports[0]["planner_substance"]["score"] <= 100
 
 
 def test_role_model_routing_updates_claude_model() -> None:
@@ -421,6 +423,10 @@ def test_council_sends_lens_specific_context_and_skeleton_to_panelists() -> None
             ),
             decisions_excerpt="decision: persistence must preserve journal invariant",
             relevant_paths=["store/", "tests/", "qa/fixtures/"],
+            qa_policy_summary={
+                "endpoint_acceptance": {"require_http_harness": True},
+                "benchmark_variants": ["single", "double"],
+            },
         ),
     )
 
@@ -432,6 +438,8 @@ def test_council_sends_lens_specific_context_and_skeleton_to_panelists() -> None
     assert '"context_lens": "qa"' in panelist_prompts[1]
     assert "DETERMINISTIC_PLAN_SKELETON" in panelist_prompts[0]
     assert '"slice_id": "qa-author"' in panelist_prompts[0]
+    assert '"qa_policy_summary"' in panelist_prompts[0]
+    assert '"require_http_harness": true' in panelist_prompts[0]
 
 
 def test_repair_brief_turns_failed_checks_into_actionable_repairs() -> None:
