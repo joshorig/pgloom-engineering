@@ -521,7 +521,7 @@ def test_worker_blocks_invalid_implementer_output(database_url: str) -> None:
 
     assert result["status"] == "blocked"
     recoveries = list_recovery_actions(feature["id"], database_url=database_url)
-    assert recoveries[0]["blocker_code"] == "engineering.invalid_handler_output"
+    assert recoveries[0]["blocker_code"] == "engineering.qa_handoff_missing"
 
 
 def _plan_contract(feature_id: str) -> PlanContract:

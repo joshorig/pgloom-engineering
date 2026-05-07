@@ -84,6 +84,14 @@ def run_once(
     if result.status == "done":
         transition_task(task["id"], TaskState.DONE, result=result.result, database_url=database_url)
     elif result.status == "blocked":
+        _record_recovery(
+            task,
+            blocker_code=result.blocker_code or "engineering.handler_blocked",
+            action="block_execution",
+            rationale=result.blocker_reason or result.message or "handler blocked execution",
+            status="open",
+            database_url=database_url,
+        )
         transition_task(
             task["id"],
             TaskState.BLOCKED,
