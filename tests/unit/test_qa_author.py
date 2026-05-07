@@ -99,6 +99,19 @@ class ScriptStringCheckProvider(FakeProvider):
         )
 
 
+class QualityRepairProvider(ScriptStringCheckProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            return super().invoke(profile=profile, prompt=prompt, **kwargs)
+        worktree = Path(profile.command[-1])
+        worktree.joinpath("tests/BenchmarkWiringTest.java").unlink(missing_ok=True)
+        return FakeProvider().invoke(profile=profile, prompt=prompt, **kwargs)
+
+
 class GeneratedArtifactProvider(FakeProvider):
     def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
         worktree = Path(profile.command[-1])
@@ -141,6 +154,74 @@ class NoChangeProvider(FakeProvider):
                 }
             ),
             model_usage_id=42,
+        )
+
+
+class CompileErrorProvider(FakeProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del prompt, kwargs
+        worktree = Path(profile.command[-1])
+        worktree.joinpath("tests").mkdir(exist_ok=True)
+        worktree.joinpath("tests/test_acceptance.py").write_text(
+            "def test_acceptance(:\n    assert False\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "feature_id": "feature-1",
+                    "task_id": "task-1",
+                    "tests_added": ["tests/test_acceptance.py::test_acceptance"],
+                    "matrix_coverage": {
+                        "acceptance criterion": [
+                            "tests/test_acceptance.py::test_acceptance",
+                        ]
+                    },
+                    "red_proof": [],
+                    "paths_touched": ["tests/test_acceptance.py"],
+                }
+            ),
+            model_usage_id=42,
+        )
+
+
+class SelfHealingCompileErrorProvider(FakeProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del prompt, kwargs
+        self.calls += 1
+        worktree = Path(profile.command[-1])
+        worktree.joinpath("tests").mkdir(exist_ok=True)
+        if self.calls == 1:
+            worktree.joinpath("tests/test_acceptance.py").write_text(
+                "def test_acceptance(:\n    assert False\n",
+                encoding="utf-8",
+            )
+            usage_id = 101
+        else:
+            worktree.joinpath("tests/test_acceptance.py").write_text(
+                "def test_acceptance():\n    assert False\n",
+                encoding="utf-8",
+            )
+            usage_id = 102
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "feature_id": "feature-1",
+                    "task_id": "task-1",
+                    "tests_added": ["tests/test_acceptance.py::test_acceptance"],
+                    "matrix_coverage": {
+                        "acceptance criterion": [
+                            "tests/test_acceptance.py::test_acceptance",
+                        ]
+                    },
+                    "red_proof": [],
+                    "paths_touched": ["tests/test_acceptance.py"],
+                }
+            ),
+            model_usage_id=usage_id,
         )
 
 
@@ -330,6 +411,118 @@ def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None
 
     assert result.status == "blocked"
     assert result.blocker_code == "engineering.qa_path_violation"
+
+
+def test_qa_author_blocks_authored_tests_that_do_not_compile(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=CompileErrorProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_tests_do_not_compile"
+    assert result.result["changed_files"] == ["tests/test_acceptance.py"]
+
+
+def test_qa_author_repairs_authored_tests_that_do_not_compile(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+    provider = SelfHealingCompileErrorProvider()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=provider).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert provider.calls == 2
+    assert result.result["repair_attempts"] == 1
+    assert result.result["qa_author_contract"]["model_usage_ids"] == [101, 102]
 
 
 def test_qa_author_rejects_red_proof_without_relevant_changes(
@@ -556,6 +749,62 @@ def test_qa_author_hydrates_dependencies_before_invoking_provider(
     assert result.status == "done"
 
 
+def test_qa_author_resets_task_worktree_on_retry_attempt(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+    resets: list[tuple[Path, str]] = []
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.reset_worktree_to_ref",
+        lambda *, worktree, base_ref: resets.append((worktree, base_ref)),
+    )
+
+    result = QAHandler(provider=FakeProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "attempt": 2,
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert resets and resets[0][1] == "main"
+
+
 def test_qa_verify_blocks_without_task_contract(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         "pgloom_engineering.roles.qa.get_task_contract",
@@ -748,6 +997,81 @@ def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> No
     assert result.status == "done"
 
 
+def test_qa_verify_finds_feature_qa_author_worktree_after_reviewer_dependency(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    authored_worktree.joinpath("marker.txt").write_text("authored\n", encoding="utf-8")
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify",
+            "dependencies": ["review-task-1"],
+            "expected_outputs": ["QAResultContract"],
+            "verification_commands": [
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; "
+                    "assert Path('marker.txt').read_text() == 'authored\\n'",
+                ]
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr("pgloom_engineering.roles.qa.list_task_handoffs", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_contracts",
+        lambda *args, **kwargs: [
+            {
+                "output_contract": {
+                    "qa_author_contract": {
+                        "feature_id": "feature-1",
+                        "task_id": "qa-author-task-1",
+                        "worktree_path": str(authored_worktree),
+                    }
+                }
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(root=repo, base_branch="main", metadata={}),
+    )
+
+    result = QAHandler().handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+
+
 def test_legacy_qa_task_type_is_blocked() -> None:
     result = QAHandler().handle(
         {
@@ -904,6 +1228,96 @@ def test_qa_author_blocks_script_string_assertions_when_gate_validation_required
     assert result.result["gate_validation"][0]["status"] == "configured"
 
 
+def test_qa_author_repairs_semantic_quality_findings(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    repo.joinpath("qa").mkdir()
+    repo.joinpath("qa/smoke.sh").write_text(
+        "./gradlew :benchmarks:jmhSmokeCheck\n"
+        "grep gc.alloc.rate.norm build/reports/jmh/results.txt\n",
+        encoding="utf-8",
+    )
+    repo.joinpath("qa/regression.sh").write_text(
+        "./gradlew test :benchmarks:jmh\n",
+        encoding="utf-8",
+    )
+    _run(["git", "add", "qa/smoke.sh", "qa/regression.sh"], cwd=repo)
+    _run(["git", "commit", "-m", "add qa gates"], cwd=repo)
+    plan = _plan()
+    task_contract = _task_contract()
+    provider = QualityRepairProvider()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={
+                "worktree_root": str(tmp_path / "worktrees"),
+                "qa": {
+                    "required_gates": [
+                        {
+                            "id": "smoke",
+                            "command": ["./qa/smoke.sh"],
+                            "must_cover": ["allocation", "benchmark_smoke"],
+                        },
+                        {
+                            "id": "regression",
+                            "command": ["./qa/regression.sh"],
+                            "must_cover": ["benchmark_full", "unit_regression"],
+                        },
+                    ],
+                    "semantic_conventions": {
+                        "build_hook_tests": {
+                            "allow_build_file_string_assertions": False,
+                            "deterministic_gate_validation_required": True,
+                        }
+                    },
+                },
+            },
+        ),
+    )
+
+    result = QAHandler(provider=provider).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert provider.calls == 2
+    assert result.result["quality_repair_attempts"] == 1
+
+
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:
     prompt = build_qa_author_prompt(
         _plan(),
@@ -974,6 +1388,38 @@ def test_qa_author_model_route_uses_project_metadata_default() -> None:
         "claude_model": "haiku",
         "codex_model": "gpt-5.4",
         "codex_reasoning": "medium",
+    }
+
+
+def test_qa_author_model_route_uses_escalation_tier() -> None:
+    route = qa_model_route(
+        {
+            "qa": {
+                "model_routing": {
+                    "default": {
+                        "model": "gpt-5.4",
+                        "reasoning": "medium",
+                    },
+                    "escalate": {
+                        "model": "gpt-5.5",
+                        "reasoning": "high",
+                        "claude_model": "sonnet",
+                    },
+                }
+            }
+        },
+        SimpleNamespace(
+            qa_author_claude_model="haiku",
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="medium",
+        ),
+        tier="escalate",
+    )
+
+    assert route == {
+        "claude_model": "sonnet",
+        "codex_model": "gpt-5.5",
+        "codex_reasoning": "high",
     }
 
 

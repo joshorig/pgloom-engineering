@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from pgloom_engineering.qa_author_runtime import qa_quality_repair_file_set
 from pgloom_engineering.qa_runtime import validate_required_qa_gates
 
 
@@ -366,8 +367,7 @@ def test_ui_quality_flags_broad_existing_flow_when_metadata_prefers_focused_spec
 
 
 def test_quality_repair_file_set_extracts_artifact_paths() -> None:
-    module = _load_eval_module()
-    files = module._quality_repair_file_set(
+    files = qa_quality_repair_file_set(
         {
             "blocking_findings": [
                 {
@@ -460,7 +460,7 @@ def test_contract_repairable_handles_invalid_contract_even_without_red_exit_code
 def test_qa_code_repairable_handles_non_red_test_failures() -> None:
     module = _load_eval_module()
 
-    assert module._qa_code_repairable(
+    assert module.qa_code_repairable(
         {
             "findings": [
                 {"code": "tests_not_red"},
@@ -469,13 +469,19 @@ def test_qa_code_repairable_handles_non_red_test_failures() -> None:
             "changed_files": ["tests/test_feature.py"],
         }
     )
-    assert not module._qa_code_repairable(
+    assert module.qa_code_repairable(
+        {
+            "findings": [{"code": "qa_tests_do_not_compile"}],
+            "changed_files": ["tests/test_feature.py"],
+        }
+    )
+    assert not module.qa_code_repairable(
         {
             "findings": [{"code": "tests_not_red"}, {"code": "verification_infra_error"}],
             "changed_files": ["tests/test_feature.py"],
         }
     )
-    assert not module._qa_code_repairable(
+    assert not module.qa_code_repairable(
         {
             "findings": [
                 {"code": "tests_not_red"},
@@ -517,7 +523,7 @@ def test_qa_code_repair_prompt_includes_verification_failure_and_file_contents(
         encoding="utf-8",
     )
 
-    prompt = module._qa_code_repair_prompt(
+    prompt = module.build_qa_code_repair_prompt(
         plan=module._fixture_plan(),
         task_contract=module._fixture_task_contract(),
         worktree=tmp_path,
@@ -529,6 +535,8 @@ def test_qa_code_repair_prompt_includes_verification_failure_and_file_contents(
     )
 
     assert "Compile errors, import errors, syntax errors" in prompt
+    assert "Run the narrowest available compile/test command" in prompt
+    assert "qa_tests_do_not_compile" in prompt
     assert "pytest" in prompt
     assert "invalid syntax" in prompt
     assert "def test_feature" in prompt

@@ -10,6 +10,7 @@ from pgloom_engineering.config import get_settings
 from pgloom_engineering.contract_store import (
     get_active_plan_contract,
     get_task_contract,
+    list_task_contracts,
     list_task_handoffs,
 )
 from pgloom_engineering.contracts import (
@@ -18,17 +19,27 @@ from pgloom_engineering.contracts import (
     QAResultContract,
     TaskContract,
 )
-from pgloom_engineering.integrations.git import changed_files, create_task_worktree
+from pgloom_engineering.integrations.git import (
+    changed_files,
+    create_task_worktree,
+    reset_worktree_to_ref,
+)
 from pgloom_engineering.model_provider import EngineeringCLIModelProvider
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.projects import get_project
 from pgloom_engineering.qa_author_runtime import (
     add_configured_gate_matrix_coverage,
     build_qa_author_prompt,
+    build_qa_code_repair_prompt,
+    build_qa_contract_repair_prompt,
+    build_qa_quality_repair_prompt,
     command_for_worktree,
+    isolate_codex_worktree_context,
     normalize_qa_author_payload,
     path_violations,
+    qa_code_repairable,
     qa_model_route,
+    qa_quality_repairable,
     red_proof_verification_commands,
     route_model_command,
     semantic_quality_findings,
@@ -38,12 +49,14 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     command_with_env,
     hydrate_dependencies,
+    is_authored_test_compile_failure,
     is_red_test_failure,
     qa_env,
     relevant_changed_files,
     run_qa_verification,
     validate_required_qa_gates,
 )
+from pgloom_engineering.role_context import build_role_context, record_role_context_usage
 
 
 class QAHandler:
@@ -82,6 +95,10 @@ class QAHandler:
                 blocker_reason="qa.verify requires a persisted TaskContract",
             )
         task_contract = TaskContract.model_validate(task_row["input_contract"])
+        if task_contract.inputs.get("task_id") != task_id:
+            task_contract = task_contract.model_copy(
+                update={"inputs": {**task_contract.inputs, "task_id": task_id}}
+            )
         plan_row = get_active_plan_contract(task_contract.feature_id, database_url=database_url)
         if plan_row is None:
             return HandlerResult(
@@ -172,6 +189,10 @@ class QAHandler:
                 blocker_reason="qa.author requires a persisted TaskContract",
             )
         task_contract = TaskContract.model_validate(task_row["input_contract"])
+        if task_contract.inputs.get("task_id") != task_id:
+            task_contract = task_contract.model_copy(
+                update={"inputs": {**task_contract.inputs, "task_id": task_id}}
+            )
         plan_row = get_active_plan_contract(task_contract.feature_id, database_url=database_url)
         if plan_row is None:
             return HandlerResult(
@@ -200,20 +221,43 @@ class QAHandler:
             slice_id=str(task_contract.inputs.get("task_slice_id") or "qa-author"),
             base_ref=project.base_branch,
         )
+        if int(task.get("attempt") or 0) > 1:
+            reset_worktree_to_ref(worktree=handle.worktree, base_ref=project.base_branch)
         hydrate_dependencies(project.root, handle.worktree, project.metadata)
+
+        model_tier = "default"
+        if int(task.get("attempt") or 0) >= int(
+            getattr(settings, "qa_author_escalate_after_attempts", 2)
+        ):
+            model_tier = "escalate"
 
         profile = CLIModelProfile(
             name=settings.qa_author_profile,
             command=command_with_env(
-                route_model_command(
-                    command_for_worktree(settings.qa_author_command, handle.worktree),
-                    **qa_model_route(project.metadata, settings),
+                isolate_codex_worktree_context(
+                    route_model_command(
+                        command_for_worktree(settings.qa_author_command, handle.worktree),
+                        **qa_model_route(project.metadata, settings, tier=model_tier),
+                    ),
+                    worktree=handle.worktree,
+                    context_root=getattr(settings, "role_model_context_root", Path(".")),
+                    enabled=bool(
+                        getattr(settings, "role_model_context_isolation_enabled", False)
+                    ),
                 ),
                 qa_env(project.metadata, project_root=project.root),
             ),
             timeout_seconds=settings.qa_author_invocation_timeout_seconds,
         )
         provider = self._provider or EngineeringCLIModelProvider(database_url=database_url)
+        role_context = build_role_context(
+            role="qa.author",
+            project=project,
+            plan=plan,
+            task_contract=task_contract,
+            workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+            database_url=database_url,
+        )
         response = provider.invoke(
             profile=profile,
             prompt=build_qa_author_prompt(
@@ -221,121 +265,284 @@ class QAHandler:
                 task_contract,
                 project_metadata=project.metadata,
                 project_root=handle.worktree,
+                role_context=role_context.prompt_payload(),
             ),
             workflow_id=task_contract.feature_id,
             task_id=task_id,
         )
-        try:
-            contract = QAAuthorContract.model_validate(
-                normalize_qa_author_payload(extract_json(response.text))
-            )
-        except Exception as exc:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_author_contract_invalid",
-                blocker_reason=str(exc),
-                result={"raw_response": response.text},
-            )
-        touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
-        violations = path_violations(touched, task_contract, project.metadata)
-        if violations:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_path_violation",
-                blocker_reason="qa.author touched paths outside its contract",
-                result={"violations": violations, "changed_files": touched},
-            )
-        gate_validation = validate_required_qa_gates(handle.worktree, project.metadata)
-        gate_failures = [item for item in gate_validation if item.get("status") != "configured"]
-        if gate_failures:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_gate_validation_failed",
-                blocker_reason="required project QA gate is not deterministically configured",
-                result={"gate_validation": gate_validation, "changed_files": touched},
-            )
-        semantic_findings = semantic_quality_findings(
-            worktree=handle.worktree,
-            changed_paths=touched,
-            plan=plan,
-            task_contract=task_contract,
-            project_metadata=project.metadata,
+        model_usage_ids = []
+        token_savior_usage_ids = []
+        if response.model_usage_id is not None:
+            model_usage_ids.append(response.model_usage_id)
+        usage_id = record_role_context_usage(
+            role_context,
+            feature_id=task_contract.feature_id,
+            workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+            task_id=task_id,
+            profile_name=profile.name,
+            model_usage_id=response.model_usage_id,
+            database_url=database_url,
         )
-        blocking_semantic_findings = [
-            finding for finding in semantic_findings if finding.get("severity") == "blocking"
-        ]
-        if blocking_semantic_findings:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_semantic_quality_failed",
-                blocker_reason="qa.author output failed deterministic semantic quality review",
-                result={
-                    "findings": blocking_semantic_findings,
-                    "gate_validation": gate_validation,
-                    "changed_files": touched,
-                },
-            )
-        verification_results = [
-            run_qa_verification(
-                command,
+        if usage_id is not None:
+            token_savior_usage_ids.append(usage_id)
+        repair_attempts = 0
+        contract_repair_attempts = 0
+        quality_repair_attempts = 0
+        max_repair_attempts = 2
+        max_contract_repair_attempts = 1
+        max_quality_repair_attempts = 2
+        while True:
+            try:
+                contract = QAAuthorContract.model_validate(
+                    normalize_qa_author_payload(extract_json(response.text))
+                )
+            except Exception as exc:
+                touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+                if touched and contract_repair_attempts < max_contract_repair_attempts:
+                    contract_repair_attempts += 1
+                    response = provider.invoke(
+                        profile=profile,
+                        prompt=build_qa_contract_repair_prompt(
+                            plan=plan,
+                            task_contract=task_contract,
+                            worktree=handle.worktree,
+                            changed_files=touched,
+                            raw_response=response.text,
+                            validation_error=str(exc),
+                        ),
+                        workflow_id=task_contract.feature_id,
+                        task_id=task_id,
+                    )
+                    if response.model_usage_id is not None:
+                        model_usage_ids.append(response.model_usage_id)
+                    usage_id = record_role_context_usage(
+                        role_context,
+                        feature_id=task_contract.feature_id,
+                        workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+                        task_id=task_id,
+                        profile_name=profile.name,
+                        model_usage_id=response.model_usage_id,
+                        database_url=database_url,
+                    )
+                    if usage_id is not None:
+                        token_savior_usage_ids.append(usage_id)
+                    continue
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_author_contract_invalid",
+                    blocker_reason=str(exc),
+                    result={
+                        "raw_response": response.text,
+                        "changed_files": touched,
+                        "contract_repair_attempts": contract_repair_attempts,
+                        "repair_attempts": repair_attempts,
+                    },
+                )
+            touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+            violations = path_violations(touched, task_contract, project.metadata)
+            if violations:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_path_violation",
+                    blocker_reason="qa.author touched paths outside its contract",
+                    result={"violations": violations, "changed_files": touched},
+                )
+            gate_validation = validate_required_qa_gates(handle.worktree, project.metadata)
+            gate_failures = [
+                item for item in gate_validation if item.get("status") != "configured"
+            ]
+            if gate_failures:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_gate_validation_failed",
+                    blocker_reason="required project QA gate is not deterministically configured",
+                    result={"gate_validation": gate_validation, "changed_files": touched},
+                )
+            semantic_findings = semantic_quality_findings(
                 worktree=handle.worktree,
+                changed_paths=touched,
+                plan=plan,
+                task_contract=task_contract,
                 project_metadata=project.metadata,
-                timeout_seconds=settings.qa_author_invocation_timeout_seconds,
-                database_url=database_url,
-                workflow_id=task.get("workflow_id"),
-                task_id=task_id,
-                feature_id=task_contract.feature_id,
             )
-            for command in red_proof_verification_commands(task_contract, touched)
-        ]
-        touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
-        violations = path_violations(touched, task_contract, project.metadata)
-        if violations:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_path_violation",
-                blocker_reason="qa.author touched paths outside its contract",
-                result={"violations": violations, "changed_files": touched},
+            blocking_semantic_findings = [
+                finding for finding in semantic_findings if finding.get("severity") == "blocking"
+            ]
+            if blocking_semantic_findings:
+                quality_review = {"blocking_findings": blocking_semantic_findings}
+                if (
+                    quality_repair_attempts < max_quality_repair_attempts
+                    and qa_quality_repairable(quality_review)
+                ):
+                    quality_repair_attempts += 1
+                    response = provider.invoke(
+                        profile=profile,
+                        prompt=build_qa_quality_repair_prompt(
+                            plan=plan,
+                            task_contract=task_contract,
+                            worktree=handle.worktree,
+                            changed_files=touched,
+                            quality_review=quality_review,
+                            current_contract=contract.model_dump(mode="json"),
+                        ),
+                        workflow_id=task_contract.feature_id,
+                        task_id=task_id,
+                    )
+                    if response.model_usage_id is not None:
+                        model_usage_ids.append(response.model_usage_id)
+                    usage_id = record_role_context_usage(
+                        role_context,
+                        feature_id=task_contract.feature_id,
+                        workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+                        task_id=task_id,
+                        profile_name=profile.name,
+                        model_usage_id=response.model_usage_id,
+                        database_url=database_url,
+                    )
+                    if usage_id is not None:
+                        token_savior_usage_ids.append(usage_id)
+                    continue
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_semantic_quality_failed",
+                    blocker_reason="qa.author output failed deterministic semantic quality review",
+                    result={
+                        "findings": blocking_semantic_findings,
+                        "gate_validation": gate_validation,
+                        "changed_files": touched,
+                        "quality_repair_attempts": quality_repair_attempts,
+                        "contract_repair_attempts": contract_repair_attempts,
+                    },
+                )
+            verification_results = [
+                run_qa_verification(
+                    command,
+                    worktree=handle.worktree,
+                    project_metadata=project.metadata,
+                    timeout_seconds=settings.qa_author_invocation_timeout_seconds,
+                    database_url=database_url,
+                    workflow_id=task.get("workflow_id"),
+                    task_id=task_id,
+                    feature_id=task_contract.feature_id,
+                )
+                for command in red_proof_verification_commands(task_contract, touched)
+            ]
+            touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+            violations = path_violations(touched, task_contract, project.metadata)
+            if violations:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_path_violation",
+                    blocker_reason="qa.author touched paths outside its contract",
+                    result={"violations": violations, "changed_files": touched},
+                )
+            infra_verification = next(
+                (
+                    verification
+                    for verification in verification_results
+                    if verification.infra_error is not None
+                ),
+                None,
             )
-        infra_verification = next(
-            (
+            if infra_verification is not None:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.project_unhealthy",
+                    blocker_reason=infra_verification.infra_error,
+                    result={
+                        "command": infra_verification.original.argv,
+                        "exit_code": infra_verification.original.exit_code,
+                        "stdout_excerpt": infra_verification.stdout_excerpt,
+                        "stderr_excerpt": infra_verification.stderr_excerpt,
+                        "changed_files": touched,
+                    },
+                )
+            if not touched:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_no_changes",
+                    blocker_reason="qa.author did not produce any relevant QA file changes",
+                    result={
+                        "commands": [
+                            verification.original.argv for verification in verification_results
+                        ],
+                        "changed_files": touched,
+                    },
+                )
+            red_verifications = [
                 verification
                 for verification in verification_results
-                if verification.infra_error is not None
-            ),
-            None,
-        )
-        if infra_verification is not None:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.project_unhealthy",
-                blocker_reason=infra_verification.infra_error,
-                result={
-                    "command": infra_verification.original.argv,
-                    "exit_code": infra_verification.original.exit_code,
-                    "stdout_excerpt": infra_verification.stdout_excerpt,
-                    "stderr_excerpt": infra_verification.stderr_excerpt,
-                    "changed_files": touched,
-                },
-            )
-        red_verifications = [
-            verification
-            for verification in verification_results
-            if is_red_test_failure(verification)
-        ]
-        if not touched:
-            return HandlerResult(
-                status="blocked",
-                blocker_code="engineering.qa_no_changes",
-                blocker_reason="qa.author did not produce any relevant QA file changes",
-                result={
-                    "commands": [
-                        verification.original.argv for verification in verification_results
-                    ],
-                    "changed_files": touched,
-                },
-            )
-        if not red_verifications:
+                if is_red_test_failure(verification)
+            ]
+            if red_verifications:
+                break
+            compile_failures = [
+                verification
+                for verification in verification_results
+                if is_authored_test_compile_failure(verification)
+            ]
+            verification = compile_failures[0] if compile_failures else verification_results[-1]
+            repair_outcome = {
+                "findings": [
+                    {
+                        "code": "qa_tests_do_not_compile"
+                        if compile_failures
+                        else "tests_not_red"
+                    }
+                ],
+                "changed_files": touched,
+            }
+            if repair_attempts < max_repair_attempts and qa_code_repairable(repair_outcome):
+                repair_attempts += 1
+                response = provider.invoke(
+                    profile=profile,
+                    prompt=build_qa_code_repair_prompt(
+                        plan=plan,
+                        task_contract=task_contract,
+                        worktree=handle.worktree,
+                        changed_files=touched,
+                        verification_command=verification.original.argv,
+                        stdout_excerpt=verification.stdout_excerpt,
+                        stderr_excerpt=verification.stderr_excerpt,
+                        current_contract=contract.model_dump(mode="json"),
+                    ),
+                    workflow_id=task_contract.feature_id,
+                    task_id=task_id,
+                )
+                if response.model_usage_id is not None:
+                    model_usage_ids.append(response.model_usage_id)
+                usage_id = record_role_context_usage(
+                    role_context,
+                    feature_id=task_contract.feature_id,
+                    workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+                    task_id=task_id,
+                    profile_name=profile.name,
+                    model_usage_id=response.model_usage_id,
+                    database_url=database_url,
+                )
+                if usage_id is not None:
+                    token_savior_usage_ids.append(usage_id)
+                continue
+            if compile_failures:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.qa_tests_do_not_compile",
+                    blocker_reason=(
+                        "qa.author produced tests with compile/import/syntax errors; "
+                        "authored tests must compile before review"
+                    ),
+                    result={
+                        "commands": [
+                            item.original.argv for item in verification_results
+                        ],
+                        "stdout_excerpt": verification.stdout_excerpt,
+                        "stderr_excerpt": verification.stderr_excerpt,
+                        "changed_files": touched,
+                        "repair_attempts": repair_attempts,
+                        "quality_repair_attempts": quality_repair_attempts,
+                        "contract_repair_attempts": contract_repair_attempts,
+                    },
+                )
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.qa_tests_not_red",
@@ -347,6 +554,9 @@ class QAHandler:
                     "stdout_excerpt": verification_results[-1].stdout_excerpt,
                     "stderr_excerpt": verification_results[-1].stderr_excerpt,
                     "changed_files": touched,
+                    "repair_attempts": repair_attempts,
+                    "quality_repair_attempts": quality_repair_attempts,
+                    "contract_repair_attempts": contract_repair_attempts,
                 },
             )
         contract = contract.model_copy(
@@ -361,10 +571,7 @@ class QAHandler:
                 "paths_touched": sorted(set([*contract.paths_touched, *touched])),
                 "branch": handle.branch,
                 "worktree_path": str(handle.worktree),
-                "model_usage_ids": [
-                    *contract.model_usage_ids,
-                    *([response.model_usage_id] if response.model_usage_id is not None else []),
-                ],
+                "model_usage_ids": [*contract.model_usage_ids, *model_usage_ids],
             }
         )
         contract = add_configured_gate_matrix_coverage(
@@ -380,6 +587,10 @@ class QAHandler:
                 "task_id": task_id,
                 "qa_author_contract": contract.model_dump(mode="json"),
                 "gate_validation": gate_validation,
+                "repair_attempts": repair_attempts,
+                "quality_repair_attempts": quality_repair_attempts,
+                "contract_repair_attempts": contract_repair_attempts,
+                "token_savior_usage_ids": token_savior_usage_ids,
             }
         )
 
@@ -404,6 +615,14 @@ def _qa_verify_worktree(
         if dependency_row is None:
             continue
         dependency_path = _worktree_path_from_payload(dependency_row.get("output_contract"))
+        if dependency_path is not None:
+            return dependency_path
+    try:
+        task_rows = list_task_contracts(task_contract.feature_id, database_url=database_url)
+    except Exception:
+        task_rows = []
+    for row in task_rows:
+        dependency_path = _worktree_path_from_payload(row.get("output_contract"))
         if dependency_path is not None:
             return dependency_path
     return None

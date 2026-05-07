@@ -16,10 +16,13 @@ from pgloom_engineering.qa_author_runtime import (
     api_prefixes_from_text,
     benchmark_requirements_for_task,
     build_qa_author_prompt,
+    isolate_codex_worktree_context,
     normalize_qa_author_payload,
     path_violations,
     red_proof_verification_commands,
+    repair_file_contents,
     route_matches_prefix,
+    truncate_text,
     verification_command,
     verification_commands,
 )
@@ -43,6 +46,49 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
     assert payload["task_contract"]["task_type"] == "engineering.qa.author"
     assert payload["qa_context_capsule"]["contract"] == "qa_context_capsule.v1"
     assert "deterministic_test_skeleton" in payload
+
+
+def test_qa_author_prompt_includes_shared_role_context() -> None:
+    payload = json.loads(
+        build_qa_author_prompt(
+            _plan(),
+            _task_contract(),
+            project_metadata={},
+            project_root=Path("."),
+            role_context={
+                "contract": "engineering.role_context.v1",
+                "packed_context": "packed",
+            },
+        )
+    )
+
+    assert payload["role_context"]["contract"] == "engineering.role_context.v1"
+    assert payload["role_context"]["packed_context"] == "packed"
+
+
+def test_qa_author_prompt_skeleton_requires_spring_http_harness() -> None:
+    payload = json.loads(
+        build_qa_author_prompt(
+            _plan(),
+            _task_contract(),
+            project_metadata={
+                "qa": {
+                    "semantic_conventions": {
+                        "endpoint_acceptance": {"require_http_harness": True}
+                    }
+                }
+            },
+            project_root=Path("."),
+        )
+    )
+
+    harness = payload["deterministic_test_skeleton"]["spring_endpoint_harness_required"]
+    assert "MockMvc" in harness["allowed_harnesses"]
+    assert "MockMvcBuilders.standaloneSetup" in harness["standalone_pattern"]
+    assert "controller.method" in harness["standalone_pattern"]
+    assert "MockMvcBuilders" in harness["patch_template"]["imports"][1]
+    assert "mockMvc.perform" in harness["patch_template"]["route_case_pattern"]
+    assert "direct controller invocation" in harness["patch_template"]["forbidden_rewrites"][1]
 
 
 def test_qa_author_runtime_normalizes_wrapped_contract_payload() -> None:
@@ -132,6 +178,144 @@ def test_benchmark_requirements_include_project_variants_and_prompt_skeleton() -
     ]
 
 
+def test_qa_author_prompt_uses_explicit_route_coverage_requirements_as_source_of_truth(
+    tmp_path: Path,
+) -> None:
+    plan = _plan().model_copy(
+        update={
+            "problem_statement": "Cover /api/config routes for equities and crypto.",
+            "acceptance_test_matrix": [
+                "Every existing /api/config/* route is exercised for equities and crypto."
+            ],
+        }
+    )
+    task = _task_contract().model_copy(
+        update={"objective": "Write failing endpoint tests for /api/config routes."}
+    )
+    route_requirements = [
+        {
+            "api_prefix": "/api/config",
+            "coverage_rule": "representative_routes",
+            "authoring_instruction": (
+                "For all_routes, include each route literal or equivalent route tail token "
+                "in generated tests and cover each domain/parameter named by acceptance."
+            ),
+            "required_routes": [
+                "GET /api/config/access (app-api/src/main/java/example/ConfigController.java)",
+                "PUT /api/config/runtime (app-api/src/main/java/example/ConfigController.java)",
+            ],
+        }
+    ]
+
+    payload = json.loads(
+        build_qa_author_prompt(
+            plan,
+            task,
+            project_metadata={"qa": {"route_coverage_requirements": route_requirements}},
+            project_root=tmp_path,
+        )
+    )
+
+    assert payload["route_coverage_requirements"] == route_requirements
+    assert payload["generated_route_coverage_artifact"]["requirements"] == route_requirements
+    assert (
+        payload["qa_context_capsule"]["generated_route_coverage_artifact"]["requirements"]
+        == route_requirements
+    )
+
+
+def test_qa_author_prompt_endpoint_skeleton_requires_behavior_route_cases_with_anti_pattern(
+    tmp_path: Path,
+) -> None:
+    plan = _plan().model_copy(
+        update={
+            "problem_statement": "Cover /api/diagnostics routes for equities and crypto.",
+            "acceptance_test_matrix": [
+                "Every existing /api/diagnostics/* route is exercised for equities and crypto."
+            ],
+        }
+    )
+    task = _task_contract().model_copy(
+        update={"objective": "Write failing endpoint tests for /api/diagnostics routes."}
+    )
+    route_requirements = [
+        {
+            "api_prefix": "/api/diagnostics",
+            "coverage_rule": "all_routes",
+            "authoring_instruction": (
+                "For all_routes, include each route literal or equivalent route tail token "
+                "in generated tests and cover each domain/parameter named by acceptance."
+            ),
+            "required_routes": [
+                (
+                    "GET /api/diagnostics/overview "
+                    "(app-api/src/main/java/example/DiagnosticsController.java)"
+                ),
+                (
+                    "GET /api/diagnostics/services "
+                    "(app-api/src/main/java/example/DiagnosticsController.java)"
+                ),
+            ],
+        }
+    ]
+
+    payload = json.loads(
+        build_qa_author_prompt(
+            plan,
+            task,
+            project_metadata={
+                "qa": {
+                    "route_coverage_requirements": route_requirements,
+                    "behavior_coverage_rules": [
+                        (
+                            "Every required route must appear in a route case that invokes "
+                            "a controller/HTTP call."
+                        )
+                    ],
+                }
+            },
+            project_root=tmp_path,
+        )
+    )
+
+    assert payload["deterministic_test_skeleton"]["required_domains"] == [
+        "equities",
+        "crypto",
+    ]
+    assert payload["deterministic_test_skeleton"]["endpoint_behavior_skeleton"] == [
+        {
+            "api_prefix": "/api/diagnostics",
+            "coverage_rule": "all_routes",
+            "route_cases": [
+                {
+                    "method": "GET",
+                    "path": "/api/diagnostics/overview",
+                    "behavior_requirement": (
+                        "Invoke the matching HTTP route through MockMvc, WebTestClient, "
+                        "TestRestTemplate, or the project-approved HTTP harness for each "
+                        "required domain and assert domain-specific identifiers/config/"
+                        "partition/service state."
+                    ),
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/diagnostics/services",
+                    "behavior_requirement": (
+                        "Invoke the matching HTTP route through MockMvc, WebTestClient, "
+                        "TestRestTemplate, or the project-approved HTTP harness for each "
+                        "required domain and assert domain-specific identifiers/config/"
+                        "partition/service state."
+                    ),
+                },
+            ],
+            "anti_pattern": (
+                "Do not create a test that only asserts this route_cases list; each case "
+                "must drive product behavior."
+            ),
+        }
+    ]
+
+
 def test_red_proof_verification_commands_add_module_local_gradle_test() -> None:
     task = _task_contract().model_copy(
         update={
@@ -144,7 +328,6 @@ def test_red_proof_verification_commands_add_module_local_gradle_test() -> None:
         ["runtime-core/src/test/java/com/example/GraphYamlLoaderAcceptanceTest.java"],
         selected_command=["./gradlew", "--no-daemon", "--console=plain", "test"],
     ) == [
-        ["./gradlew", "--no-daemon", "--console=plain", "test"],
         [
             "./gradlew",
             "--no-daemon",
@@ -153,6 +336,70 @@ def test_red_proof_verification_commands_add_module_local_gradle_test() -> None:
             "--tests",
             "com.example.GraphYamlLoaderAcceptanceTest",
         ],
+        ["./gradlew", "--no-daemon", "--console=plain", "test"],
+    ]
+
+
+def test_red_proof_verification_commands_add_root_gradle_test() -> None:
+    task = _task_contract().model_copy(update={"verification_commands": [["./qa/smoke.sh"]]})
+
+    assert red_proof_verification_commands(
+        task,
+        ["src/test/java/com/example/RootAcceptanceTest.java"],
+        selected_command=["./qa/smoke.sh"],
+    ) == [
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            "test",
+            "--tests",
+            "com.example.RootAcceptanceTest",
+        ],
+        ["./qa/smoke.sh"],
+    ]
+
+
+def test_red_proof_verification_commands_add_nested_gradle_module_test() -> None:
+    task = _task_contract().model_copy(update={"verification_commands": [["./qa/smoke.sh"]]})
+
+    assert red_proof_verification_commands(
+        task,
+        ["services/api/src/test/java/com/example/ApiAcceptanceTest.java"],
+        selected_command=["./qa/smoke.sh"],
+    ) == [
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            ":services:api:test",
+            "--tests",
+            "com.example.ApiAcceptanceTest",
+        ],
+        ["./qa/smoke.sh"],
+    ]
+
+
+def test_red_proof_verification_commands_add_kotlin_gradle_test() -> None:
+    task = _task_contract().model_copy(update={"verification_commands": [["./qa/smoke.sh"]]})
+
+    assert red_proof_verification_commands(
+        task,
+        [
+            "app/src/test/kotlin/com/example/AppRouteTest.kt",
+            "app/src/test/kotlin/com/example/AppRouteTest.kt",
+        ],
+        selected_command=["./qa/smoke.sh"],
+    ) == [
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            ":app:test",
+            "--tests",
+            "com.example.AppRouteTest",
+        ],
+        ["./qa/smoke.sh"],
     ]
 
 
@@ -246,6 +493,54 @@ def test_route_prefix_matching_uses_path_boundary() -> None:
         "GET /api/orders-admin (OrdersAdminController.java)",
         "/api/orders",
     )
+
+
+def test_repair_file_contents_truncates_large_generated_tests(tmp_path: Path) -> None:
+    tmp_path.joinpath("tests").mkdir()
+    tmp_path.joinpath("tests/test_large.py").write_text(
+        "head\n" + ("x" * 40000) + "\ntail\n",
+        encoding="utf-8",
+    )
+
+    contents = repair_file_contents(tmp_path, ["tests/test_large.py"])
+
+    text = contents["tests/test_large.py"]
+    assert len(text) <= 12000
+    assert "head" in text
+    assert "tail" in text
+    assert "truncated" in text
+
+
+def test_truncate_text_preserves_short_text() -> None:
+    assert truncate_text("short", 100) == "short"
+
+
+def test_isolate_codex_worktree_context_uses_add_dir_for_target_worktree(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "target"
+    context_root = tmp_path / "orchestrator"
+    command = [
+        "codex",
+        "exec",
+        "-m",
+        "gpt-5.4",
+        "-C",
+        str(worktree),
+        "--json",
+        "-",
+    ]
+
+    isolated = isolate_codex_worktree_context(
+        command,
+        worktree=worktree,
+        context_root=context_root,
+        enabled=True,
+    )
+
+    assert isolated[isolated.index("-C") + 1] == str(context_root.resolve())
+    assert isolated[isolated.index("--add-dir") + 1] == str(worktree.resolve())
+    assert isolated.index("--add-dir") < isolated.index("-")
 
 
 def _plan() -> PlanContract:

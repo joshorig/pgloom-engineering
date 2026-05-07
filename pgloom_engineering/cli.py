@@ -36,6 +36,7 @@ from pgloom_engineering.projects import (
     update_project_state,
 )
 from pgloom_engineering.worker import run_once as run_engineering_worker_once
+from pgloom_engineering.workflow_driver import run_workflow
 
 app = typer.Typer(help="Engineering orchestrator built on pgloom.")
 app.add_typer(pgloom_app, name="pgloom")
@@ -51,6 +52,9 @@ app.add_typer(project_app, name="project")
 
 worker_app = typer.Typer(help="Engineering worker commands.")
 app.add_typer(worker_app, name="worker")
+
+workflow_app = typer.Typer(help="Autonomous workflow commands.")
+app.add_typer(workflow_app, name="workflow")
 
 plan_app = typer.Typer(help="Planner council commands.")
 app.add_typer(plan_app, name="plan")
@@ -218,6 +222,41 @@ def worker_run_once(
         database_url=database_url,
     )
     console.print(_json(result))
+
+
+@workflow_app.command("run")
+def workflow_run(
+    feature_id: Annotated[str, typer.Option("--feature-id", help="Feature/workflow id.")],
+    max_steps: Annotated[
+        int,
+        typer.Option("--max-steps", min=1, help="Maximum worker claims before stopping."),
+    ] = 50,
+    lease_seconds: Annotated[
+        int,
+        typer.Option("--lease-seconds", min=1, help="Task lease duration."),
+    ] = 300,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    result = run_workflow(
+        feature_id,
+        database_url=database_url,
+        max_steps=max_steps,
+        lease_seconds=lease_seconds,
+    )
+    if as_json:
+        console.print(_json(result))
+        return
+    console.print(
+        f"Workflow {feature_id}: {result['status']} "
+        f"after {len(result.get('steps') or [])} step(s)"
+    )
 
 
 @project_app.command("list")

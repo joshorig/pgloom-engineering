@@ -11,6 +11,7 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     discover_route_inventory,
     hydrate_dependencies,
+    is_authored_test_compile_failure,
     is_generated_tool_artifact,
     is_red_test_failure,
     prompt_safe_qa_metadata,
@@ -542,6 +543,45 @@ def test_non_pytest_build_error_is_not_red_test_failure() -> None:
     )
 
     assert not is_red_test_failure(result)
+
+
+def test_gradle_test_compile_failure_is_authored_compile_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./gradlew", ":app-api:test", "--tests", "com.example.RouteParityTest"],
+            exit_code=1,
+            stdout="> Task :app-api:compileTestJava FAILED\ncannot find symbol",
+            stderr="59 errors\nBUILD FAILED",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="> Task :app-api:compileTestJava FAILED\ncannot find symbol",
+        stderr_excerpt="59 errors\nBUILD FAILED",
+        infra_error=None,
+    )
+
+    assert is_authored_test_compile_failure(result)
+    assert not is_red_test_failure(result)
+
+
+def test_assertion_failure_is_not_authored_compile_failure() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./qa/regression.sh"],
+            exit_code=1,
+            stdout="There were failing tests. AssertionError: expected <1> but was <2>",
+            stderr="",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="There were failing tests.",
+        stderr_excerpt="",
+        infra_error=None,
+    )
+
+    assert not is_authored_test_compile_failure(result)
 
 
 def test_non_pytest_test_failure_signal_is_red_test_failure() -> None:

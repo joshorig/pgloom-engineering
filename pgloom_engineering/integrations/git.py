@@ -147,6 +147,16 @@ def remove_worktree(
     _git(repo, argv, timeout_seconds=timeout_seconds)
 
 
+def reset_worktree_to_ref(
+    *,
+    worktree: Path,
+    base_ref: str,
+    timeout_seconds: float = 60,
+) -> None:
+    _git(worktree, ["reset", "--hard", base_ref], timeout_seconds=timeout_seconds)
+    _git(worktree, ["clean", "-fd"], timeout_seconds=timeout_seconds)
+
+
 def _git(repo: Path, args: list[str], *, timeout_seconds: float) -> SubprocessResult:
     result = run_bounded(["git", *args], cwd=repo, timeout_seconds=timeout_seconds)
     if result.exit_code != 0 or result.timed_out or result.killed:

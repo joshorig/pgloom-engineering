@@ -11,7 +11,9 @@ from pgloom.tasks import claim_next, retry_or_fail_task, transition_task
 from pgloom_engineering.contract_store import (
     get_active_plan_contract,
     get_task_contract,
+    list_task_contracts,
     list_task_handoffs,
+    record_handoff,
     record_recovery_action,
     upsert_task_contract,
 )
@@ -211,6 +213,13 @@ def _post_execution_gate(
                     status="completed",
                     database_url=database_url,
                 )
+                _record_dependency_handoffs(
+                    feature_id=feature_id,
+                    from_task_id=str(task["id"]),
+                    handoff_type="task_result",
+                    contract=contract.model_dump(mode="json"),
+                    database_url=database_url,
+                )
         elif task["task_type"] == "engineering.review":
             ReviewVerdictContract.model_validate(result.result.get("review_verdict_contract"))
         elif task["task_type"] == "engineering.qa.author":
@@ -219,13 +228,21 @@ def _post_execution_gate(
             )
             row = get_task_contract(task["id"], database_url=database_url)
             if row is not None:
+                output_contract = {
+                    "qa_author_contract": qa_author_contract.model_dump(mode="json")
+                }
                 upsert_task_contract(
                     task["id"],
                     _task_contract_from_row(row),
-                    output_contract={
-                        "qa_author_contract": qa_author_contract.model_dump(mode="json")
-                    },
+                    output_contract=output_contract,
                     status="completed",
+                    database_url=database_url,
+                )
+                _record_dependency_handoffs(
+                    feature_id=feature_id,
+                    from_task_id=str(task["id"]),
+                    handoff_type="qa_author_contract",
+                    contract=output_contract,
                     database_url=database_url,
                 )
         elif task["task_type"] == "engineering.qa.verify":
@@ -248,10 +265,34 @@ def _task_contract_from_row(row: dict[str, Any]) -> Any:
     return TaskContract.model_validate(row["input_contract"])
 
 
+def _record_dependency_handoffs(
+    *,
+    feature_id: str,
+    from_task_id: str,
+    handoff_type: str,
+    contract: dict[str, Any],
+    database_url: str | None,
+) -> None:
+    for row in list_task_contracts(feature_id, database_url=database_url):
+        input_contract = row.get("input_contract")
+        if not isinstance(input_contract, dict):
+            continue
+        dependencies = input_contract.get("dependencies")
+        if not isinstance(dependencies, list) or from_task_id not in dependencies:
+            continue
+        record_handoff(
+            feature_id=feature_id,
+            from_task_id=from_task_id,
+            to_task_id=str(row["task_id"]),
+            handoff_type=handoff_type,
+            contract=contract,
+            database_url=database_url,
+        )
+
+
 def _requires_handoff(task: dict[str, Any]) -> bool:
     return task["task_type"] in {
         "engineering.review",
-        "engineering.qa.author",
     }
 
 

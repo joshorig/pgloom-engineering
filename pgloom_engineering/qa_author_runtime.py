@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pgloom_engineering.contracts import PlanContract, QAAuthorContract, TaskContract
+from pgloom_engineering.contracts import (
+    CONTRACT_VERSION,
+    PlanContract,
+    QAAuthorContract,
+    TaskContract,
+)
 from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.qa_runtime import (
     discover_route_inventory,
@@ -15,9 +20,49 @@ from pgloom_engineering.qa_runtime import (
 )
 from pgloom_engineering.qa_semantic_review import review_semantic_quality
 
+MAX_REPAIR_FILE_CHARS = 12000
+MAX_REPAIR_TOTAL_FILE_CHARS = 36000
+MAX_REPAIR_RESPONSE_CHARS = 12000
+
 
 def command_for_worktree(command: list[str], worktree: Path) -> list[str]:
     return [part.replace("{worktree}", str(worktree)) for part in command]
+
+
+def isolate_codex_worktree_context(
+    command: list[str],
+    *,
+    worktree: Path,
+    context_root: Path,
+    enabled: bool,
+) -> list[str]:
+    if not enabled or not command or Path(command[0]).name != "codex":
+        return command
+    isolated = list(command)
+    context_root_text = str(context_root.resolve())
+    if "-C" in isolated:
+        index = isolated.index("-C")
+        if index + 1 < len(isolated):
+            isolated[index + 1] = context_root_text
+    elif "--cd" in isolated:
+        index = isolated.index("--cd")
+        if index + 1 < len(isolated):
+            isolated[index + 1] = context_root_text
+    else:
+        isolated.extend(["-C", context_root_text])
+
+    worktree_text = str(worktree.resolve())
+    add_dir_values = {
+        isolated[index + 1]
+        for index, item in enumerate(isolated[:-1])
+        if item == "--add-dir"
+    }
+    if worktree_text not in add_dir_values:
+        insert_at = len(isolated)
+        if isolated and isolated[-1] == "-":
+            insert_at = len(isolated) - 1
+        isolated[insert_at:insert_at] = ["--add-dir", worktree_text]
+    return isolated
 
 
 def normalize_qa_author_payload(payload: object) -> object:
@@ -120,6 +165,7 @@ def build_qa_author_prompt(
     *,
     project_metadata: dict[str, Any],
     project_root: Path,
+    role_context: dict[str, Any] | None = None,
 ) -> str:
     qa_metadata = project_qa_metadata(project_metadata)
     route_requirements = route_coverage_requirements(
@@ -144,6 +190,11 @@ def build_qa_author_prompt(
                 "For Spring APIs, prefer MockMvc, WebTestClient, or TestRestTemplate "
                 "over direct controller calls when endpoint routing semantics matter."
             ),
+            (
+                "If project_qa_metadata requires an HTTP harness for endpoint acceptance, "
+                "direct controller construction or controller.method(...) calls are forbidden "
+                "for route/query/status acceptance and will be rejected by deterministic review."
+            ),
             "Do not satisfy route coverage with a test that only asserts a hardcoded route list.",
             "Only create qa/fixtures files when generated tests read them by path or resource.",
             (
@@ -153,6 +204,17 @@ def build_qa_author_prompt(
             (
                 "For benchmark acceptance, use the project's benchmark harness; measured "
                 "benchmark methods must allocate no garbage after setup."
+            ),
+            (
+                "Before final submission, run the narrowest compile/test command for every "
+                "authored test file when the tool environment permits it. Returned tests must "
+                "compile cleanly; red proof must be a product behavior failure, not syntax, "
+                "import, fixture, or compile errors."
+            ),
+            (
+                "Self-validate authored tests before handing them to review. If validation "
+                "shows compile/import/syntax errors, repair the tests before returning the "
+                "QAAuthorContract."
             ),
             (
                 "If deterministic_test_skeleton has benchmark cases, parameterize generated "
@@ -166,6 +228,7 @@ def build_qa_author_prompt(
             ),
         ],
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
+        "role_context": role_context or {},
         "route_coverage_requirements": route_requirements,
         "benchmark_requirements": benchmark_requirements,
         "deterministic_test_skeleton": deterministic_test_skeleton(
@@ -259,6 +322,48 @@ def deterministic_test_skeleton(
         value = qa_metadata.get(key)
         if value is not None:
             skeleton[key] = value
+    conventions = qa_metadata.get("semantic_conventions")
+    endpoint_acceptance = None
+    if isinstance(conventions, dict):
+        endpoint_acceptance = conventions.get("endpoint_acceptance")
+    if endpoint_acceptance is None:
+        endpoint_acceptance = qa_metadata.get("endpoint_acceptance")
+    if isinstance(endpoint_acceptance, dict) and endpoint_acceptance.get("require_http_harness"):
+        skeleton["spring_endpoint_harness_required"] = {
+            "allowed_harnesses": ["MockMvc", "WebTestClient", "TestRestTemplate"],
+            "standalone_pattern": (
+                "For focused controller tests, build MockMvc with "
+                "MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(...).build(), "
+                "then call mockMvc.perform(get(path).param(\"domain\", value)) or matching "
+                "HTTP verbs. Do not call controller.method(...) directly for route/query/status "
+                "acceptance."
+            ),
+            "rejects": [
+                "new SomeController(...); controller.someRoute(domain)",
+                "ResponseEntity assertions from direct controller method calls",
+            ],
+            "patch_template": {
+                "imports": [
+                    "org.springframework.test.web.servlet.MockMvc",
+                    "org.springframework.test.web.servlet.setup.MockMvcBuilders",
+                    "static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*",
+                    "static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*",
+                ],
+                "setup": (
+                    "MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)"
+                    ".setControllerAdvice(controllerAdvice).build();"
+                ),
+                "route_case_pattern": (
+                    "mockMvc.perform(get(path).param(\"domain\", domain))"
+                    ".andExpect(status().isOk()).andExpect(jsonPath(jsonPathExpression)"
+                    ".value(expectedValue));"
+                ),
+                "forbidden_rewrites": [
+                    "Replacing HTTP-route assertions with controller.method(...) calls",
+                    "Asserting ResponseEntity returned by direct controller invocation",
+                ],
+            },
+        }
     for requirement in route_requirements:
         skeleton["endpoint_behavior_skeleton"].append(
             {
@@ -269,13 +374,19 @@ def deterministic_test_skeleton(
                         "method": route_method(route),
                         "path": route_path(route),
                         "behavior_requirement": (
-                            "Invoke the matching controller/HTTP route for each required "
-                            "domain and assert domain-specific state."
+                            "Invoke the matching HTTP route through MockMvc, WebTestClient, "
+                            "TestRestTemplate, or the project-approved HTTP harness for each "
+                            "required domain and assert domain-specific identifiers/config/"
+                            "partition/service state."
                         ),
                     }
                     for route in requirement.get("required_routes", [])
                     if isinstance(route, str)
                 ],
+                "anti_pattern": (
+                    "Do not create a test that only asserts this route_cases list; each "
+                    "case must drive product behavior."
+                ),
             }
         )
     return skeleton
@@ -375,6 +486,14 @@ def route_coverage_requirements(
     project_metadata: dict[str, Any],
     project_root: Path,
 ) -> list[dict[str, Any]]:
+    qa_metadata = project_qa_metadata(project_metadata)
+    configured_requirements = qa_metadata.get("route_coverage_requirements")
+    if isinstance(configured_requirements, list):
+        return [
+            requirement
+            for requirement in configured_requirements
+            if isinstance(requirement, dict)
+        ]
     text = "\n".join(
         [
             plan.problem_statement,
@@ -449,34 +568,314 @@ def red_proof_verification_commands(
         if selected_command is not None
         else verification_commands(task_contract)
     )
-    result = [command for command in commands if command]
-    for command in _module_local_gradle_test_commands(changed_paths):
+    result = _module_local_gradle_test_commands(changed_paths)
+    for command in commands:
         if command not in result:
             result.append(command)
     return result
 
 
+def qa_code_repairable(outcome: dict[str, Any]) -> bool:
+    findings = outcome.get("findings", [])
+    if not isinstance(findings, list):
+        return False
+    codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
+    reasons = {
+        reason
+        for finding in findings
+        if isinstance(finding, dict)
+        if (reason := finding.get("reason")) is not None
+    }
+    allowed_codes = {
+        "tests_not_red",
+        "qa_tests_do_not_compile",
+        "invalid_qa_author_contract",
+        "missing_matrix_coverage",
+        "missing_tests_added",
+        "missing_red_proof",
+    }
+    return (
+        bool(outcome.get("changed_files"))
+        and bool(codes & {"tests_not_red", "qa_tests_do_not_compile"})
+        and codes <= allowed_codes
+        and not reasons
+    )
+
+
+def build_qa_code_repair_prompt(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    worktree: Path,
+    changed_files: list[str],
+    verification_command: list[str],
+    stdout_excerpt: str,
+    stderr_excerpt: str,
+    current_contract: object,
+) -> str:
+    test_contents = repair_file_contents(worktree, changed_files)
+    return json.dumps(
+        {
+            "role": "qa.author.red_repair",
+            "instructions": [
+                "Edit only the files listed in changed_files.",
+                "Do not edit production source files.",
+                (
+                    "Make the smallest targeted repair that lets the selected "
+                    "verification command run."
+                ),
+                (
+                    "The selected verification command must fail because the authored acceptance "
+                    "test exposes missing product behavior. Compile errors, import errors, syntax "
+                    "errors, missing dependencies, and sandbox/tool failures do not count as "
+                    "red proof."
+                ),
+                (
+                    "Run the narrowest available compile/test command for the changed test files "
+                    "before returning. Fix authored test compile/import/syntax errors first; the "
+                    "orchestrator will reject them as qa_tests_do_not_compile."
+                ),
+                (
+                    "Keep acceptance coverage intact. If you remove a test, replace its matrix "
+                    "coverage with an equivalent behavior assertion in another authored test."
+                ),
+                "Return only a valid QAAuthorContract JSON object for the repaired files.",
+            ],
+            "feature_id": task_contract.feature_id,
+            "task_id": task_contract.inputs.get("task_id"),
+            "acceptance_test_matrix": plan.acceptance_test_matrix,
+            "selected_verification_command": verification_command,
+            "verification_stdout_excerpt": stdout_excerpt,
+            "verification_stderr_excerpt": stderr_excerpt,
+            "changed_files": changed_files,
+            "file_contents": test_contents,
+            "current_contract": current_contract,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
+    findings = quality_review.get("blocking_findings")
+    if not isinstance(findings, list) or not findings:
+        return False
+    allowed = {
+        "qa_review_playwright_mocked_only",
+        "qa_review_playwright_missing_request_shape",
+        "qa_review_broad_existing_ui_spec_modified",
+        "qa_review_benchmark_allocates_after_setup",
+        "qa_review_benchmark_variant_gap",
+        "qa_review_unconsumed_fixture",
+        "qa_semantic_brittle_array_assertion",
+        "qa_semantic_direct_spring_controller_call",
+        "qa_semantic_brittle_payload_assertions",
+        "qa_semantic_journal_cursor_mismatch",
+        "qa_semantic_jmh_exhaustible_target_pool",
+        "qa_semantic_jmh_restore_not_cold",
+        "qa_semantic_jmh_restore_target_reuse",
+        "qa_semantic_build_file_string_assertion",
+    }
+    codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
+    return bool(codes) and codes <= allowed
+
+
+def build_qa_quality_repair_prompt(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    worktree: Path,
+    changed_files: list[str],
+    quality_review: dict[str, Any],
+    current_contract: object,
+) -> str:
+    repair_files = qa_quality_repair_file_set(quality_review, changed_files)
+    file_contents = repair_file_contents(worktree, repair_files)
+    return json.dumps(
+        {
+            "role": "qa.author.quality_repair",
+            "instructions": [
+                "Edit only the files listed in repair_files unless removing an "
+                "unconsumed fixture is explicitly required.",
+                "Do not edit production source files.",
+                "Keep existing acceptance coverage; make the smallest targeted repair.",
+                (
+                    "For UI findings, prefer a focused task-specific spec. If API routes "
+                    "are mocked, assert request URL/query shape and visible state."
+                ),
+                (
+                    "For benchmark findings, move all object graphs, temp files, fixture "
+                    "creation, collections, and store construction into trial setup. "
+                    "Do not use JMH invocation or iteration setup for zero-garbage contracts."
+                ),
+                (
+                    "For semantic findings, repair the exact behavioral weakness. Use HTTP "
+                    "test harnesses for endpoint route contracts. For direct Spring controller "
+                    "call findings, replace controller construction and controller.method(...) "
+                    "calls with MockMvc, WebTestClient, or TestRestTemplate route invocations "
+                    "that prove query parsing, route binding, status, and JSON payload behavior. "
+                    "Assert last acknowledged journal cursors after failed writes, use "
+                    "assertArrayEquals for byte arrays, use structured JSON field/path "
+                    "assertions for payload contracts, and use a non-allocating cold benchmark "
+                    "strategy that cannot exhaust a finite one-shot target pool during JMH "
+                    "measurement."
+                ),
+                (
+                    "For build/script string assertion findings, remove the generated test "
+                    "that reads build files or QA scripts. Deterministic orchestration validates "
+                    "QA gate wiring; model-authored tests must prove product behavior."
+                ),
+                "Run the narrowest compile/test command for repaired files before returning.",
+                "Return only a valid QAAuthorContract JSON object for the repaired files.",
+            ],
+            "feature_id": task_contract.feature_id,
+            "task_id": task_contract.inputs.get("task_id"),
+            "acceptance_test_matrix": plan.acceptance_test_matrix,
+            "quality_findings": quality_review.get("blocking_findings"),
+            "repair_files": repair_files,
+            "file_contents": file_contents,
+            "current_contract": current_contract,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def qa_quality_repair_file_set(
+    quality_review: dict[str, Any],
+    changed_files: list[str],
+) -> list[str]:
+    files: set[str] = set()
+    for finding in quality_review.get("blocking_findings", []):
+        if not isinstance(finding, dict):
+            continue
+        value = finding.get("file")
+        if isinstance(value, str):
+            files.add(value.removeprefix("changed-files/"))
+        for key in ["files", "fixture_files", "benchmark_files"]:
+            value = finding.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str):
+                        files.add(item.removeprefix("changed-files/"))
+    if files:
+        return sorted(files)
+    return sorted(changed_files)
+
+
+def build_qa_contract_repair_prompt(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    worktree: Path,
+    changed_files: list[str],
+    raw_response: str,
+    validation_error: str,
+) -> str:
+    test_contents = repair_file_contents(worktree, changed_files)
+    return json.dumps(
+        {
+            "role": "qa.author.contract_repair",
+            "instructions": [
+                "Do not edit files.",
+                "Return only a valid QAAuthorContract JSON object.",
+                f"contract_version must be the string {CONTRACT_VERSION!r}.",
+                f"feature_id must be {task_contract.feature_id!r}.",
+                f"task_id must be {task_contract.inputs.get('task_id')!r}.",
+                "tests_added must be a list of test file paths or test identifiers.",
+                (
+                    "matrix_coverage must map each acceptance criterion string to one "
+                    "or more authored test identifiers."
+                ),
+                "red_proof may be empty; the orchestrator will replace it after verification.",
+                "paths_touched must list the authored QA/test files.",
+                "Do not include repair_files, file_contents, role, instructions, or notes.",
+            ],
+            "feature_id": task_contract.feature_id,
+            "task_id": task_contract.inputs.get("task_id"),
+            "acceptance_test_matrix": plan.acceptance_test_matrix,
+            "changed_files": changed_files,
+            "file_contents": test_contents,
+            "validation_error": validation_error,
+            "raw_response": truncate_text(raw_response, MAX_REPAIR_RESPONSE_CHARS),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def repair_file_contents(worktree: Path, paths: list[str]) -> dict[str, str]:
+    contents: dict[str, str] = {}
+    remaining = MAX_REPAIR_TOTAL_FILE_CHARS
+    for path in paths:
+        file_path = worktree / path
+        if remaining <= 0 or not file_path.is_file():
+            continue
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+        limit = min(MAX_REPAIR_FILE_CHARS, remaining)
+        contents[path] = truncate_text(text, limit)
+        remaining -= len(contents[path])
+    return contents
+
+
+def truncate_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    if limit <= 64:
+        return text[:limit]
+    head = max(1, (limit - 64) // 2)
+    tail = max(1, limit - 64 - head)
+    omitted = len(text) - head - tail
+    return (
+        text[:head]
+        + f"\n... [truncated {omitted} chars for prompt budget] ...\n"
+        + text[-tail:]
+    )
+
+
 def _module_local_gradle_test_commands(changed_paths: list[str]) -> list[list[str]]:
     commands: list[list[str]] = []
     for path in changed_paths:
-        marker = "/src/test/java/"
-        if marker not in path or not path.endswith(".java"):
+        parsed = _gradle_test_path(path)
+        if parsed is None:
             continue
-        module = path.split(marker, 1)[0]
-        if not module or "/" in module:
-            continue
-        class_name = path.split(marker, 1)[1].removesuffix(".java").replace("/", ".")
+        module, class_name = parsed
+        task = "test" if not module else f":{module.replace('/', ':')}:test"
         commands.append(
             [
                 "./gradlew",
                 "--no-daemon",
                 "--console=plain",
-                f":{module}:test",
+                task,
                 "--tests",
                 class_name,
             ]
         )
-    return commands
+    return _dedupe_commands(commands)
+
+
+def _gradle_test_path(path: str) -> tuple[str, str] | None:
+    for source_set, suffix in [
+        ("src/test/java/", ".java"),
+        ("src/test/kotlin/", ".kt"),
+    ]:
+        if source_set not in path or not path.endswith(suffix):
+            continue
+        module, relative = path.split(source_set, 1)
+        module = module.rstrip("/")
+        class_name = relative.removesuffix(suffix).replace("/", ".")
+        if not class_name:
+            return None
+        return module, class_name
+    return None
+
+
+def _dedupe_commands(commands: list[list[str]]) -> list[list[str]]:
+    result: list[list[str]] = []
+    for command in commands:
+        if command not in result:
+            result.append(command)
+    return result
 
 
 def path_violations(
@@ -573,14 +972,18 @@ def replace_or_append_reasoning(command: list[str], reasoning: str) -> list[str]
 def qa_model_route(
     project_metadata: dict[str, Any],
     settings: Any,
+    *,
+    tier: str = "default",
 ) -> dict[str, str]:
     qa_metadata = project_qa_metadata(project_metadata)
     route = qa_metadata.get("model_routing")
-    default = route.get("default") if isinstance(route, dict) else None
-    if not isinstance(default, dict):
-        default = {}
+    selected = route.get(tier) if isinstance(route, dict) else None
+    if not isinstance(selected, dict) and tier != "default" and isinstance(route, dict):
+        selected = route.get("default")
+    if not isinstance(selected, dict):
+        selected = {}
     return {
-        "claude_model": str(default.get("claude_model") or settings.qa_author_claude_model),
-        "codex_model": str(default.get("model") or settings.qa_author_codex_model),
-        "codex_reasoning": str(default.get("reasoning") or settings.qa_author_codex_reasoning),
+        "claude_model": str(selected.get("claude_model") or settings.qa_author_claude_model),
+        "codex_model": str(selected.get("model") or settings.qa_author_codex_model),
+        "codex_reasoning": str(selected.get("reasoning") or settings.qa_author_codex_reasoning),
     }

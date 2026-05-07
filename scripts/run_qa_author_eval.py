@@ -29,8 +29,12 @@ from pgloom_engineering.qa_author_runtime import (
     add_configured_gate_matrix_coverage,
     benchmark_requirements_for_task,
     build_qa_author_prompt,
+    build_qa_code_repair_prompt,
+    build_qa_quality_repair_prompt,
     normalize_qa_author_payload,
     path_violations,
+    qa_code_repairable,
+    qa_quality_repairable,
     red_proof_verification_commands,
     semantic_quality_findings,
 )
@@ -38,6 +42,7 @@ from pgloom_engineering.qa_runtime import (
     canonical_red_proof,
     discover_route_inventory,
     hydrate_dependencies,
+    is_authored_test_compile_failure,
     is_red_test_failure,
     project_qa_metadata,
     prompt_safe_qa_metadata,
@@ -146,17 +151,21 @@ def main() -> int:
             "quality_repair_attempted": False,
         }
         records = [usage]
-        if (
+        red_repair_count = 0
+        while (
             args.repair_missing_contract
+            and red_repair_count < 2
             and outcome["verdict"] != "accept"
-            and _qa_code_repairable(outcome)
+            and qa_code_repairable(outcome)
         ):
+            red_repair_count += 1
+            suffix = "" if red_repair_count == 1 else f"-{red_repair_count}"
             outcome = _run_red_repair_phase(
                 args=args,
                 repo=repo,
                 output_dir=output_dir,
-                file_prefix="qa-author-red-repair",
-                phase="red_repair",
+                file_prefix=f"qa-author-red-repair{suffix}",
+                phase="red_repair" if red_repair_count == 1 else f"red_repair_{red_repair_count}",
                 worktree=worktree.worktree,
                 plan=plan,
                 task_contract=task_contract,
@@ -260,8 +269,8 @@ def main() -> int:
         )
         outcome["qa_quality_review"] = quality_review
         if quality_review["blocking_findings"]:
-            if args.repair_quality and _quality_repairable(quality_review):
-                quality_repair_prompt = _quality_repair_prompt(
+            if args.repair_quality and qa_quality_repairable(quality_review):
+                quality_repair_prompt = build_qa_quality_repair_prompt(
                     plan=plan,
                     task_contract=task_contract,
                     worktree=worktree.worktree,
@@ -418,7 +427,7 @@ def main() -> int:
                 if (
                     args.repair_missing_contract
                     and outcome["verdict"] != "accept"
-                    and _qa_code_repairable(outcome)
+                    and qa_code_repairable(outcome)
                 ):
                     outcome = _run_red_repair_phase(
                         args=args,
@@ -1427,13 +1436,25 @@ def _evaluate(
             }
         )
     if not is_red_test_failure(verification):
-        findings.append(
-            {
-                "code": "tests_not_red",
-                "message": "verification command did not prove a real failing test",
-                "command": verification_command,
-            }
-        )
+        if is_authored_test_compile_failure(verification):
+            findings.append(
+                {
+                    "code": "qa_tests_do_not_compile",
+                    "message": (
+                        "authored QA tests do not compile; QA author must self-validate "
+                        "and repair compile/import/syntax errors before submission"
+                    ),
+                    "command": verification.original.argv,
+                }
+            )
+        else:
+            findings.append(
+                {
+                    "code": "tests_not_red",
+                    "message": "verification command did not prove a real failing test",
+                    "command": verification.original.argv,
+                }
+            )
     verdict = "accept" if subprocess_returncode == 0 and not findings else "revise"
     return {
         "verdict": verdict,
@@ -1462,7 +1483,7 @@ def _run_red_repair_phase(
     verification_command: list[str],
     project_metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    prompt = _qa_code_repair_prompt(
+    prompt = build_qa_code_repair_prompt(
         plan=plan,
         task_contract=task_contract,
         worktree=worktree,
@@ -2322,32 +2343,6 @@ def _apply_repair_state(outcome: dict[str, Any], repair_state: dict[str, bool]) 
         outcome[key] = value
 
 
-def _qa_code_repairable(outcome: dict[str, Any]) -> bool:
-    findings = outcome.get("findings", [])
-    if not isinstance(findings, list):
-        return False
-    codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
-    reasons = {
-        reason
-        for finding in findings
-        if isinstance(finding, dict)
-        if (reason := finding.get("reason")) is not None
-    }
-    allowed_codes = {
-        "tests_not_red",
-        "invalid_qa_author_contract",
-        "missing_matrix_coverage",
-        "missing_tests_added",
-        "missing_red_proof",
-    }
-    return (
-        bool(outcome.get("changed_files"))
-        and "tests_not_red" in codes
-        and codes <= allowed_codes
-        and not reasons
-    )
-
-
 def _align_matrix_coverage_to_acceptance(
     contract: QAAuthorContract,
     acceptance_test_matrix: list[str],
@@ -2392,166 +2387,6 @@ def _single_matrix_key_match(
 
 def _matrix_key_norm(value: str) -> str:
     return " ".join(value.lower().replace(":", " ").split())
-
-
-def _qa_code_repair_prompt(
-    *,
-    plan: PlanContract,
-    task_contract: TaskContract,
-    worktree: Path,
-    changed_files: list[str],
-    verification_command: list[str],
-    stdout_excerpt: str,
-    stderr_excerpt: str,
-    current_contract: object,
-) -> str:
-    test_contents = {
-        path: (worktree / path).read_text(encoding="utf-8")
-        for path in changed_files
-        if (worktree / path).is_file()
-    }
-    return json.dumps(
-        {
-            "role": "qa.author.red_repair",
-            "instructions": [
-                "Edit only the files listed in changed_files.",
-                "Do not edit production source files.",
-                (
-                    "Make the smallest targeted repair that lets the selected "
-                    "verification command run."
-                ),
-                (
-                    "The selected verification command must fail because the authored acceptance "
-                    "test exposes missing product behavior. Compile errors, import errors, syntax "
-                    "errors, missing dependencies, and sandbox/tool failures do not count as "
-                    "red proof."
-                ),
-                (
-                    "Keep acceptance coverage intact. If you remove a test, replace its matrix "
-                    "coverage with an equivalent behavior assertion in another authored test."
-                ),
-                "Return only a valid QAAuthorContract JSON object for the repaired files.",
-            ],
-            "feature_id": task_contract.feature_id,
-            "task_id": task_contract.inputs["task_id"],
-            "acceptance_test_matrix": plan.acceptance_test_matrix,
-            "selected_verification_command": verification_command,
-            "verification_stdout_excerpt": stdout_excerpt,
-            "verification_stderr_excerpt": stderr_excerpt,
-            "changed_files": changed_files,
-            "file_contents": test_contents,
-            "current_contract": current_contract,
-        },
-        indent=2,
-        sort_keys=True,
-    )
-
-
-def _quality_repairable(quality_review: dict[str, Any]) -> bool:
-    findings = quality_review.get("blocking_findings")
-    if not isinstance(findings, list) or not findings:
-        return False
-    allowed = {
-        "qa_review_playwright_mocked_only",
-        "qa_review_playwright_missing_request_shape",
-        "qa_review_broad_existing_ui_spec_modified",
-        "qa_review_benchmark_allocates_after_setup",
-        "qa_review_benchmark_variant_gap",
-        "qa_review_unconsumed_fixture",
-        "qa_semantic_brittle_array_assertion",
-        "qa_semantic_direct_spring_controller_call",
-        "qa_semantic_brittle_payload_assertions",
-        "qa_semantic_journal_cursor_mismatch",
-        "qa_semantic_jmh_exhaustible_target_pool",
-        "qa_semantic_jmh_restore_not_cold",
-        "qa_semantic_jmh_restore_target_reuse",
-        "qa_semantic_build_file_string_assertion",
-    }
-    codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
-    return bool(codes) and codes <= allowed
-
-
-def _quality_repair_prompt(
-    *,
-    plan: PlanContract,
-    task_contract: TaskContract,
-    worktree: Path,
-    changed_files: list[str],
-    quality_review: dict[str, Any],
-    current_contract: object,
-) -> str:
-    repair_files = _quality_repair_file_set(quality_review, changed_files)
-    file_contents = {
-        path: (worktree / path).read_text(encoding="utf-8")
-        for path in repair_files
-        if (worktree / path).is_file()
-    }
-    return json.dumps(
-        {
-            "role": "qa.author.quality_repair",
-            "instructions": [
-                "Edit only the files listed in repair_files unless removing an "
-                "unconsumed fixture is explicitly required.",
-                "Do not edit production source files.",
-                "Keep existing acceptance coverage; make the smallest targeted repair.",
-                (
-                    "For UI findings, prefer a focused task-specific spec. If API routes "
-                    "are mocked, assert request URL/query shape and visible state."
-                ),
-                (
-                    "For benchmark findings, move all object graphs, temp files, fixture "
-                    "creation, collections, and store construction into trial setup. "
-                    "Do not use JMH invocation or iteration setup for zero-garbage contracts."
-                ),
-                (
-                    "For semantic findings, repair the exact behavioral weakness. Use HTTP "
-                    "test harnesses for endpoint route contracts, assert last acknowledged "
-                    "journal cursors after failed writes, use assertArrayEquals for byte arrays, "
-                    "use structured JSON field/path assertions for payload contracts, and use "
-                    "a non-allocating cold benchmark strategy that cannot exhaust a finite "
-                    "one-shot target pool during JMH measurement."
-                ),
-                (
-                    "For build/script string assertion findings, remove the generated test "
-                    "that reads build files or QA scripts. Deterministic orchestration validates "
-                    "QA gate wiring; model-authored tests must prove product behavior."
-                ),
-                "Return only a valid QAAuthorContract JSON object for the repaired files.",
-            ],
-            "feature_id": task_contract.feature_id,
-            "task_id": task_contract.inputs["task_id"],
-            "acceptance_test_matrix": plan.acceptance_test_matrix,
-            "quality_findings": quality_review.get("blocking_findings"),
-            "repair_files": repair_files,
-            "file_contents": file_contents,
-            "current_contract": current_contract,
-        },
-        indent=2,
-        sort_keys=True,
-    )
-
-
-def _quality_repair_file_set(
-    quality_review: dict[str, Any],
-    changed_files: list[str],
-) -> list[str]:
-    files: set[str] = set()
-    for finding in quality_review.get("blocking_findings", []):
-        if not isinstance(finding, dict):
-            continue
-        for key in ["file"]:
-            value = finding.get(key)
-            if isinstance(value, str):
-                files.add(value.removeprefix("changed-files/"))
-        for key in ["files", "fixture_files", "benchmark_files"]:
-            value = finding.get(key)
-            if isinstance(value, list):
-                for item in value:
-                    if isinstance(item, str):
-                        files.add(item.removeprefix("changed-files/"))
-    if files:
-        return sorted(files)
-    return sorted(changed_files)
 
 
 def _repair_prompt(

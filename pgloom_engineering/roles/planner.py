@@ -157,6 +157,7 @@ class PlannerHandler:
         contract: PlanContract,
     ) -> HandlerResult:
         database_url = payload.get("database_url")
+        contract = _canonicalize_plan_feature_id(contract, task)
         plan_row = create_plan_contract(
             contract,
             planner_task_id=task.get("id"),
@@ -244,7 +245,11 @@ class PlannerHandler:
                 role=task_slice.role,
                 task_type=task_slice.task_type,
                 objective=task_slice.objective,
-                inputs={"plan_contract_id": plan_row["id"], "task_slice_id": task_slice.slice_id},
+                inputs={
+                    "plan_contract_id": plan_row["id"],
+                    "task_id": child["id"],
+                    "task_slice_id": task_slice.slice_id,
+                },
                 allowed_paths=task_slice.allowed_paths,
                 forbidden_paths=task_slice.forbidden_paths,
                 dependencies=depends_on,
@@ -272,6 +277,16 @@ class PlannerHandler:
                 "planning": "multi_agent",
             }
         )
+
+
+def _canonicalize_plan_feature_id(
+    contract: PlanContract,
+    task: dict[str, Any],
+) -> PlanContract:
+    workflow_id = str(task.get("workflow_id") or "")
+    if not workflow_id or contract.feature_id == workflow_id:
+        return contract
+    return contract.model_copy(update={"feature_id": workflow_id})
 
 
 def _build_council(

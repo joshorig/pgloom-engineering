@@ -418,6 +418,15 @@ def is_red_test_failure(result: QAVerificationResult) -> bool:
     return _has_test_failure_signal(combined)
 
 
+def is_authored_test_compile_failure(result: QAVerificationResult) -> bool:
+    if result.infra_error is not None or result.original.exit_code == 0:
+        return False
+    combined = f"{result.original.stdout}\n{result.original.stderr}".lower()
+    if _has_test_compile_failure_signal(combined):
+        return True
+    return False
+
+
 def _is_pytest_command(command_text: str) -> bool:
     return "pytest" in command_text
 
@@ -438,6 +447,22 @@ def _has_test_failure_signal(output: str) -> bool:
         "failed:",
     ]
     return any(signal in output for signal in signals)
+
+
+def _has_test_compile_failure_signal(output: str) -> bool:
+    compile_signals = [
+        "compiletestjava failed",
+        "compiletestkotlin failed",
+        "compilation failed",
+        "cannot find symbol",
+        "package does not exist",
+        "unresolved reference",
+        "syntax error",
+        "syntaxerror",
+        "error: cannot",
+        "error: incompatible",
+    ]
+    return any(signal in output for signal in compile_signals)
 
 
 def verification_infra_error(stdout: str, stderr: str) -> str | None:
