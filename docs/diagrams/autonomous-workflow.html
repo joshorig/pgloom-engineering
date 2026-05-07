@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pgloom-engineering Autonomous Workflow</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "JetBrains Mono", monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .cyan { background: #22d3ee; }
+    .emerald { background: #34d399; }
+    .violet { background: #a78bfa; }
+    .amber { background: #fbbf24; }
+    .rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>pgloom-engineering Autonomous Workflow</h1>
+      </div>
+      <p class="subtitle">Production path from registered project goal to final human PR merge.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 740" role="img" aria-label="pgloom-engineering autonomous workflow">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <line x1="155" y1="95" x2="250" y2="95" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="410" y1="95" x2="505" y2="95" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="665" y1="95" x2="760" y2="95" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="835" y1="135" x2="835" y2="205" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="760" y1="245" x2="665" y2="245" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="505" y1="245" x2="410" y2="245" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="250" y1="245" x2="155" y2="245" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="80" y1="285" x2="80" y2="355" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="155" y1="395" x2="250" y2="395" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="410" y1="395" x2="505" y2="395" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="665" y1="395" x2="760" y2="395" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+
+        <path d="M 575 435 C 575 520 430 520 430 455 L 430 432" fill="none" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <text x="500" y="515" fill="#fb923c" font-size="8" text-anchor="middle">repair implementer</text>
+        <path d="M 335 435 C 335 555 625 555 625 135" fill="none" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <text x="495" y="555" fill="#fb923c" font-size="8" text-anchor="middle">QA expansion / replan</text>
+        <path d="M 835 435 C 925 535 910 640 560 640 C 250 640 105 540 105 135" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <text x="525" y="662" fill="#fb7185" font-size="8" text-anchor="middle">blocked after retry budget: planner replan with failure knowledge</text>
+
+        <rect x="35" y="60" width="120" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="95" y="85" fill="white" font-size="11" font-weight="600" text-anchor="middle">Project</text>
+        <text x="95" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">registered</text>
+        <text x="95" y="117" fill="#94a3b8" font-size="9" text-anchor="middle">metadata + gates</text>
+
+        <rect x="250" y="55" width="160" height="80" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="330" y="82" fill="white" font-size="11" font-weight="600" text-anchor="middle">Feature Goal</text>
+        <text x="330" y="101" fill="#94a3b8" font-size="9" text-anchor="middle">requirements</text>
+        <text x="330" y="116" fill="#94a3b8" font-size="9" text-anchor="middle">constraints + criteria</text>
+
+        <rect x="505" y="55" width="160" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="585" y="82" fill="white" font-size="11" font-weight="600" text-anchor="middle">Planner Council</text>
+        <text x="585" y="101" fill="#94a3b8" font-size="9" text-anchor="middle">context + memory</text>
+        <text x="585" y="116" fill="#94a3b8" font-size="9" text-anchor="middle">PlanContract</text>
+
+        <rect x="760" y="55" width="150" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="835" y="82" fill="white" font-size="11" font-weight="600" text-anchor="middle">Designer</text>
+        <text x="835" y="101" fill="#94a3b8" font-size="9" text-anchor="middle">design contract</text>
+        <text x="835" y="116" fill="#94a3b8" font-size="9" text-anchor="middle">boundaries</text>
+
+        <rect x="760" y="205" width="150" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="835" y="232" fill="white" font-size="11" font-weight="600" text-anchor="middle">QA Author</text>
+        <text x="835" y="251" fill="#94a3b8" font-size="9" text-anchor="middle">author tests</text>
+        <text x="835" y="266" fill="#94a3b8" font-size="9" text-anchor="middle">compile + prove red</text>
+
+        <rect x="505" y="205" width="160" height="80" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="585" y="232" fill="white" font-size="11" font-weight="600" text-anchor="middle">QA Worktree</text>
+        <text x="585" y="251" fill="#94a3b8" font-size="9" text-anchor="middle">isolated failing tests</text>
+        <text x="585" y="266" fill="#94a3b8" font-size="9" text-anchor="middle">handoff contract</text>
+
+        <rect x="250" y="205" width="160" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="330" y="232" fill="white" font-size="11" font-weight="600" text-anchor="middle">Implementer</text>
+        <text x="330" y="251" fill="#94a3b8" font-size="9" text-anchor="middle">make tests green</text>
+        <text x="330" y="266" fill="#94a3b8" font-size="9" text-anchor="middle">production paths only</text>
+
+        <rect x="35" y="205" width="120" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="95" y="232" fill="white" font-size="11" font-weight="600" text-anchor="middle">Reviewer</text>
+        <text x="95" y="251" fill="#94a3b8" font-size="9" text-anchor="middle">contract verdict</text>
+        <text x="95" y="266" fill="#94a3b8" font-size="9" text-anchor="middle">repair routing</text>
+
+        <rect x="35" y="355" width="120" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="95" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">QA Verify</text>
+        <text x="95" y="401" fill="#94a3b8" font-size="9" text-anchor="middle">focused gates</text>
+        <text x="95" y="416" fill="#94a3b8" font-size="9" text-anchor="middle">full regression</text>
+
+        <rect x="250" y="355" width="160" height="80" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="330" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">Evidence</text>
+        <text x="330" y="401" fill="#94a3b8" font-size="9" text-anchor="middle">checks + artifacts</text>
+        <text x="330" y="416" fill="#94a3b8" font-size="9" text-anchor="middle">usage + recovery</text>
+
+        <rect x="505" y="355" width="160" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="585" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">Finalization</text>
+        <text x="585" y="401" fill="#94a3b8" font-size="9" text-anchor="middle">ready evidence</text>
+        <text x="585" y="416" fill="#94a3b8" font-size="9" text-anchor="middle">PR prepared</text>
+
+        <rect x="760" y="355" width="150" height="80" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="835" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">Human Gate</text>
+        <text x="835" y="401" fill="#94a3b8" font-size="9" text-anchor="middle">review PR</text>
+        <text x="835" y="416" fill="#94a3b8" font-size="9" text-anchor="middle">merge / reject</text>
+
+        <rect x="150" y="500" width="700" height="95" rx="10" fill="transparent" stroke="#fb923c" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="170" y="522" fill="#fb923c" font-size="10" font-weight="600">Self-heal loop</text>
+        <text x="185" y="545" fill="#94a3b8" font-size="9">1. QA compile/red-proof/semantic failures trigger repair prompts in the same worktree.</text>
+        <text x="185" y="565" fill="#94a3b8" font-size="9">2. Review or verification failures route to implementer repair while preserving QA tests.</text>
+        <text x="185" y="585" fill="#94a3b8" font-size="9">3. Exhausted attempts trigger planner replan with concrete blocker evidence and token cost history.</text>
+
+        <text x="760" y="650" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="760" y="662" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="782" y="670" fill="#94a3b8" font-size="8">Autonomous role</text>
+        <rect x="760" y="678" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="782" y="686" fill="#94a3b8" font-size="8">Evidence/state</text>
+        <rect x="760" y="694" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="782" y="702" fill="#94a3b8" font-size="8">Human action</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot cyan"></div><h3>Start Condition</h3></div>
+        <ul>
+          <li>&bull; Project is registered with metadata and gate policy</li>
+          <li>&bull; Human supplies goal, requirements, constraints</li>
+          <li>&bull; Workflow driver owns execution after start</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Autonomous Path</h3></div>
+        <ul>
+          <li>&bull; Planner emits implementer-ready slices</li>
+          <li>&bull; QA authors and validates failing tests first</li>
+          <li>&bull; Implementer, reviewer, and verifier close the loop</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot rose"></div><h3>Human Boundary</h3></div>
+        <ul>
+          <li>&bull; Humans do not approve every internal repair</li>
+          <li>&bull; Recovery records explain autonomous decisions</li>
+          <li>&bull; Final PR merge remains the explicit human gate</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">pgloom-engineering &bull; autonomous role workflow</p>
+  </div>
+</body>
+</html>

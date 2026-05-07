@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pgloom-engineering Intended Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "JetBrains Mono", monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .cyan { background: #22d3ee; }
+    .emerald { background: #34d399; }
+    .violet { background: #a78bfa; }
+    .amber { background: #fbbf24; }
+    .rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>pgloom-engineering Intended Architecture</h1>
+      </div>
+      <p class="subtitle">Autonomous engineering orchestration on top of pgloom runtime primitives.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 720" role="img" aria-label="pgloom-engineering intended architecture">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <line x1="130" y1="105" x2="215" y2="105" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="370" y1="105" x2="465" y2="105" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="550" y1="160" x2="550" y2="250" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="590" y1="105" x2="690" y2="105" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="810" y1="130" x2="810" y2="250" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="500" y1="360" x2="390" y2="470" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="600" y1="360" x2="710" y2="470" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="550" y1="360" x2="550" y2="470" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="550" y1="590" x2="550" y2="635" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <path d="M 265 470 C 180 380 180 260 230 160" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <path d="M 800 470 C 895 380 895 245 835 160" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+
+        <rect x="25" y="75" width="105" height="60" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="77" y="99" fill="white" font-size="11" font-weight="600" text-anchor="middle">Human</text>
+        <text x="77" y="116" fill="#94a3b8" font-size="9" text-anchor="middle">goals + final PR</text>
+
+        <rect x="215" y="70" width="155" height="70" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="292" y="95" fill="white" font-size="11" font-weight="600" text-anchor="middle">CLI / API</text>
+        <text x="292" y="112" fill="#94a3b8" font-size="9" text-anchor="middle">project register</text>
+        <text x="292" y="127" fill="#94a3b8" font-size="9" text-anchor="middle">feature create/run</text>
+
+        <rect x="465" y="55" width="125" height="105" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="527" y="82" fill="white" font-size="11" font-weight="600" text-anchor="middle">Workflow</text>
+        <text x="527" y="99" fill="white" font-size="11" font-weight="600" text-anchor="middle">Driver</text>
+        <text x="527" y="118" fill="#94a3b8" font-size="9" text-anchor="middle">slot scheduling</text>
+        <text x="527" y="133" fill="#94a3b8" font-size="9" text-anchor="middle">retry + replan</text>
+
+        <rect x="690" y="70" width="150" height="70" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="765" y="95" fill="white" font-size="11" font-weight="600" text-anchor="middle">Worker Runtime</text>
+        <text x="765" y="112" fill="#94a3b8" font-size="9" text-anchor="middle">claim, gate, dispatch</text>
+        <text x="765" y="127" fill="#94a3b8" font-size="9" text-anchor="middle">record recovery</text>
+
+        <rect x="420" y="250" width="260" height="110" rx="8" fill="#0f172a"/>
+        <rect x="420" y="250" width="260" height="110" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="550" y="280" fill="white" font-size="12" font-weight="600" text-anchor="middle">pgloom + engineering DB</text>
+        <text x="550" y="302" fill="#94a3b8" font-size="9" text-anchor="middle">workflows, tasks, features</text>
+        <text x="550" y="317" fill="#94a3b8" font-size="9" text-anchor="middle">contracts, handoffs, recovery</text>
+        <text x="550" y="332" fill="#94a3b8" font-size="9" text-anchor="middle">model usage + token usage</text>
+
+        <rect x="85" y="465" width="155" height="125" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="162" y="492" fill="white" font-size="11" font-weight="600" text-anchor="middle">Planner</text>
+        <text x="162" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">multi-agent council</text>
+        <text x="162" y="525" fill="#94a3b8" font-size="9" text-anchor="middle">typed PlanContract</text>
+        <text x="162" y="540" fill="#94a3b8" font-size="9" text-anchor="middle">task contracts</text>
+        <text x="162" y="560" fill="#34d399" font-size="8" text-anchor="middle">implementer-ready slices</text>
+
+        <rect x="275" y="465" width="155" height="125" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="352" y="492" fill="white" font-size="11" font-weight="600" text-anchor="middle">QA Author</text>
+        <text x="352" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">live worktree tests</text>
+        <text x="352" y="525" fill="#94a3b8" font-size="9" text-anchor="middle">red proof</text>
+        <text x="352" y="540" fill="#94a3b8" font-size="9" text-anchor="middle">semantic review</text>
+        <text x="352" y="560" fill="#34d399" font-size="8" text-anchor="middle">QAAuthorContract</text>
+
+        <rect x="465" y="465" width="155" height="125" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="542" y="492" fill="white" font-size="11" font-weight="600" text-anchor="middle">Implementer</text>
+        <text x="542" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">uses QA worktree</text>
+        <text x="542" y="525" fill="#94a3b8" font-size="9" text-anchor="middle">path policy</text>
+        <text x="542" y="540" fill="#94a3b8" font-size="9" text-anchor="middle">verify + repair</text>
+        <text x="542" y="560" fill="#34d399" font-size="8" text-anchor="middle">TaskResultContract</text>
+
+        <rect x="655" y="465" width="155" height="125" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="732" y="492" fill="white" font-size="11" font-weight="600" text-anchor="middle">Reviewer + QA</text>
+        <text x="732" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">contract review</text>
+        <text x="732" y="525" fill="#94a3b8" font-size="9" text-anchor="middle">verification gates</text>
+        <text x="732" y="540" fill="#94a3b8" font-size="9" text-anchor="middle">repair / replan</text>
+        <text x="732" y="560" fill="#34d399" font-size="8" text-anchor="middle">human finalization</text>
+
+        <rect x="845" y="465" width="125" height="125" rx="8" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="907" y="492" fill="white" font-size="11" font-weight="600" text-anchor="middle">Project</text>
+        <text x="907" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">registry</text>
+        <text x="907" y="525" fill="#94a3b8" font-size="9" text-anchor="middle">metadata</text>
+        <text x="907" y="540" fill="#94a3b8" font-size="9" text-anchor="middle">commands</text>
+        <text x="907" y="560" fill="#fbbf24" font-size="8" text-anchor="middle">live policy</text>
+
+        <rect x="135" y="250" width="145" height="90" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="207" y="278" fill="white" font-size="11" font-weight="600" text-anchor="middle">Token Savior</text>
+        <text x="207" y="296" fill="#94a3b8" font-size="9" text-anchor="middle">context packing</text>
+        <text x="207" y="311" fill="#94a3b8" font-size="9" text-anchor="middle">capsule cache</text>
+
+        <rect x="720" y="250" width="145" height="90" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="792" y="278" fill="white" font-size="11" font-weight="600" text-anchor="middle">Memory</text>
+        <text x="792" y="296" fill="#94a3b8" font-size="9" text-anchor="middle">observations</text>
+        <text x="792" y="311" fill="#94a3b8" font-size="9" text-anchor="middle">session digest</text>
+
+        <rect x="445" y="635" width="210" height="55" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="550" y="657" fill="white" font-size="11" font-weight="600" text-anchor="middle">Human Gate</text>
+        <text x="550" y="674" fill="#94a3b8" font-size="9" text-anchor="middle">final PR review / merge only</text>
+
+        <text x="815" y="650" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="815" y="662" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="837" y="670" fill="#94a3b8" font-size="8">Role / runtime</text>
+        <rect x="815" y="678" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="837" y="686" fill="#94a3b8" font-size="8">State / context</text>
+        <rect x="815" y="694" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="837" y="702" fill="#94a3b8" font-size="8">Human gate</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Autonomy Boundary</h3></div>
+        <ul>
+          <li>&bull; Human defines project and feature goals up front</li>
+          <li>&bull; Agents own planning, QA, implementation, review, repair</li>
+          <li>&bull; Human returns only for final PR judgment</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot violet"></div><h3>Shared Runtime</h3></div>
+        <ul>
+          <li>&bull; pgloom stores tasks, leases, events, and workflow state</li>
+          <li>&bull; engineering tables store contracts, handoffs, recovery</li>
+          <li>&bull; model and token usage are first-class evidence</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot amber"></div><h3>Project Coupling</h3></div>
+        <ul>
+          <li>&bull; Registry metadata controls write paths and gates</li>
+          <li>&bull; Worktrees isolate QA and implementation attempts</li>
+          <li>&bull; Deterministic validators guard model outputs</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">pgloom-engineering &bull; intended autonomous engineering architecture</p>
+  </div>
+</body>
+</html>
