@@ -148,6 +148,8 @@ projects:
           - ui/tests/e2e
         browser_test_roots:
           - ui/tests/e2e
+        test_support_paths:
+          - app-api/build.gradle
         example_tests:
           - app-api/src/test/java
           - ui/src/__tests__

@@ -181,6 +181,20 @@ def test_mockmvc_endpoint_tests_do_not_warn_for_harness_preference() -> None:
     )
 
 
+def test_archived_changed_files_are_mapped_to_worktree_paths_for_semantic_review() -> None:
+    module = _load_eval_module()
+
+    assert module._worktree_paths_from_archived_files(
+        {
+            "changed-files/app-api/src/test/java/com/example/web/ConfigControllerTest.java": "",
+            "changed-files/ui/tests/e2e/domain.spec.ts": "",
+        }
+    ) == [
+        "app-api/src/test/java/com/example/web/ConfigControllerTest.java",
+        "ui/tests/e2e/domain.spec.ts",
+    ]
+
+
 def test_unconsumed_generated_fixtures_are_flagged() -> None:
     module = _load_eval_module()
     files = {

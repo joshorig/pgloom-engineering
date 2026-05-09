@@ -16,6 +16,8 @@ from pgloom_engineering.qa_author_runtime import (
     api_prefixes_from_text,
     benchmark_requirements_for_task,
     build_qa_author_prompt,
+    build_qa_code_repair_prompt,
+    build_qa_quality_repair_prompt,
     isolate_codex_worktree_context,
     normalize_qa_author_payload,
     path_violations,
@@ -129,6 +131,90 @@ def test_path_violations_accepts_project_benchmark_roots_when_allowed() -> None:
         )
         == []
     )
+
+
+def test_path_violations_accepts_project_test_support_paths() -> None:
+    task = _task_contract()
+
+    assert (
+        path_violations(
+            ["app-api/build.gradle", "tests/test_feature.py"],
+            task,
+            {"qa": {"test_support_paths": ["app-api/build.gradle"]}},
+        )
+        == []
+    )
+
+
+def test_path_violations_accepts_project_test_support_path_under_forbidden_root() -> None:
+    task = _task_contract().model_copy(update={"forbidden_paths": ["app-api/"]})
+
+    assert (
+        path_violations(
+            ["app-api/build.gradle"],
+            task,
+            {"qa": {"test_support_paths": ["app-api/build.gradle"]}},
+        )
+        == []
+    )
+
+
+def test_code_repair_prompt_allows_authorized_test_support_files(tmp_path: Path) -> None:
+    tmp_path.joinpath("tests").mkdir()
+    tmp_path.joinpath("tests/test_feature.py").write_text("def test_feature(): pass\n")
+    tmp_path.joinpath("app-api").mkdir()
+    tmp_path.joinpath("app-api/build.gradle").write_text("dependencies {}\n")
+
+    payload = json.loads(
+        build_qa_code_repair_prompt(
+            plan=_plan(),
+            task_contract=_task_contract(),
+            worktree=tmp_path,
+            changed_files=["tests/test_feature.py"],
+            verification_command=["./gradlew", ":app-api:test"],
+            stdout_excerpt="compileTestJava FAILED",
+            stderr_excerpt="package org.springframework.test.web.servlet does not exist",
+            current_contract={"tests_added": ["tests/test_feature.py"]},
+            project_metadata={"qa": {"test_support_paths": ["app-api/build.gradle"]}},
+        )
+    )
+
+    assert payload["authorized_test_support_files"] == ["app-api/build.gradle"]
+    assert payload["repair_files"] == ["tests/test_feature.py", "app-api/build.gradle"]
+    assert "dependencies {}" in payload["file_contents"]["app-api/build.gradle"]
+    assert any(
+        "Do not replace route-harness assertions" in item
+        for item in payload["instructions"]
+    )
+
+
+def test_quality_repair_prompt_can_repair_harness_dependencies(tmp_path: Path) -> None:
+    tmp_path.joinpath("tests").mkdir()
+    tmp_path.joinpath("tests/EndpointTest.java").write_text("controller.runtime();\n")
+    tmp_path.joinpath("app-api").mkdir()
+    tmp_path.joinpath("app-api/build.gradle").write_text("dependencies {}\n")
+
+    payload = json.loads(
+        build_qa_quality_repair_prompt(
+            plan=_plan(),
+            task_contract=_task_contract(),
+            worktree=tmp_path,
+            changed_files=["tests/EndpointTest.java"],
+            quality_review={
+                "blocking_findings": [
+                    {
+                        "code": "qa_semantic_direct_spring_controller_call",
+                        "file": "tests/EndpointTest.java",
+                    }
+                ]
+            },
+            current_contract={"tests_added": ["tests/EndpointTest.java"]},
+            project_metadata={"qa": {"test_support_paths": ["app-api/build.gradle"]}},
+        )
+    )
+
+    assert payload["repair_files"] == ["tests/EndpointTest.java", "app-api/build.gradle"]
+    assert any("test-scoped dependency" in item for item in payload["instructions"])
 
 
 def test_benchmark_requirements_include_project_variants_and_prompt_skeleton() -> None:

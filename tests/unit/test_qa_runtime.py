@@ -609,6 +609,8 @@ def test_relevant_changed_files_filters_generated_tool_artifacts() -> None:
             "tests/test_feature.py",
             "playwright-report/index.html",
             "ui/test-results/domain-switch/error-context.md",
+            ".qa-tmp/RunRangeScanContractTest.java",
+            ".qa-tmp/sources-main.txt",
             ".gradle/file-system.probe",
             "build/classes/java/test/Foo.class",
             "ui/tests/e2e/domain-switch.spec.ts",

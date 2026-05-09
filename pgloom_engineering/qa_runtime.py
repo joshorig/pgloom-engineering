@@ -327,6 +327,7 @@ def is_generated_tool_artifact(path: str) -> bool:
     }:
         return True
     ignored_prefixes = (
+        ".qa-tmp/",
         ".pytest_cache/",
         ".gradle/",
         ".gradle-home/",

@@ -228,6 +228,7 @@ def build_qa_author_prompt(
             ),
         ],
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
+        "project_authorized_test_support_paths": _metadata_test_support_paths(qa_metadata),
         "role_context": role_context or {},
         "route_coverage_requirements": route_requirements,
         "benchmark_requirements": benchmark_requirements,
@@ -363,6 +364,11 @@ def deterministic_test_skeleton(
                     "Asserting ResponseEntity returned by direct controller invocation",
                 ],
             },
+            "test_support_dependency_guidance": (
+                "If the selected harness dependency is missing and the project metadata lists "
+                "authorized test support paths, add only test-scoped dependencies in those "
+                "support files; do not fall back to direct controller method calls."
+            ),
         }
     for requirement in route_requirements:
         skeleton["endpoint_behavior_skeleton"].append(
@@ -612,14 +618,25 @@ def build_qa_code_repair_prompt(
     stdout_excerpt: str,
     stderr_excerpt: str,
     current_contract: object,
+    project_metadata: dict[str, Any] | None = None,
 ) -> str:
-    test_contents = repair_file_contents(worktree, changed_files)
+    qa_metadata = project_qa_metadata(project_metadata or {})
+    test_support_files = _metadata_test_support_paths(qa_metadata)
+    repair_files = _dedupe_paths([*changed_files, *test_support_files])
+    test_contents = repair_file_contents(worktree, repair_files)
     return json.dumps(
         {
             "role": "qa.author.red_repair",
             "instructions": [
-                "Edit only the files listed in changed_files.",
+                (
+                    "Edit only the files listed in changed_files and "
+                    "authorized_test_support_files."
+                ),
                 "Do not edit production source files.",
+                (
+                    "Authorized test support files may be changed only for test-scoped "
+                    "dependency or test-runner wiring needed by the authored QA tests."
+                ),
                 (
                     "Make the smallest targeted repair that lets the selected "
                     "verification command run."
@@ -639,6 +656,12 @@ def build_qa_code_repair_prompt(
                     "Keep acceptance coverage intact. If you remove a test, replace its matrix "
                     "coverage with an equivalent behavior assertion in another authored test."
                 ),
+                (
+                    "If endpoint acceptance requires MockMvc, WebTestClient, or TestRestTemplate "
+                    "and the compile failure is a missing harness dependency, add the test-scoped "
+                    "dependency in an authorized test support file. Do not replace route-harness "
+                    "assertions with direct controller method calls."
+                ),
                 "Return only a valid QAAuthorContract JSON object for the repaired files.",
             ],
             "feature_id": task_contract.feature_id,
@@ -648,6 +671,8 @@ def build_qa_code_repair_prompt(
             "verification_stdout_excerpt": stdout_excerpt,
             "verification_stderr_excerpt": stderr_excerpt,
             "changed_files": changed_files,
+            "authorized_test_support_files": test_support_files,
+            "repair_files": repair_files,
             "file_contents": test_contents,
             "current_contract": current_contract,
         },
@@ -688,8 +713,13 @@ def build_qa_quality_repair_prompt(
     changed_files: list[str],
     quality_review: dict[str, Any],
     current_contract: object,
+    project_metadata: dict[str, Any] | None = None,
 ) -> str:
-    repair_files = qa_quality_repair_file_set(quality_review, changed_files)
+    qa_metadata = project_qa_metadata(project_metadata or {})
+    test_support_files = _metadata_test_support_paths(qa_metadata)
+    repair_files = _dedupe_paths(
+        [*qa_quality_repair_file_set(quality_review, changed_files), *test_support_files]
+    )
     file_contents = repair_file_contents(worktree, repair_files)
     return json.dumps(
         {
@@ -698,6 +728,10 @@ def build_qa_quality_repair_prompt(
                 "Edit only the files listed in repair_files unless removing an "
                 "unconsumed fixture is explicitly required.",
                 "Do not edit production source files.",
+                (
+                    "Authorized test support files may be changed only for test-scoped "
+                    "dependency or test-runner wiring needed by the authored QA tests."
+                ),
                 "Keep existing acceptance coverage; make the smallest targeted repair.",
                 (
                     "For UI findings, prefer a focused task-specific spec. If API routes "
@@ -714,6 +748,9 @@ def build_qa_quality_repair_prompt(
                     "call findings, replace controller construction and controller.method(...) "
                     "calls with MockMvc, WebTestClient, or TestRestTemplate route invocations "
                     "that prove query parsing, route binding, status, and JSON payload behavior. "
+                    "If the harness dependency is missing, add it as a test-scoped dependency "
+                    "in an authorized test support file instead of reverting to direct "
+                    "controller calls. "
                     "Assert last acknowledged journal cursors after failed writes, use "
                     "assertArrayEquals for byte arrays, use structured JSON field/path "
                     "assertions for payload contracts, and use a non-allocating cold benchmark "
@@ -733,6 +770,7 @@ def build_qa_quality_repair_prompt(
             "acceptance_test_matrix": plan.acceptance_test_matrix,
             "quality_findings": quality_review.get("blocking_findings"),
             "repair_files": repair_files,
+            "authorized_test_support_files": test_support_files,
             "file_contents": file_contents,
             "current_contract": current_contract,
         },
@@ -761,6 +799,10 @@ def qa_quality_repair_file_set(
     if files:
         return sorted(files)
     return sorted(changed_files)
+
+
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    return [path for path in dict.fromkeys(paths) if path]
 
 
 def build_qa_contract_repair_prompt(
@@ -885,10 +927,16 @@ def path_violations(
 ) -> list[dict[str, str]]:
     metadata = project_qa_metadata(project_metadata or {})
     qa_write_paths = _metadata_qa_write_paths(metadata)
+    allowed_paths = [*task_contract.allowed_paths, *_metadata_test_support_paths(metadata)]
+    test_support_paths = _metadata_test_support_paths(metadata)
     violations: list[dict[str, str]] = []
     for path in paths:
-        allowed = any(path_matches(path, root) for root in task_contract.allowed_paths)
-        forbidden = any(path_matches(path, root) for root in task_contract.forbidden_paths)
+        support_path = any(path_matches(path, root) for root in test_support_paths)
+        allowed = any(path_matches(path, root) for root in allowed_paths)
+        forbidden = (
+            any(path_matches(path, root) for root in task_contract.forbidden_paths)
+            and not support_path
+        )
         qa_path = is_qa_write_path(path, qa_write_paths)
         if not allowed or forbidden or not qa_path:
             violations.append(
@@ -906,7 +954,7 @@ def path_violations(
 
 def _metadata_qa_write_paths(qa_metadata: dict[str, Any]) -> list[str]:
     paths: list[str] = ["tests/", "qa/fixtures/"]
-    for key in ["test_roots", "browser_test_roots", "benchmark_roots"]:
+    for key in ["test_roots", "browser_test_roots", "benchmark_roots", "test_support_paths"]:
         raw = qa_metadata.get(key)
         if not isinstance(raw, list):
             continue
@@ -916,6 +964,13 @@ def _metadata_qa_write_paths(qa_metadata: dict[str, Any]) -> list[str]:
                 if normalized not in paths:
                     paths.append(normalized)
     return paths
+
+
+def _metadata_test_support_paths(qa_metadata: dict[str, Any]) -> list[str]:
+    raw = qa_metadata.get("test_support_paths")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, str) and item.strip()]
 
 
 def path_matches(path: str, root: str) -> bool:

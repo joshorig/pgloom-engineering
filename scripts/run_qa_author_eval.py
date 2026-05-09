@@ -277,6 +277,7 @@ def main() -> int:
                     changed_files=outcome["changed_files"],
                     quality_review=quality_review,
                     current_contract=outcome.get("qa_author_contract"),
+                    project_metadata=project_metadata,
                 )
                 (output_dir / "qa-author-quality-repair.prompt.txt").write_text(
                     quality_repair_prompt,
@@ -915,6 +916,9 @@ def _qa_author_brief(
         "generated_route_coverage_artifact": _generated_route_coverage_artifact(route_requirements),
         "existing_test_examples": _discover_test_examples(worktree, targets, qa_metadata),
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
+        "project_authorized_test_support_paths": _metadata_string_list(
+            qa_metadata, "test_support_paths"
+        ),
         "quality_gates": quality_gates,
     }
 
@@ -1108,6 +1112,23 @@ def _deterministic_test_skeleton(
     if isinstance(rules, list):
         result["behavior_coverage_rules"] = rules
     if endpoint_required:
+        conventions = qa_metadata.get("semantic_conventions")
+        endpoint_acceptance = (
+            conventions.get("endpoint_acceptance")
+            if isinstance(conventions, dict)
+            else None
+        )
+        if isinstance(endpoint_acceptance, dict) and endpoint_acceptance.get(
+            "require_http_harness"
+        ):
+            result["spring_endpoint_harness_required"] = {
+                "allowed_harnesses": ["MockMvc", "WebTestClient", "TestRestTemplate"],
+                "test_support_dependency_guidance": (
+                    "If the selected harness dependency is missing and project_authorized_"
+                    "test_support_paths is non-empty, add only test-scoped dependencies in "
+                    "those support files. Do not fall back to direct controller method calls."
+                ),
+            }
         for requirement in route_requirements:
             route_cases = [
                 {
@@ -1492,6 +1513,7 @@ def _run_red_repair_phase(
         stdout_excerpt=outcome["pytest_stdout_excerpt"],
         stderr_excerpt=outcome["pytest_stderr_excerpt"],
         current_contract=outcome.get("qa_author_contract"),
+        project_metadata=project_metadata,
     )
     (output_dir / f"{file_prefix}.prompt.txt").write_text(prompt, encoding="utf-8")
     started = time.monotonic()
@@ -1826,7 +1848,7 @@ def _review_qa_author_quality(
     blocking.extend(gate_findings)
     semantic_findings = semantic_quality_findings(
         worktree=worktree,
-        changed_paths=list(files),
+        changed_paths=_worktree_paths_from_archived_files(files),
         plan=plan,
         task_contract=task_contract,
         project_metadata=project_metadata,
@@ -1842,6 +1864,14 @@ def _review_qa_author_quality(
         "gate_validation": gate_validation,
         "reviewed_artifacts": sorted(files),
     }
+
+
+def _worktree_paths_from_archived_files(files: dict[str, str]) -> list[str]:
+    return [
+        path.removeprefix("changed-files/")
+        for path in files
+        if path.startswith("changed-files/")
+    ]
 
 
 def _artifact_file_contents(output_dir: Path, artifact_paths: list[Any]) -> dict[str, str]:

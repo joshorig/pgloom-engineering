@@ -116,7 +116,7 @@ def _execute_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
         cwd=Path.cwd(),
         text=True,
         capture_output=True,
-        timeout=int(_case_value(suite, case, "timeout_seconds", 900)) + 60,
+        timeout=_run_timeout_seconds(suite, case),
         check=False,
     )
     elapsed = round(time.monotonic() - started, 3)
@@ -156,6 +156,14 @@ def _execute_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
             ]
         },
     }
+
+
+def _run_timeout_seconds(suite: dict[str, Any], case: dict[str, Any]) -> int:
+    per_invocation_timeout = int(_case_value(suite, case, "timeout_seconds", 900))
+    # A QA eval can call the model for initial authoring, red repair, quality repair,
+    # and contract repair. The suite wrapper must not kill the run while those
+    # inner phase timeouts are still valid.
+    return per_invocation_timeout * 4 + 120
 
 
 def _qa_eval_command(
