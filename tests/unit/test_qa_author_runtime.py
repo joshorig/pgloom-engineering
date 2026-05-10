@@ -53,6 +53,12 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         "missing-symbol compile failure" in instruction
         for instruction in payload["instructions"]
     )
+    assert any(
+        "typed public API directly" in instruction
+        and "Class.forName" in instruction
+        and "LambdaMetafactory" in instruction
+        for instruction in payload["instructions"]
+    )
 
 
 def test_qa_author_prompt_includes_shared_role_context() -> None:
