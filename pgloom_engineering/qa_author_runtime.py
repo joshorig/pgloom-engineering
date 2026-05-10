@@ -36,6 +36,7 @@ def isolate_codex_worktree_context(
     worktree: Path,
     context_root: Path,
     enabled: bool,
+    add_dir_enabled: bool = True,
 ) -> list[str]:
     if not enabled or not command or Path(command[0]).name != "codex":
         return command
@@ -52,17 +53,18 @@ def isolate_codex_worktree_context(
     else:
         isolated.extend(["-C", context_root_text])
 
-    worktree_text = str(worktree.resolve())
-    add_dir_values = {
-        isolated[index + 1]
-        for index, item in enumerate(isolated[:-1])
-        if item == "--add-dir"
-    }
-    if worktree_text not in add_dir_values:
-        insert_at = len(isolated)
-        if isolated and isolated[-1] == "-":
-            insert_at = len(isolated) - 1
-        isolated[insert_at:insert_at] = ["--add-dir", worktree_text]
+    if add_dir_enabled:
+        worktree_text = str(worktree.resolve())
+        add_dir_values = {
+            isolated[index + 1]
+            for index, item in enumerate(isolated[:-1])
+            if item == "--add-dir"
+        }
+        if worktree_text not in add_dir_values:
+            insert_at = len(isolated)
+            if isolated and isolated[-1] == "-":
+                insert_at = len(isolated) - 1
+            isolated[insert_at:insert_at] = ["--add-dir", worktree_text]
     return isolated
 
 

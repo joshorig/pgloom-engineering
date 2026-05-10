@@ -680,6 +680,34 @@ def test_isolate_codex_worktree_context_uses_add_dir_for_target_worktree(
     assert isolated.index("--add-dir") < isolated.index("-")
 
 
+def test_isolate_codex_worktree_context_can_skip_eager_add_dir(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "target"
+    context_root = tmp_path / "orchestrator"
+    command = [
+        "codex",
+        "exec",
+        "-m",
+        "gpt-5.4",
+        "-C",
+        str(worktree),
+        "--json",
+        "-",
+    ]
+
+    isolated = isolate_codex_worktree_context(
+        command,
+        worktree=worktree,
+        context_root=context_root,
+        enabled=True,
+        add_dir_enabled=False,
+    )
+
+    assert isolated[isolated.index("-C") + 1] == str(context_root.resolve())
+    assert "--add-dir" not in isolated
+
+
 def _plan() -> PlanContract:
     return PlanContract(
         feature_id="feature-1",

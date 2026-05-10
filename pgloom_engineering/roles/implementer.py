@@ -112,6 +112,9 @@ class ImplementerHandler:
                             False,
                         )
                     ),
+                    add_dir_enabled=bool(
+                        getattr(settings, "implementer_model_context_add_dir_enabled", True)
+                    ),
                 ),
                 qa_env(project.metadata, project_root=project.root),
             ),

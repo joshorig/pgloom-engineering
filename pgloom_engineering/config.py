@@ -40,7 +40,9 @@ class EngineeringSettings(BaseSettings):
     qa_author_model_context_isolation_enabled: bool = False
     qa_validation_model_context_isolation_enabled: bool = False
     implementer_model_context_isolation_enabled: bool = False
+    implementer_model_context_add_dir_enabled: bool = True
     reviewer_model_context_isolation_enabled: bool = False
+    reviewer_model_context_add_dir_enabled: bool = True
     role_model_context_root: Path = Path(".")
     planner_consolidator_scoped_inputs_enabled: bool = True
     planner_production_grade_preempts_critic: bool = True

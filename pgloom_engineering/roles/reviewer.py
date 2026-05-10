@@ -93,6 +93,9 @@ class ReviewerHandler:
                         )
                     )
                     and bool(worktree),
+                    add_dir_enabled=bool(
+                        getattr(settings, "reviewer_model_context_add_dir_enabled", True)
+                    ),
                 ),
                 qa_env({}, project_root=None),
             ),

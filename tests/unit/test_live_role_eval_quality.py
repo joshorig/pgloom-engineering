@@ -224,6 +224,14 @@ def test_live_role_env_enables_role_context_isolation(tmp_path, monkeypatch) -> 
             os.environ["PGLOOM_ENGINEERING_IMPLEMENTER_MODEL_CONTEXT_ISOLATION_ENABLED"]
             == "true"
         )
+        assert (
+            os.environ["PGLOOM_ENGINEERING_IMPLEMENTER_MODEL_CONTEXT_ADD_DIR_ENABLED"]
+            == "false"
+        )
+        assert (
+            os.environ["PGLOOM_ENGINEERING_REVIEWER_MODEL_CONTEXT_ADD_DIR_ENABLED"]
+            == "false"
+        )
         assert os.environ["PGLOOM_ENGINEERING_QA_AUTHOR_MODEL_CONTEXT_ISOLATION_ENABLED"] == "false"
         assert (
             os.environ["PGLOOM_ENGINEERING_QA_VALIDATION_MODEL_CONTEXT_ISOLATION_ENABLED"]
