@@ -302,7 +302,7 @@ test("features list is renderable and shows shortcuts", async ({ page }) => {
 test("feature overview shows plan progression", async ({ page }) => {
   await go(page, `/feature/${featureId}`);
   await expect(page.getByRole("heading", { name: /pgloom-engineering · feat\/command-center-ui/i })).toBeVisible();
-  await expect(page.getByText("TASK SLICES", { exact: false })).toBeVisible();
+  await expect(page.getByText(/MILESTONES|TASK SLICES/)).toBeVisible();
   await expect(page.getByText("1 / 2")).toBeVisible();
 });
 
@@ -321,16 +321,16 @@ test("feature DAG and handoff routes render", async ({ page }) => {
 
 test("global telemetry and realtime pages render", async ({ page }) => {
   await go(page, "/telemetry/tokens");
-  await expect(page.getByText("TOKEN ECONOMY", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Token economy/i })).toBeVisible();
   await expect(page.getByText("all projects · project breakdown · profile accounting")).toBeVisible();
 
   await go(page, "/telemetry/slots");
   await expect(page.getByText("GLOBAL · worker slot occupancy", { exact: false })).toBeVisible();
-  await expect(page.getByText("planner")).toBeVisible();
+  await expect(page.getByRole("button", { name: /planner active/ })).toBeVisible();
 
   await go(page, "/realtime");
   await expect(page.getByText("REALTIME · pg_notify('cc_events', ...)")).toBeVisible();
-  await expect(page.getByText("cc_events")).toBeVisible();
+  await expect(page.getByText("channel cc_events")).toBeVisible();
 });
 
 test("top-left brand link returns to home features", async ({ page }) => {

@@ -15,13 +15,13 @@ const sameLaneGap = nodeWidth + 12;
 export function DagView({ featureId }: { featureId: string }) {
   const { data } = useApi<DagPayload>(`/api/features/${featureId}/dag`);
   const tasks = (data?.tasks || []).filter((task) => task.status !== "superseded");
-  const milestones = data?.milestones || [];
+  const groups = graphGroups(data);
   const [selected, setSelected] = useState<string | null>(null);
   const selectedTask = tasks.find((task) => task.id === selected) || tasks[0];
-  const milestoneWidth = Math.max(minMilestoneWidth, nodeWidth + Math.max(0, maxSameLaneStack(tasks) - 1) * sameLaneGap + 48);
-  const positions = useMemo(() => layout(tasks, milestones, milestoneWidth), [tasks, milestones, milestoneWidth]);
+  const milestoneWidth = Math.max(minMilestoneWidth, nodeWidth + Math.max(0, maxSameLaneStack(tasks, groups) - 1) * sameLaneGap + 48);
+  const positions = useMemo(() => layout(tasks, groups, milestoneWidth), [tasks, groups, milestoneWidth]);
   const canvas = {
-    width: laneLabelWidth + Math.max(milestones.length, 1) * milestoneWidth + 56,
+    width: laneLabelWidth + Math.max(groups.length, 1) * milestoneWidth + 56,
     height: topPad + roleLanes.length * laneHeight + 54
   };
 
@@ -29,7 +29,7 @@ export function DagView({ featureId }: { featureId: string }) {
     <div className="cc-dag-pane">
       <div className="cc-dag-canvas-wrap cc-grid-bg">
         <div className="cc-dag-toolbar">
-          <div className="cc-dag-toolbar-group"><span className="cc-kicker mono">LAYOUT</span><span className="cc-chip is-on">milestone lanes · LR</span><span className="cc-chip">klay</span><span className="cc-chip">force</span></div>
+          <div className="cc-dag-toolbar-group"><span className="cc-kicker mono">LAYOUT</span><span className="cc-chip is-on">{groups.mode === "slice" ? "slice lanes" : "milestone lanes"} · LR</span><span className="cc-chip">klay</span><span className="cc-chip">force</span></div>
           <div className="cc-dag-toolbar-group"><span className="cc-kicker mono">FILTER</span><span className="cc-chip is-on">all roles</span><span className="cc-chip">running</span><span className="cc-chip">blocked</span><span className="cc-chip">show superseded</span></div>
           <span className="mono cc-dim" style={{ marginLeft: "auto" }}>{tasks.length} tasks · {data?.edges.length || 0} edges</span>
         </div>
@@ -47,11 +47,11 @@ export function DagView({ featureId }: { featureId: string }) {
                 <path d="M0 0L8 4L0 8z" fill="rgba(170,178,188,0.5)" />
               </marker>
             </defs>
-            {milestones.map((milestone, idx) => {
+            {groups.map((milestone, idx) => {
               const x = laneLabelWidth + idx * milestoneWidth - 10;
               return (
                 <g key={milestone.id}>
-                  <rect x={x} y={topPad - 12} width={milestoneWidth - 16} height={roleLanes.length * laneHeight + 16} rx="3" fill={milestone.id === selectedTask?.milestone_id ? "var(--accent-soft)" : "transparent"} stroke="rgba(255,255,255,0.10)" strokeDasharray={isMilestoneComplete(tasks, milestone.id) ? "0" : "3 3"} />
+                  <rect x={x} y={topPad - 12} width={milestoneWidth - 16} height={roleLanes.length * laneHeight + 16} rx="3" fill="transparent" stroke={milestone.id === groupId(selectedTask, groups.mode) ? "var(--accent-line)" : "rgba(255,255,255,0.10)"} strokeDasharray={isMilestoneComplete(tasks, milestone.id, groups.mode) ? "0" : "3 3"} />
                   <text x={x + (milestoneWidth - 16) / 2} y={topPad - 18} textAnchor="middle" fill="rgba(170,178,188,0.7)" style={{ font: "500 9.5px var(--f-mono)", letterSpacing: "0.1em" }}>{milestone.id.toUpperCase()} · {milestone.label.toUpperCase().slice(0, 22)}</text>
                 </g>
               );
@@ -93,7 +93,7 @@ export function DagView({ featureId }: { featureId: string }) {
               <div className="cc-kicker mono">SELECTED · TASK</div>
               <div className="cc-dag-side-title mono">{shortId(selectedTask.id)}</div>
               <div className="mono cc-dim cc-break">{selectedTask.id}</div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}><StatusPill status={selectedTask.status} /><span className="mono cc-dim">milestone {selectedTask.milestone_id.toUpperCase()}</span></div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}><StatusPill status={selectedTask.status} /><span className="mono cc-dim">milestone {selectedTask.milestone_id.toUpperCase()}</span>{selectedTask.task_slice_id && <span className="mono cc-dim">slice {selectedTask.task_slice_id}</span>}</div>
             </div>
             <div className="cc-dag-side-sect" style={{ padding: 12 }}><RoleBadge role={selectedTask.role} full /></div>
             <div className="cc-dag-side-sect">
@@ -119,12 +119,33 @@ export function DagView({ featureId }: { featureId: string }) {
   );
 }
 
-function layout(tasks: DagPayload["tasks"], milestones: DagPayload["milestones"], milestoneWidth: number) {
+type GraphGroup = { id: string; label: string };
+type GraphGroups = GraphGroup[] & { mode: "milestone" | "slice" };
+
+function graphGroups(data?: DagPayload): GraphGroups {
+  const items = (() => {
+    if (!data) return [];
+    if (data.milestones.length > 1) {
+      return data.milestones.map((milestone) => ({ id: milestone.id, label: milestone.label }));
+    }
+    const seen = new Set<string>();
+    return data.tasks.flatMap((task) => {
+      const id = task.task_slice_id || task.milestone_id || "unassigned";
+      if (seen.has(id)) return [];
+      seen.add(id);
+      return [{ id, label: sliceLabel(id) }];
+    });
+  })() as GraphGroups;
+  items.mode = data && data.milestones.length > 1 ? "milestone" : "slice";
+  return items;
+}
+
+function layout(tasks: DagPayload["tasks"], groups: GraphGroups, milestoneWidth: number) {
   const out: Record<string, { x: number; y: number }> = {};
-  const milestoneIds = milestones.length ? milestones.map((m) => m.id) : ["unassigned"];
+  const groupIds = groups.length ? groups.map((m) => m.id) : ["unassigned"];
   const laneSlots: Record<string, number> = {};
   tasks.forEach((task) => {
-    const mi = Math.max(0, milestoneIds.indexOf(task.milestone_id));
+    const mi = Math.max(0, groupIds.indexOf(groupId(task, groups.mode)));
     const lane = Math.max(0, roleLanes.indexOf(task.role));
     const key = `${mi}:${lane}`;
     const slot = laneSlots[key] || 0;
@@ -137,13 +158,18 @@ function layout(tasks: DagPayload["tasks"], milestones: DagPayload["milestones"]
   return out;
 }
 
-function maxSameLaneStack(tasks: DagPayload["tasks"]) {
+function maxSameLaneStack(tasks: DagPayload["tasks"], groups: GraphGroups) {
   const counts = new Map<string, number>();
   tasks.forEach((task) => {
-    const key = `${task.milestone_id}:${task.role}`;
+    const key = `${groupId(task, groups.mode)}:${task.role}`;
     counts.set(key, (counts.get(key) || 0) + 1);
   });
   return Math.max(1, ...counts.values());
+}
+
+function groupId(task: DagPayload["tasks"][number] | undefined, mode: "milestone" | "slice") {
+  if (!task) return "";
+  return mode === "slice" ? task.task_slice_id || task.milestone_id : task.milestone_id;
 }
 
 function KV({ k, v }: { k: string; v: ReactNode }) {
@@ -174,7 +200,11 @@ function roleColor(role: string) {
   return "var(--r-impl)";
 }
 
-function isMilestoneComplete(tasks: DagPayload["tasks"], milestoneId: string) {
-  const scoped = tasks.filter((task) => task.milestone_id === milestoneId);
+function isMilestoneComplete(tasks: DagPayload["tasks"], milestoneId: string, mode: "milestone" | "slice") {
+  const scoped = tasks.filter((task) => groupId(task, mode) === milestoneId);
   return scoped.length > 0 && scoped.every((task) => ["completed", "complete", "done", "passed", "pass"].includes(task.status));
+}
+
+function sliceLabel(id: string) {
+  return id.replace(/^impl-/, "implement ").replace(/^qa-/, "qa ").replace(/-/g, " ");
 }

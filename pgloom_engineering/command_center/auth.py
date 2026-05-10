@@ -13,14 +13,14 @@ def is_loopback_host(host: str | None) -> bool:
 
 def assert_loopback_bind(host: str) -> None:
     if not is_loopback_host(host):
-        raise ValueError("Command Center v1 must bind to 127.0.0.1, ::1, or localhost")
+        raise ValueError("Command Center local-only mode must bind to 127.0.0.1, ::1, or localhost")
 
 
 def assert_loopback_peer(host: str | None) -> None:
     if not is_loopback_host(host):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Command Center v1 accepts loopback peers only",
+            detail="Command Center local-only mode accepts loopback peers only",
         )
 
 
@@ -31,7 +31,7 @@ async def assert_loopback_websocket(websocket: WebSocket) -> None:
     await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Command Center v1 accepts loopback peers only",
+        detail="Command Center local-only mode accepts loopback peers only",
     )
 
 

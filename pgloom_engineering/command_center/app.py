@@ -31,10 +31,11 @@ class CommandCenterSettings(BaseSettings):
         extra="ignore",
     )
 
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8765
     database_url: str | None = None
     start_realtime: bool = True
+    local_only: bool = False
 
     @property
     def effective_database_url(self) -> str | None:
@@ -55,7 +56,8 @@ def get_settings() -> CommandCenterSettings:
 
 def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
     resolved = settings or get_settings()
-    assert_loopback_bind(resolved.host)
+    if resolved.local_only:
+        assert_loopback_bind(resolved.host)
     hub = WebSocketHub()
 
     @asynccontextmanager
@@ -73,13 +75,24 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
                 await bridge.stop()
 
     app = FastAPI(title="Command Center", lifespan=lifespan)
-    app.add_middleware(LoopbackOnlyMiddleware)
+    if resolved.local_only:
+        app.add_middleware(LoopbackOnlyMiddleware)
     app.state.command_center_settings = resolved
     app.state.command_center_hub = hub
 
     @app.get("/api/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok", "surface": "Command Center"}
+
+    @app.get("/api/realtime/status")
+    def realtime_status() -> dict[str, Any]:
+        return {
+            "channel": "cc_events",
+            "subscribers": hub.subscriber_count,
+            "max_queue_size": hub.max_queue_size,
+            "start_realtime": resolved.start_realtime,
+            "database_configured": bool(resolved.effective_database_url),
+        }
 
     @app.get("/api/features")
     def api_features(
@@ -102,6 +115,12 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
     ) -> list[dict[str, Any]]:
         return store.list_runs(feature_id, database_url=resolved.effective_database_url)
 
+    @app.get("/api/runs")
+    def api_all_runs(
+        limit: int = Query(default=500, ge=1, le=1000)
+    ) -> list[dict[str, Any]]:
+        return store.list_all_runs(database_url=resolved.effective_database_url, limit=limit)
+
     @app.get("/api/features/{feature_id}/runs/aggregate")
     def api_runs_aggregate(
         feature_id: str
@@ -114,17 +133,29 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
     ) -> list[dict[str, Any]]:
         return store.model_usage(feature_id, database_url=resolved.effective_database_url)
 
+    @app.get("/api/model-usage")
+    def api_global_model_usage() -> list[dict[str, Any]]:
+        return store.global_model_usage(database_url=resolved.effective_database_url)
+
     @app.get("/api/features/{feature_id}/token-savior")
     def api_token_savior(
         feature_id: str
     ) -> list[dict[str, Any]]:
         return store.token_savior(feature_id, database_url=resolved.effective_database_url)
 
+    @app.get("/api/token-savior")
+    def api_global_token_savior() -> list[dict[str, Any]]:
+        return store.global_token_savior(database_url=resolved.effective_database_url)
+
     @app.get("/api/features/{feature_id}/slots")
     def api_slots(
         feature_id: str
     ) -> list[dict[str, Any]]:
         return store.slot_state(feature_id, database_url=resolved.effective_database_url)
+
+    @app.get("/api/slots")
+    def api_global_slots() -> list[dict[str, Any]]:
+        return store.global_slot_state(database_url=resolved.effective_database_url)
 
     @app.get("/api/features/{feature_id}/artifacts")
     def api_artifacts(
@@ -225,7 +256,8 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
-        await assert_loopback_websocket(websocket)
+        if resolved.local_only:
+            await assert_loopback_websocket(websocket)
         await websocket_loop(websocket, hub)
 
     dist = Path(__file__).with_name("web").joinpath("dist")

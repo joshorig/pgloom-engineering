@@ -20,7 +20,8 @@ export function FeatureOverview({ featureId, events }: Props) {
     verify: acc.verify + Number(row.verification_seconds || 0),
     blocked: acc.blocked + Number(row.blocked_seconds || 0)
   }), { queue: 0, lease: 0, model: 0, verify: 0, blocked: 0 });
-  const currentMilestone = currentMilestoneId(dag);
+  const progression = progressionItems(dag);
+  const currentMilestone = currentProgressionId(progression.items);
   const nextTask = dag?.tasks.find((task) => !["completed", "complete", "done", "passed"].includes(task.status)) || dag?.tasks[0];
   const togglePause = async () => {
     setBusy(true);
@@ -67,10 +68,10 @@ export function FeatureOverview({ featureId, events }: Props) {
         <Stat k="savings" v={formatTokens((data?.token_savior_saved_tokens || 0) + (data?.rtk_saved_tokens || 0))} d={<span className="cc-dim">Token Savior + RTK</span>} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, minHeight: 0, flex: 1 }}>
-        <Panel kicker="MILESTONES" title="Plan progression" action={<span className="mono cc-dim">{signedMilestones(dag)} / {dag?.milestones.length || 0} signed</span>}>
+        <Panel kicker={progression.mode === "slice" ? "TASK SLICES" : "MILESTONES"} title="Plan progression" action={<span className="mono cc-dim">{signedProgression(progression.items)} / {progression.items.length} signed</span>}>
           <div className="cc-ms-track">
-            {(dag?.milestones || []).map((milestone) => {
-              const tasks = (dag?.tasks || []).filter((task) => task.milestone_id === milestone.id);
+            {progression.items.map((milestone) => {
+              const tasks = milestone.tasks;
               const passed = tasks.filter((task) => ["completed", "complete", "done", "passed"].includes(task.status)).length;
               const running = tasks.filter((task) => ["active", "running"].includes(task.status)).length;
               const cur = milestone.id === currentMilestone;
@@ -88,7 +89,7 @@ export function FeatureOverview({ featureId, events }: Props) {
                 </div>
               );
             })}
-            {dag && dag.milestones.length === 0 && <div className="cc-state" style={{ gridColumn: "1 / -1" }}><div className="cc-state-title">No PlanContract yet</div><div className="cc-state-desc">Milestones appear after planner consolidation persists plan/task contracts.</div></div>}
+            {dag && progression.items.length === 0 && <div className="cc-state" style={{ gridColumn: "1 / -1" }}><div className="cc-state-title">No PlanContract yet</div><div className="cc-state-desc">Milestones appear after planner consolidation persists plan/task contracts.</div></div>}
           </div>
         </Panel>
         <Panel kicker="INTERVENTIONS" title="Recent operator actions">
@@ -129,9 +130,49 @@ function signedMilestones(dag?: DagPayload) {
   return (dag?.milestones || []).filter((milestone) => isMilestoneSigned((dag?.tasks || []).filter((task) => task.milestone_id === milestone.id))).length;
 }
 
-function currentMilestoneId(dag?: DagPayload) {
-  const active = dag?.tasks.find((task) => ["active", "running", "blocked"].includes(task.status));
-  return active?.milestone_id || dag?.milestones[0]?.id;
+type ProgressionItem = {
+  id: string;
+  label: string;
+  tasks: DagPayload["tasks"];
+};
+
+function progressionItems(dag?: DagPayload): { mode: "milestone" | "slice"; items: ProgressionItem[] } {
+  if (!dag) return { mode: "milestone", items: [] };
+  if (dag.milestones.length > 1) {
+    return {
+      mode: "milestone",
+      items: dag.milestones.map((milestone) => ({
+        id: milestone.id,
+        label: milestone.label,
+        tasks: dag.tasks.filter((task) => task.milestone_id === milestone.id)
+      }))
+    };
+  }
+  const grouped = new Map<string, DagPayload["tasks"]>();
+  dag.tasks.forEach((task) => {
+    const key = task.task_slice_id || task.milestone_id || "unassigned";
+    grouped.set(key, [...(grouped.get(key) || []), task]);
+  });
+  return {
+    mode: "slice",
+    items: [...grouped.entries()].map(([id, tasks]) => ({
+      id,
+      label: sliceLabel(id),
+      tasks
+    }))
+  };
+}
+
+function signedProgression(items: ProgressionItem[]) {
+  return items.filter((item) => isMilestoneSigned(item.tasks)).length;
+}
+
+function currentProgressionId(items: ProgressionItem[]) {
+  return items.find((item) => item.tasks.some((task) => ["active", "running", "blocked"].includes(task.status)))?.id || items[0]?.id;
+}
+
+function sliceLabel(id: string) {
+  return id.replace(/^impl-/, "implement ").replace(/^qa-/, "qa ").replace(/-/g, " ");
 }
 
 function wallSummary(mix: { queue: number; lease: number; model: number; verify: number; blocked: number }) {

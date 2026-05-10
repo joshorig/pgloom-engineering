@@ -105,6 +105,7 @@ export const routeTabs = [
 ];
 
 export function TopBar({ featureId, paused }: { featureId?: string; paused?: boolean }) {
+  const liveHost = typeof window === "undefined" ? "0.0.0.0:8765" : window.location.host;
   return (
     <div className="cc-topbar">
       <div className="cc-topbar-l">
@@ -121,7 +122,7 @@ export function TopBar({ featureId, paused }: { featureId?: string; paused?: boo
           <Search size={13} />
           <span className="mono cc-dim">⌘K</span>
         </button>
-        <div className="cc-live"><i className="cc-pulse" /><span className="mono">LIVE</span><span className="mono cc-dim">127.0.0.1</span></div>
+        <div className="cc-live"><i className="cc-pulse" /><span className="mono">LIVE</span><span className="mono cc-dim">{liveHost}</span></div>
         <div className="cc-actor mono"><span className="cc-dim">operator:</span><span>local</span></div>
       </div>
     </div>
