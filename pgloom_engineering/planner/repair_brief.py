@@ -93,6 +93,11 @@ def _action_for_code(code: str) -> str:
             "Move engineering.qa.verify.scrutiny after all reviewer slices and make "
             "engineering.qa.verify.usertest depend on scrutiny."
         ),
+        "qa_usertest_uses_broad_gate": (
+            "Keep smoke, benchmark-smoke, full regression, and bare project checks in "
+            "engineering.qa.verify.scrutiny. Make engineering.qa.verify.usertest exercise "
+            "a user-facing CLI/API/browser/app or focused consumer-style library flow."
+        ),
         "missing_qa_author": (
             "Add one engineering.qa.author slice before implementers for failing tests/fixtures."
         ),

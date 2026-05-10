@@ -1058,6 +1058,25 @@ def _qa_verify_findings(
             )
         )
     for usertest in usertests:
+        commands = {_command_text(command) for command in usertest.verification_commands}
+        broad_commands = [
+            command
+            for command in commands
+            if _is_broad_usertest_gate(command)
+        ]
+        if broad_commands:
+            findings.append(
+                _finding(
+                    definition,
+                    "qa_usertest_uses_broad_gate",
+                    (
+                        "QA user-test must exercise the feature through a user-facing "
+                        "CLI/API/browser/app flow, not substitute qa/smoke.sh, "
+                        "benchmark-smoke gates, full regression, or bare project checks."
+                    ),
+                    usertest.slice_id,
+                )
+            )
         for scrutiny in scrutinies:
             if not _depends_on_transitively(plan, usertest.slice_id, scrutiny.slice_id):
                 findings.append(
@@ -1069,6 +1088,17 @@ def _qa_verify_findings(
                     )
                 )
     return findings
+
+
+def _is_broad_usertest_gate(command: str) -> bool:
+    return (
+        "qa/smoke.sh" in command
+        or "qa/regression.sh" in command
+        or ":benchmarks:jmhSmokeCheck" in command
+        or command.endswith(":benchmarks:jmh")
+        or ":benchmarks:jmh " in command
+        or _is_bare_gradle_project_gate(command)
+    )
 
 
 def _is_bare_gradle_project_gate(command: str) -> bool:

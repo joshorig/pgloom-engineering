@@ -75,6 +75,11 @@ Rules:
   smoke. Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
   `:benchmarks:jmh` sweeps as per-feature blockers; those are project-scheduled
   periodic or broad project gates.
+- QA user-test is not another broad gate runner. It must specify a
+  user-facing CLI/API/browser/app flow, or for a pure library a focused
+  consumer-style command/harness using the public API. Do not put `qa/smoke.sh`,
+  `qa/regression.sh`, bare `./gradlew test/check`, `:benchmarks:jmhSmokeCheck`,
+  or full benchmark sweeps in user-test verification.
 - Remove exploratory commands (`grep`, `cat`, `echo`), list-only commands, and
   dry-run-only commands when they are used as verification proof.
 - Dependency IDs must refer only to earlier slices.

@@ -949,7 +949,14 @@ def _plan_contract(
                 forbidden_paths=["store/", "core/", "benchmarks/", "docs/"],
                 depends_on=["qa-scrutiny"],
                 expected_outputs=["QAResultContract"],
-                verification_commands=[["./qa/smoke.sh"]],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":store:test",
+                        "--tests",
+                        "com.example.SnapshotUserFlowTest",
+                    ]
+                ],
             ),
         ],
         acceptance_test_matrix=acceptance
@@ -959,6 +966,23 @@ def _plan_contract(
             "partial journal failure hides unacknowledged writes",
         ],
         risk_register=["restore cursor mismatch could expose partial writes"],
+    )
+
+
+def test_critic_rejects_qa_usertest_broad_smoke_gate() -> None:
+    plan = _plan_contract()
+    usertest = next(
+        item for item in plan.task_slices if item.task_type == "engineering.qa.verify.usertest"
+    )
+    usertest.verification_commands = [["./qa/smoke.sh"]]
+
+    results = deterministic_check_results(plan, [])
+
+    qa_verify = next(
+        result for result in results if result.check_id == "check_qa_verify_present"
+    )
+    assert any(
+        finding.code == "qa_usertest_uses_broad_gate" for finding in qa_verify.findings
     )
 
 

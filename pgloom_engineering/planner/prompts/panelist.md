@@ -143,7 +143,11 @@ Rules:
   - `engineering.qa.verify.usertest` is a `role: "qa"` slice after scrutiny
     unless project metadata declares `usertest_harness.kind = "none"`. It
     launches the app/service or CLI harness, records replay evidence, or records
-    the metadata-authorized skip.
+    the metadata-authorized skip. It must not use `qa/smoke.sh`,
+    `qa/regression.sh`, bare `./gradlew test/check`, `:benchmarks:jmhSmokeCheck`,
+    or full benchmark sweeps as the user journey; those are scrutiny or
+    periodic gates. For pure libraries, specify a focused consumer-style CLI/API
+    command or small harness that uses the public feature surface.
 - Implementer slices must depend on the QA author slice and must not include
   PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
 - Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
