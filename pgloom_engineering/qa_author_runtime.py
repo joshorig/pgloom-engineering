@@ -243,6 +243,12 @@ def build_qa_author_prompt(
                 "do not satisfy acceptance."
             ),
             (
+                "For range-scan or public API acceptance, compile tests and benchmarks "
+                "against the typed public API directly. Do not use Class.forName, "
+                "Method.invoke, InvocationHandler, Proxy, MethodHandle adapters, or "
+                "LambdaMetafactory to avoid compile-time API checks."
+            ),
+            (
                 "Before final submission, run the narrowest compile/test command for every "
                 "authored test file when the tool environment permits it. Returned tests should "
                 "compile cleanly unless this task defines a new public API; in that case a "
