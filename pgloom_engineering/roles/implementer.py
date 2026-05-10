@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import re
@@ -130,6 +131,7 @@ class ImplementerHandler:
             database_url=database_url,
         )
         baseline = _changed_file_snapshot(worktree, project.metadata)
+        baseline_contents = _changed_file_contents(worktree, project.metadata)
         prompt = build_implementer_prompt(
             plan=plan,
             task_contract=task_contract,
@@ -183,6 +185,24 @@ class ImplementerHandler:
                     qa_contract=qa_contract,
                 ),
             ]
+            if violations:
+                violation_diffs = _path_violation_diffs(
+                    worktree,
+                    baseline_contents,
+                    [item["path"] for item in violations if item.get("path")],
+                )
+                _restore_paths(worktree, baseline_contents, violation_diffs.keys())
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.implementation_path_violation",
+                    blocker_reason="implementer touched paths outside its contract",
+                    result={
+                        "violations": violations,
+                        "violation_diffs": violation_diffs,
+                        "changed_files": touched,
+                        "repair_attempts": repair_attempts,
+                    },
+                )
             verification_results = [
                 run_qa_verification(
                     command,
@@ -214,7 +234,7 @@ class ImplementerHandler:
 
             reported_blockers = output.blockers if output is not None else []
             if (
-                (contract_error or violations or failed_verifications or reported_blockers)
+                (contract_error or failed_verifications or reported_blockers)
                 and repair_attempts < max_repair_attempts
             ):
                 repair_attempts += 1
@@ -226,7 +246,7 @@ class ImplementerHandler:
                         qa_contract=qa_contract,
                         worktree=worktree,
                         changed_files=touched,
-                        path_violations=violations,
+                        path_violations=[],
                         failed_verifications=failed_verifications,
                         contract_error=contract_error
                         or _reported_blockers_error(reported_blockers),
@@ -257,17 +277,6 @@ class ImplementerHandler:
                     blocker_code="engineering.implementer_contract_invalid",
                     blocker_reason=contract_error,
                     result={"changed_files": touched, "repair_attempts": repair_attempts},
-                )
-            if violations:
-                return HandlerResult(
-                    status="blocked",
-                    blocker_code="engineering.implementation_path_violation",
-                    blocker_reason="implementer touched paths outside its contract",
-                    result={
-                        "violations": violations,
-                        "changed_files": touched,
-                        "repair_attempts": repair_attempts,
-                    },
                 )
             if failed_verifications:
                 first = failed_verifications[0]
@@ -1107,6 +1116,16 @@ def _changed_file_snapshot(
     }
 
 
+def _changed_file_contents(
+    worktree: Path,
+    project_metadata: dict[str, Any],
+) -> dict[str, bytes | None]:
+    return {
+        path: (worktree / path).read_bytes() if (worktree / path).is_file() else None
+        for path in relevant_changed_files(changed_files(worktree), project_metadata)
+    }
+
+
 def _implementation_changed_files(
     worktree: Path,
     baseline: dict[str, str | None],
@@ -1122,6 +1141,63 @@ def _implementation_changed_files(
         if old_hash is not None and not (worktree / path).exists():
             touched.append(path)
     return sorted(dict.fromkeys(touched))
+
+
+def _path_violation_diffs(
+    worktree: Path,
+    baseline_contents: dict[str, bytes | None],
+    paths: list[str],
+) -> dict[str, dict[str, Any]]:
+    diffs: dict[str, dict[str, Any]] = {}
+    for path in sorted(dict.fromkeys(paths)):
+        before = baseline_contents.get(path)
+        target = worktree / path
+        after = target.read_bytes() if target.is_file() else None
+        diffs[path] = {
+            "before_sha256": _bytes_hash(before),
+            "after_sha256": _bytes_hash(after),
+            "diff_excerpt": _text_diff_excerpt(before, after, path=path),
+        }
+    return diffs
+
+
+def _restore_paths(
+    worktree: Path,
+    baseline_contents: dict[str, bytes | None],
+    paths: Any,
+) -> None:
+    for path in paths:
+        if not isinstance(path, str) or not path:
+            continue
+        target = worktree / path
+        before = baseline_contents.get(path)
+        if before is None:
+            if target.exists():
+                target.unlink()
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(before)
+
+
+def _bytes_hash(value: bytes | None) -> str | None:
+    return hashlib.sha256(value).hexdigest() if value is not None else None
+
+
+def _text_diff_excerpt(before: bytes | None, after: bytes | None, *, path: str) -> str:
+    before_text = (before or b"").decode("utf-8", errors="replace").splitlines()
+    after_text = (after or b"").decode("utf-8", errors="replace").splitlines()
+    diff = "\n".join(
+        difflib.unified_diff(
+            before_text,
+            after_text,
+            fromfile=f"before/{path}",
+            tofile=f"after/{path}",
+            lineterm="",
+        )
+    )
+    if len(diff) > 4000:
+        return diff[:4000] + "\n...[truncated]"
+    return diff
 
 
 def _file_hash(path: Path) -> str | None:
