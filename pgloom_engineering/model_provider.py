@@ -47,11 +47,16 @@ class EngineeringCLIModelProvider:
         parsed, text, usage = _parse_model_output(completed.stdout, profile.parse_response)
         input_tokens = usage.input_tokens or input_tokens_hint or _approx_tokens(prompt)
         output_tokens = usage.output_tokens or _approx_tokens(text)
+        route_metadata = _command_route_metadata(profile.command)
         cost_usd = usage.cost_usd
         if cost_usd is None:
-            cost_usd = (
-                input_tokens * profile.cost_per_input_token_usd
-                + output_tokens * profile.cost_per_output_token_usd
+            cost_usd = _fallback_cost_usd(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                profile=profile,
+                route_metadata=route_metadata,
+                usage_source=usage.source,
+                usage_metadata=usage.metadata,
             )
         metadata = {
             "argv": completed.argv,
@@ -65,7 +70,7 @@ class EngineeringCLIModelProvider:
             "stdout_bytes": len(completed.stdout.encode("utf-8")),
             "stderr_bytes": len(completed.stderr.encode("utf-8")),
             "token_count_source": usage.source,
-            **_command_route_metadata(profile.command),
+            **route_metadata,
             **usage.metadata,
         }
         result = EngineeringModelInvocationResult(
@@ -273,6 +278,46 @@ def _codex_result_text(stdout: str) -> str | None:
             if isinstance(text, str):
                 result = text
     return result
+
+
+def _fallback_cost_usd(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    profile: CLIModelProfile,
+    route_metadata: dict[str, Any],
+    usage_source: str,
+    usage_metadata: dict[str, Any],
+) -> float:
+    if profile.cost_per_input_token_usd or profile.cost_per_output_token_usd:
+        return (
+            input_tokens * profile.cost_per_input_token_usd
+            + output_tokens * profile.cost_per_output_token_usd
+        )
+    if route_metadata.get("provider") != "codex" and not usage_source.startswith("codex_"):
+        return 0.0
+    return _codex_cost_usd(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=_int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0,
+        cached_input_tokens=_int_or_none(usage_metadata.get("cached_input_tokens")) or 0,
+    )
+
+
+def _codex_cost_usd(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int = 0,
+    cached_input_tokens: int = 0,
+) -> float:
+    uncached_input = max(0, input_tokens - cached_input_tokens)
+    return (
+        uncached_input * (5.0 / 1_000_000)
+        + cached_input_tokens * (0.50 / 1_000_000)
+        + output_tokens * (30.0 / 1_000_000)
+        + reasoning_tokens * (30.0 / 1_000_000)
+    )
 
 
 def _approx_tokens(text: str) -> int:

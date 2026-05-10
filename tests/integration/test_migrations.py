@@ -4,6 +4,7 @@ import json
 
 from pgloom.approvals import request_approval
 from pgloom.artifacts import register_artifact
+from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pgloom.tasks import enqueue_task
 from pgloom.workflows import create_workflow
@@ -103,7 +104,7 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
               workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
               metadata
             )
-            values (%s, %s, %s, %s, %s, %s, jsonb(%s))
+            values (%s, %s, %s, %s, %s, %s, %s)
             returning id
             """,
             (
@@ -113,7 +114,7 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
                 4300,
                 300,
                 0.02,
-                json.dumps(
+                jsonb(
                     {
                         "cached_input_tokens": 900,
                         "reasoning_output_tokens": 70,

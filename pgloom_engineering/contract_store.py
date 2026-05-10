@@ -130,9 +130,10 @@ def upsert_task_contract(
             """
             insert into engineering_task_contracts(
               task_id, feature_id, plan_contract_id, role, contract_version,
-              input_contract, input_contract_hash, output_contract, status, validation_errors
+              input_contract, input_contract_hash, output_contract, status, validation_errors,
+              milestone_id, task_slice_id
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (task_id) do update set
               feature_id = excluded.feature_id,
               plan_contract_id = excluded.plan_contract_id,
@@ -143,6 +144,8 @@ def upsert_task_contract(
               output_contract = excluded.output_contract,
               status = excluded.status,
               validation_errors = excluded.validation_errors,
+              milestone_id = excluded.milestone_id,
+              task_slice_id = excluded.task_slice_id,
               updated_at = now()
             returning *
             """,
@@ -157,6 +160,8 @@ def upsert_task_contract(
                 jsonb(output_contract or {}),
                 status,
                 jsonb(validation_errors or []),
+                _input_contract_value(input_payload, "milestone_id"),
+                _input_contract_value(input_payload, "task_slice_id"),
             ),
         ).fetchone()
     if row is None:
@@ -206,16 +211,28 @@ def record_handoff(
     database_url: str | None = None,
 ) -> dict[str, Any]:
     row_id = new_id("handoff")
+    title, summary = _handoff_display(contract, handoff_type=handoff_type)
     with connect(database_url) as conn, conn.transaction():
         row = conn.execute(
             """
             insert into engineering_handoffs(
-              id, feature_id, from_task_id, to_task_id, handoff_type, contract, status
+              id, feature_id, from_task_id, to_task_id, handoff_type, contract, status,
+              title, summary
             )
-            values (%s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             returning *
             """,
-            (row_id, feature_id, from_task_id, to_task_id, handoff_type, jsonb(contract), status),
+            (
+                row_id,
+                feature_id,
+                from_task_id,
+                to_task_id,
+                handoff_type,
+                jsonb(contract),
+                status,
+                title,
+                summary,
+            ),
         ).fetchone()
     if row is None:
         raise RuntimeError("handoff insert did not return a row")
@@ -293,6 +310,14 @@ def finish_worker_run(
         if metadata_patch:
             metadata.update(metadata_patch)
         metadata["model_usage"] = model_usage["calls"]
+        verification_seconds = _commands_duration_seconds(commands_run or [])
+        model_seconds = model_usage["duration_seconds"]
+        _persist_artifact_links(
+            conn,
+            worker_run_id=worker_run_id,
+            commands_run=commands_run or [],
+            artifact_ids=artifact_ids or [],
+        )
         row = conn.execute(
             """
             update engineering_worker_runs
@@ -304,6 +329,19 @@ def finish_worker_run(
                 ),
                 leased_seconds = extract(epoch from (started_at - leased_at)),
                 running_seconds = extract(epoch from (now() - started_at)),
+                model_seconds = %s,
+                verification_seconds = %s,
+                blocked_seconds = case
+                  when %s = 'blocked' then greatest(
+                    0,
+                    extract(epoch from (now() - started_at)) - %s - %s
+                  )
+                  else 0
+                end,
+                model_provider = %s,
+                model = %s,
+                reasoning_level = %s,
+                model_profile = %s,
                 input_tokens = %s,
                 output_tokens = %s,
                 reasoning_tokens = %s,
@@ -336,6 +374,15 @@ def finish_worker_run(
             (
                 status,
                 blocker_code,
+                model_seconds,
+                verification_seconds,
+                status,
+                model_seconds,
+                verification_seconds,
+                model_usage["provider"],
+                model_usage["model"],
+                model_usage["reasoning_level"],
+                model_usage["profile"],
                 model_usage["input_tokens"],
                 model_usage["output_tokens"],
                 model_usage["reasoning_tokens"],
@@ -464,6 +511,51 @@ def list_qa_signoffs(
     return [dict(row) for row in rows]
 
 
+def _input_contract_value(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None and isinstance(payload.get("inputs"), dict):
+        value = payload["inputs"].get(key)
+    return str(value) if value else None
+
+
+def _handoff_display(contract: dict[str, Any], *, handoff_type: str) -> tuple[str, str | None]:
+    title = (
+        contract.get("title")
+        or contract.get("label")
+        or contract.get("task_slice_id")
+        or _nested_value(contract, "inputs", "task_slice_id")
+        or handoff_type.replace("_", " ")
+    )
+    summary = (
+        contract.get("summary")
+        or contract.get("objective")
+        or _nested_value(contract, "inputs", "objective")
+        or _nested_value(contract, "handoff_envelope", "summary")
+    )
+    return _short_label(str(title)), _short_summary(summary)
+
+
+def _nested_value(payload: dict[str, Any], *keys: str) -> Any:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _short_label(value: str) -> str:
+    rendered = " ".join(value.split())
+    return rendered[:80] if rendered else "handoff"
+
+
+def _short_summary(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    rendered = " ".join(value.split())
+    return rendered[:240] if rendered else None
+
+
 def summarize_worker_runs(
     feature_id: str, *, database_url: str | None = None
 ) -> dict[str, Any]:
@@ -526,13 +618,14 @@ def _worker_model_usage(conn: Any, feature_id: str, task_id: str | None) -> dict
             """,
             (task_id,),
         ).fetchall()
+    calls = [_model_usage_call(row) for row in rows]
     metadata = [dict(row["metadata"] or {}) for row in rows]
     return {
         "ids": [int(row["id"]) for row in rows],
-        "calls": [_model_usage_call(row) for row in rows],
+        "calls": calls,
         "input_tokens": sum(int(row["input_tokens"]) for row in rows),
         "output_tokens": sum(int(row["output_tokens"]) for row in rows),
-        "cost_usd": sum(float(row["cost_usd"]) for row in rows),
+        "cost_usd": sum(float(call["cost_usd"]) for call in calls),
         "reasoning_tokens": sum(_metadata_reasoning_tokens(item) for item in metadata),
         "cached_input_tokens": sum(
             _metadata_cached_input_tokens(item) for item in metadata
@@ -540,6 +633,11 @@ def _worker_model_usage(conn: Any, feature_id: str, task_id: str | None) -> dict
         "cache_creation_tokens": sum(
             _metadata_int(item, "cache_creation_input_tokens") for item in metadata
         ),
+        "duration_seconds": sum(_metadata_float(item, "duration_seconds") for item in metadata),
+        "provider": _join_distinct(call.get("provider") for call in calls),
+        "model": _join_distinct(call.get("model") for call in calls),
+        "reasoning_level": _join_distinct(call.get("reasoning_level") for call in calls),
+        "profile": _join_distinct(call.get("profile_name") for call in calls),
     }
 
 
@@ -553,6 +651,7 @@ def _model_usage_call(row: dict[str, Any]) -> dict[str, Any]:
         "reasoning_level": metadata.get("reasoning_level"),
         "input_tokens": int(row["input_tokens"]),
         "output_tokens": int(row["output_tokens"]),
+        "cost_usd": _model_usage_cost(row),
         "cached_input_tokens": _metadata_cached_input_tokens(metadata),
         "cache_creation_tokens": _metadata_int(metadata, "cache_creation_input_tokens"),
         "reasoning_tokens": _metadata_reasoning_tokens(metadata),
@@ -577,6 +676,95 @@ def _metadata_reasoning_tokens(metadata: dict[str, Any]) -> int:
     return _metadata_int(metadata, "reasoning_tokens") + _metadata_int(
         metadata, "reasoning_output_tokens"
     )
+
+
+def _model_usage_cost(row: dict[str, Any]) -> float:
+    persisted = float(row["cost_usd"] or 0)
+    if persisted:
+        return persisted
+    metadata = dict(row["metadata"] or {})
+    if metadata.get("provider") != "codex":
+        return 0.0
+    input_tokens = int(row["input_tokens"] or 0)
+    cached_input_tokens = _metadata_cached_input_tokens(metadata)
+    uncached_input_tokens = max(0, input_tokens - cached_input_tokens)
+    output_tokens = int(row["output_tokens"] or 0)
+    reasoning_tokens = _metadata_reasoning_tokens(metadata)
+    return (
+        uncached_input_tokens * (5.0 / 1_000_000)
+        + cached_input_tokens * (0.50 / 1_000_000)
+        + output_tokens * (30.0 / 1_000_000)
+        + reasoning_tokens * (30.0 / 1_000_000)
+    )
+
+
+def _commands_duration_seconds(commands: list[dict[str, Any]]) -> float:
+    total = 0.0
+    for command in commands:
+        value = command.get("duration_s", command.get("duration_seconds"))
+        if isinstance(value, int | float):
+            total += float(value)
+    return total
+
+
+def _persist_artifact_links(
+    conn: Any,
+    *,
+    worker_run_id: int,
+    commands_run: list[dict[str, Any]],
+    artifact_ids: list[str],
+) -> None:
+    linked: set[str] = set()
+    for command in commands_run:
+        raw_artifacts = command.get("artifact_ids")
+        if not isinstance(raw_artifacts, list):
+            continue
+        for artifact_id in raw_artifacts:
+            if not artifact_id:
+                continue
+            linked.add(str(artifact_id))
+            metadata = {
+                "source_worker_run_id": worker_run_id,
+                "source_command": _render_command(command.get("cmd") or command.get("command")),
+                "source_command_exit_code": command.get("exit_code"),
+                "source_command_duration_s": command.get("duration_s")
+                or command.get("duration_seconds"),
+            }
+            _patch_artifact_metadata(conn, str(artifact_id), metadata)
+    for artifact_id in artifact_ids:
+        if artifact_id and artifact_id not in linked:
+            _patch_artifact_metadata(
+                conn,
+                str(artifact_id),
+                {"source_worker_run_id": worker_run_id},
+            )
+
+
+def _patch_artifact_metadata(conn: Any, artifact_id: str, metadata: dict[str, Any]) -> None:
+    clean_metadata = {key: value for key, value in metadata.items() if value is not None}
+    if not clean_metadata:
+        return
+    conn.execute(
+        """
+        update artifacts
+        set metadata = metadata || %s
+        where id = %s
+        """,
+        (jsonb(clean_metadata), artifact_id),
+    )
+
+
+def _render_command(command: Any) -> str | None:
+    if isinstance(command, list):
+        return " ".join(str(part) for part in command)
+    if isinstance(command, str):
+        return command
+    return None
+
+
+def _join_distinct(values: Any) -> str | None:
+    items = sorted({str(value) for value in values if value})
+    return ",".join(items) if items else None
 
 
 def _worker_token_savior_usage(conn: Any, feature_id: str, task_id: str | None) -> dict[str, Any]:
@@ -663,6 +851,13 @@ def _metadata_int(metadata: dict[str, Any], key: str) -> int:
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return 0
+
+
+def _metadata_float(metadata: dict[str, Any], key: str) -> float:
+    value = metadata.get(key)
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0
 
 
 def list_handoffs(feature_id: str, *, database_url: str | None = None) -> list[dict[str, Any]]:

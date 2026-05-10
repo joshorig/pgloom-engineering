@@ -1,0 +1,42 @@
+/* extras-5.css — project registry view */
+
+.cc-reg-list { padding: 8px 8px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.cc-reg-item {
+  text-align: left; background: var(--inset); border: 1px solid var(--line);
+  border-radius: 4px; padding: 10px 12px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px;
+  font: inherit; color: inherit;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.cc-reg-item:hover { border-color: var(--line-2); }
+.cc-reg-item.is-active { border-color: var(--accent-line); background: var(--accent-soft); }
+.cc-reg-item-hd { display: flex; justify-content: space-between; align-items: center; }
+.cc-reg-key { font-size: 12px; color: var(--t1); letter-spacing: 0.04em; text-transform: uppercase; }
+.cc-reg-status { font-size: 10px; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.06em; text-transform: uppercase; }
+.cc-reg-status.is-healthy  { color: var(--st-pass);  background: var(--st-pass-soft); }
+.cc-reg-status.is-degraded { color: var(--st-block); background: var(--st-block-soft); }
+.cc-reg-status.is-idle     { color: var(--t3);       background: var(--panel-3); }
+.cc-reg-name { font-size: 12.5px; color: var(--t1); }
+.cc-reg-meta { display: flex; gap: 6px; font-size: 11px; align-items: baseline; }
+
+.cc-reg-keyvals { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cc-reg-kv { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cc-reg-kv .cc-kicker { font-size: 9.5px; color: var(--t3); letter-spacing: 0.08em; }
+.cc-reg-cmd {
+  font-size: 11.5px; color: var(--t1);
+  background: var(--inset); padding: 4px 8px; border-radius: 3px;
+  border: 1px dashed var(--line-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.cc-reg-gates { font-size: 11.5px; }
+.cc-reg-gates td, .cc-reg-gates th { padding: 6px 10px; }
+.cc-reg-gates tr.is-advisory { opacity: 0.66; }
+.cc-reg-gates td.cc-reg-cmd { background: transparent; border: 0; padding-left: 10px; }
+
+.cc-reg-paths { list-style: none; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; }
+.cc-reg-paths li { padding: 4px 8px; background: var(--inset); border-radius: 3px; border: 1px dashed var(--line); }
+
+.cc-reg-rules { list-style: none; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; }
+.cc-reg-rules li { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: baseline; color: var(--t2); }
+.cc-reg-rule-num { color: var(--t3); font-size: 10.5px; }

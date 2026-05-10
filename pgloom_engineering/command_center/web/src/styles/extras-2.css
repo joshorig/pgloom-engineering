@@ -1,0 +1,124 @@
+/* extras-2.css — styles for replan dialog + live firehose */
+
+/* ───── replan dialog ───── */
+.cc-replan-dialog {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(960px, calc(100% - 64px));
+  max-height: calc(100% - 48px);
+  background: var(--panel);
+  border: 1px solid var(--line-3);
+  border-radius: 6px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px var(--line-2);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.cc-replan-hd {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 16px 20px 12px; border-bottom: 1px solid var(--line);
+}
+.cc-replan-title { font-size: 18px; font-weight: 600; color: var(--t1); margin-top: 4px; letter-spacing: -0.01em; }
+.cc-replan-title .cc-accent-ink { color: var(--accent); }
+.cc-replan-x { width: 28px; height: 28px; padding: 0; }
+.cc-replan-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 14px; overflow: auto; min-height: 0; }
+.cc-replan-desc { font-size: 13px; line-height: 1.55; color: var(--t2); margin: 0; max-width: 78ch; }
+.cc-replan-desc b { color: var(--t1); font-weight: 500; }
+
+.cc-replan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cc-replan-col {
+  background: var(--inset); border: 1px solid var(--line);
+  border-radius: 4px; padding: 10px 12px;
+}
+.cc-replan-col-hd {
+  display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--t3); padding-bottom: 8px; border-bottom: 1px dashed var(--line);
+}
+.cc-replan-list { list-style: none; padding: 8px 0 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.cc-replan-list li {
+  display: grid; grid-template-columns: auto 92px 1fr auto;
+  align-items: center; gap: 8px; font-size: 12px;
+  padding: 4px 0;
+}
+.cc-replan-list--frozen li { opacity: 0.92; }
+.cc-replan-list--super  li { opacity: 0.7; }
+.cc-replan-list--super  li .cc-replan-old {
+  color: var(--st-super); font-size: 10.5px;
+}
+.cc-replan-pin { font-size: 10.5px; color: var(--t3); }
+
+.cc-replan-reason { display: flex; flex-direction: column; gap: 6px; }
+.cc-replan-reason textarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--inset); border: 1px solid var(--line-2);
+  border-radius: 4px; color: var(--t1);
+  font-size: 12px; padding: 8px 10px; resize: vertical; min-height: 44px;
+}
+.cc-replan-reason textarea:focus { outline: none; border-color: var(--accent-line); }
+
+.cc-replan-rules { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.cc-replan-rule { display: flex; gap: 8px; align-items: center; color: var(--t2); }
+.cc-replan-rule-ok   { color: var(--st-pass);  font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: var(--st-pass-soft); }
+.cc-replan-rule-warn { color: var(--st-block); font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: var(--st-block-soft); }
+
+.cc-replan-ft {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px; border-top: 1px solid var(--line); background: var(--panel-2);
+  border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+  font-size: 11.5px;
+}
+
+/* ───── live firehose ───── */
+.cc-fh-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-mono); font-size: 11px;
+  color: var(--st-pass); padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--st-pass-soft); border: 1px solid var(--st-pass-soft);
+}
+.cc-fh-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--st-pass); }
+
+.cc-fh-head {
+  display: grid;
+  grid-template-columns: 10px 86px 168px 110px 90px 1fr 44px;
+  gap: 10px; align-items: center;
+  padding: 6px 14px 6px 14px;
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--t3);
+  border-bottom: 1px solid var(--line);
+  background: var(--inset);
+}
+.cc-fh-list { flex: 1; overflow: auto; padding: 4px 8px 12px; }
+.cc-fh-row {
+  display: grid;
+  grid-template-columns: 10px 86px 168px 110px 90px 1fr 44px;
+  gap: 10px; align-items: center;
+  padding: 4px 6px; font-size: 11.5px;
+  border-bottom: 1px dashed var(--line);
+}
+.cc-fh-row-id { color: var(--t1); }
+.cc-fh-row:last-child { border-bottom: 0; }
+.cc-fh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); justify-self: center; }
+.cc-fh-row.kind-worker-run-update     .cc-fh-dot { background: var(--st-run); }
+.cc-fh-row.kind-task-update           .cc-fh-dot { background: var(--st-run); }
+.cc-fh-row.kind-qa-signoff            .cc-fh-dot { background: var(--st-pass); }
+.cc-fh-row.kind-intervention-added    .cc-fh-dot { background: var(--accent); }
+.cc-fh-row.kind-feature-update        .cc-fh-dot { background: var(--accent); }
+.cc-fh-row.kind-recovery-update       .cc-fh-dot { background: var(--st-fail); }
+.cc-fh-row.kind-handoff-update        .cc-fh-dot { background: var(--r-review); }
+.cc-fh-row.kind---hint                .cc-fh-dot { background: var(--st-block); }
+.cc-fh-kind { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--panel-3); }
+.cc-fh-kind.kind-worker_run    { color: var(--st-run);  background: var(--st-run-soft); }
+.cc-fh-kind.kind-qa            { color: var(--st-pass); background: var(--st-pass-soft); }
+.cc-fh-kind.kind-task          { color: var(--st-run);  background: var(--st-run-soft); }
+.cc-fh-kind.kind-intervention  { color: var(--accent);  background: var(--accent-soft); }
+.cc-fh-kind.kind-feature       { color: var(--accent);  background: var(--accent-soft); }
+.cc-fh-kind.kind-recovery      { color: var(--st-fail); background: var(--st-fail-soft); }
+.cc-fh-kind.kind-handoff       { color: var(--r-review); background: rgba(255,255,255,0.05); }
+.cc-fh-fields { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.cc-fh-bytes { text-align: right; font-size: 10.5px; }
+
+.cc-fh-json {
+  margin: 0; padding: 12px; font-size: 11px; line-height: 1.5;
+  background: var(--inset); border-radius: 0 0 4px 4px;
+  color: var(--t1); white-space: pre; overflow: auto;
+}
+.cc-fh-rules { list-style: none; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; }
+.cc-fh-rules li { display: flex; align-items: center; gap: 8px; color: var(--t2); }
+.cc-fh-rules li span { font-size: 10.5px; padding: 1px 6px; border-radius: 3px; }

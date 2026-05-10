@@ -189,7 +189,7 @@ def _register_stream(
     *,
     stream: str,
     result: SubprocessResult,
-    database_url: str,
+    database_url: str | None,
     workflow_id: str,
     task_id: str | None,
 ) -> str | None:

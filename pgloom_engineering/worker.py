@@ -5,21 +5,20 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from pgloom.db.postgres import connect
+from pgloom.events import append_event
 from pgloom.harness.registry import HandlerRegistry
 from pgloom.harness.result import HandlerResult
 from pgloom.resources import acquire_lock
+from pgloom.slots import get_slot_concurrency
 from pgloom.states import TaskState
 from pgloom.tasks import (
     _reserve_dispatch_constraints,
-    append_event,
     claim_next,
-    get_slot_concurrency,
-    register_worker,
     retry_or_fail_task,
-    set_busy,
     transition_task,
-    utcnow,
 )
+from pgloom.time import utcnow
+from pgloom.workers import register_worker, set_busy
 
 from pgloom_engineering.contract_store import (
     feature_is_paused,
