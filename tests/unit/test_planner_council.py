@@ -300,7 +300,7 @@ def test_critic_rejects_feature_qa_scrutiny_bare_project_check() -> None:
     )
     scrutiny.verification_commands = [
         ["./gradlew", "check"],
-        ["./qa/smoke.sh"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck"],
         ["./gradlew", ":core:test", "--tests", "*Range*"],
     ]
 
@@ -322,7 +322,7 @@ def test_critic_rejects_feature_qa_scrutiny_bare_project_test() -> None:
     )
     scrutiny.verification_commands = [
         ["./gradlew", "--no-daemon", "--console=plain", "test"],
-        ["./qa/smoke.sh"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck"],
         ["./gradlew", ":core:test", "--tests", "*Range*"],
     ]
 
@@ -337,7 +337,39 @@ def test_critic_rejects_feature_qa_scrutiny_bare_project_test() -> None:
     )
 
 
-def test_critic_accepts_feature_qa_scrutiny_smoke_and_feature_tests() -> None:
+def test_critic_accepts_feature_qa_scrutiny_direct_benchmark_smoke_and_feature_tests() -> None:
+    plan = _plan_contract()
+    scrutiny = next(
+        item for item in plan.task_slices if item.task_type == "engineering.qa.verify.scrutiny"
+    )
+    scrutiny.verification_commands = [
+        ["./gradlew", ":store:test", "--tests", "*Range*"],
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            ":benchmarks:jmhSmokeCheck",
+            "-Pjmh.smoke=true",
+        ],
+    ]
+
+    results = deterministic_check_results(plan, [])
+
+    qa_verify = next(
+        result for result in results if result.check_id == "check_qa_verify_present"
+    )
+    assert "qa_verify_missing_feature_validation" not in {
+        finding.code for finding in qa_verify.findings
+    }
+    assert "qa_verify_uses_periodic_regression_gate" not in {
+        finding.code for finding in qa_verify.findings
+    }
+    assert "qa_verify_uses_broad_project_check" not in {
+        finding.code for finding in qa_verify.findings
+    }
+
+
+def test_critic_rejects_feature_qa_scrutiny_broad_smoke_script() -> None:
     plan = _plan_contract()
     scrutiny = next(
         item for item in plan.task_slices if item.task_type == "engineering.qa.verify.scrutiny"
@@ -352,12 +384,10 @@ def test_critic_accepts_feature_qa_scrutiny_smoke_and_feature_tests() -> None:
     qa_verify = next(
         result for result in results if result.check_id == "check_qa_verify_present"
     )
-    assert "qa_verify_missing_feature_validation" not in {
-        finding.code for finding in qa_verify.findings
-    }
-    assert "qa_verify_uses_periodic_regression_gate" not in {
-        finding.code for finding in qa_verify.findings
-    }
+    assert any(
+        finding.code == "qa_verify_uses_broad_project_check"
+        for finding in qa_verify.findings
+    )
 
 
 def test_critic_matches_assertion_ids_with_descriptions() -> None:
@@ -984,7 +1014,7 @@ def _plan_contract(
                 allowed_paths=["store/", "docs/"],
                 forbidden_paths=["benchmarks/"],
                 expected_outputs=["DesignContract"],
-                verification_commands=[["./qa/smoke.sh"]],
+                verification_commands=[["./gradlew", ":store:compileJava"]],
             ),
             TaskSliceContract(
                 slice_id="qa-author",
@@ -995,7 +1025,9 @@ def _plan_contract(
                 forbidden_paths=["store/", "core/", "benchmarks/"],
                 depends_on=["design"],
                 expected_outputs=["QAAuthorContract"],
-                verification_commands=[["./qa/smoke.sh"]],
+                verification_commands=[
+                    ["./gradlew", ":store:test", "--tests", "com.example.SnapshotRestoreTest"]
+                ],
             ),
             TaskSliceContract(
                 slice_id="impl-store",
@@ -1006,7 +1038,9 @@ def _plan_contract(
                 forbidden_paths=["tests/", "qa/fixtures/", "benchmarks/"],
                 depends_on=["qa-author"],
                 expected_outputs=["TaskResultContract"],
-                verification_commands=[["./qa/smoke.sh"]],
+                verification_commands=[
+                    ["./gradlew", ":store:test", "--tests", "com.example.SnapshotRestoreTest"]
+                ],
             ),
             TaskSliceContract(
                 slice_id="review",
@@ -1017,7 +1051,9 @@ def _plan_contract(
                 forbidden_paths=["tests/", "qa/fixtures/", "benchmarks/"],
                 depends_on=["impl-store"],
                 expected_outputs=["ReviewVerdictContract"],
-                verification_commands=[["./qa/smoke.sh"]],
+                verification_commands=[
+                    ["./gradlew", ":store:test", "--tests", "com.example.SnapshotRestoreTest"]
+                ],
             ),
             TaskSliceContract(
                 slice_id="qa-scrutiny",
@@ -1030,7 +1066,10 @@ def _plan_contract(
                 forbidden_paths=["store/", "core/", "benchmarks/", "docs/"],
                 depends_on=["review"],
                 expected_outputs=["QAResultContract"],
-                verification_commands=[["./gradlew", ":store:test"], ["./qa/smoke.sh"]],
+                verification_commands=[
+                    ["./gradlew", ":store:test", "--tests", "com.example.SnapshotRestoreTest"],
+                    ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+                ],
             ),
             TaskSliceContract(
                 slice_id="qa-usertest",

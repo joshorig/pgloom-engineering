@@ -82,10 +82,13 @@ Rules:
   make implementation depend on a design/QA-author-only milestone that requires
   validator signoff.
 - Prefer module-local commands for QA author and implementer slices. Feature
-  QA scrutiny should use lint/build, feature-specific tests, and benchmark
-  smoke. Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
-  `:benchmarks:jmh` sweeps as per-feature blockers; those are project-scheduled
-  periodic or broad project gates.
+  QA scrutiny should use lint/build, feature-specific tests, and direct
+  benchmark smoke commands such as `:benchmarks:jmhSmokeCheck` with the
+  project-required smoke properties. Do not schedule `qa/smoke.sh`,
+  `qa/regression.sh`, bare `./gradlew test/check`, or full `:benchmarks:jmh`
+  sweeps as per-feature blockers; those are project-scheduled periodic or
+  broad project gates unless project metadata explicitly supplies a
+  feature-scoped replacement command.
 - Gradle `--tests` filters are case-sensitive. Keep concrete class or
   class.method identifiers that the QA-author slice is instructed to create.
   Do not preserve variant wildcards such as `*Mmap*RangeScan*` unless the final

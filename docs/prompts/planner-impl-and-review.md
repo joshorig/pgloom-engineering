@@ -263,12 +263,12 @@ The check IDs are the contract — they must remain stable across implementation
 | 1 | `check_design_contract_completeness` | Design contract completeness | blocking | For lifecycle / persistence / concurrency work (detected by goal text matching the same lifecycle terms as `pgloom_engineering.contracts._validate_lifecycle_acceptance`), `design_contract.persistence_protocol` and `design_contract.concurrency_protocol` must be non‑empty. |
 | 2 | `check_slice_path_coverage` | Slice path coverage | blocking | For every entry in `affected_surfaces`, at least one task slice's `allowed_paths` must include a path under that surface, and at least one slice must include the tests area for that surface. |
 | 3 | `check_forbidden_path_overlap` | Forbidden‑path overlap | blocking | No slice's `forbidden_paths` may overlap any sibling slice's `allowed_paths` (drift risk: two slices claiming the same surface). Use prefix matching with `/` boundary. |
-| 4 | `check_verification_commands` | Verification command coverage | blocking | Every slice with `role in {"implementer", "qa"}` must list at least one `verification_commands` entry that is either rooted at the project's qa scripts (e.g. `["./qa/smoke.sh"]`) or invokes a Gradle test task (e.g. `["./gradlew", "test"]` or `[":benchmarks:jmhSmokeCheck"]`). |
+| 4 | `check_verification_commands` | Verification command coverage | blocking | Every slice with `role in {"implementer", "qa"}` must list at least one `verification_commands` entry that is feature-scoped: module-local compile/lint/test commands, exact `--tests` filters, or direct benchmark-smoke commands such as `:benchmarks:jmhSmokeCheck` with smoke properties. Bare project checks and broad QA scripts are not sufficient per-feature evidence. |
 | 5 | `check_lifecycle_coverage` | Acceptance matrix lifecycle coverage | blocking | If `validator_errors` contains `planner_contract_incomplete`, this check fails; emit one finding per missing category (`stale_or_invalid`, `invariant`, `failure_path`) with `slice_id=null`. |
 | 6 | `check_topology_consistency` | Implementation topology consistency | blocking | `implementation_topology == SINGLE` is incompatible with `> 1` slice having `role == "implementer"`. |
 | 7a | `check_reviewer_present` | Reviewer slice presence | blocking | At least one slice with `role == "reviewer"` must exist. (Multi‑agent review enforcement happens later, at Reviewer dispatch.) |
 | 7b | `check_qa_author_present` | QA author slice present (test‑first) | blocking | At least one slice with `task_type == "engineering.qa.author"` must exist, scheduled **before** every implementer slice in the `depends_on` DAG. Its `allowed_paths` must be restricted to `tests/**` and/or `qa/fixtures/**` and must not overlap any implementer slice's `allowed_paths`. |
-| 7c | `check_qa_verify_present` | QA scrutiny + user-test sign-off slices present | blocking | At least one slice with `task_type == "engineering.qa.verify.scrutiny"` must exist, scheduled **after** every reviewer slice, and must include lint/build, feature-specific tests, and benchmark smoke commands. It must not schedule `qa/regression.sh` or full `:benchmarks:jmh` sweeps as per-feature blockers; those are periodic project gates. At least one slice with `task_type == "engineering.qa.verify.usertest"` must exist after scrutiny unless project metadata declares `usertest_harness.kind = "none"`. Scrutiny and user-test validators must use fresh context and both must approve milestone/final signoff. |
+| 7c | `check_qa_verify_present` | QA scrutiny + user-test sign-off slices present | blocking | At least one slice with `task_type == "engineering.qa.verify.scrutiny"` must exist, scheduled **after** every reviewer slice, and must include lint/build, feature-specific tests, and direct benchmark smoke commands. It must not schedule `qa/smoke.sh`, `qa/regression.sh`, bare `./gradlew test/check`, or full `:benchmarks:jmh` sweeps as per-feature blockers; those are broad/periodic project gates unless metadata supplies a feature-scoped replacement. At least one slice with `task_type == "engineering.qa.verify.usertest"` must exist after scrutiny unless project metadata declares `usertest_harness.kind = "none"`. Scrutiny and user-test validators must use fresh context and both must approve milestone/final signoff. |
 | 7d | `check_qa_paths_disjoint` | QA paths disjoint from source | blocking | No QA slice (`qa.author`, `qa.verify.scrutiny`, or `qa.verify.usertest`) may have an `allowed_paths` entry that overlaps any implementer slice's `allowed_paths`. Conversely, no implementer slice may include a `tests/**` or `qa/fixtures/**` entry in its `allowed_paths` (Implementer is free to read tests but not to write them). |
 | 8 | `check_orphan_slices` | Orphan slice detection | advisory | A slice that no later slice depends on, and whose role is neither `reviewer` / `qa` / `historian` (terminal roles), is likely orphan work. Emit advisory findings; do not block. |
 | 9 | `check_finalization_policy` | Finalization policy locked to human merge | blocking | `finalization_policy == "open_final_feature_pr_for_human_merge"`. (Already enforced by `validate_plan_contract`; critic echoes it for audit symmetry.) |
@@ -338,7 +338,7 @@ The R‑002 entry lives at `/Volumes/devssd/repos/ull/lvc-standard/repo-memory/R
 Additional context the implementor brief includes for the planner's prompt (the `_handle_council` path passes these as the `ProjectContext` strings):
 
 - **`publishChecked` semantics**, from `/Volumes/devssd/repos/ull/lvc-standard/repo-memory/DECISIONS.md` 2026‑04‑xx entry: `GuaranteedPublisher.publishChecked` stages store + journal writes atomically; on journal failure the store write is aborted. Restore must reconcile against the journal cursor so partial writes do not become visible.
-- **QA scripts**: `/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh` runs `./gradlew --no-daemon test` + `:benchmarks:jmhSmokeCheck` (the alloc gate; do not skip the `rm -rf benchmarks/build` step or `-Pjmh.smoke=true` becomes a no-op). `qa/regression.sh` is the full JMH sweep and is a project-scheduled periodic gate, not a per-feature QA scrutiny blocker.
+- **QA scripts**: `/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh` runs `./gradlew --no-daemon test` + `:benchmarks:jmhSmokeCheck`, so it is broader than the per-feature gate. Per-feature validation should use module-local compile/test commands plus direct `:benchmarks:jmhSmokeCheck` with `-Pjmh.smoke=true`; `qa/regression.sh` remains the full JMH sweep and is a project-scheduled periodic gate, not a per-feature QA scrutiny blocker.
 - **Module layout** (from `ls /Volumes/devssd/repos/ull/lvc-standard`): `core/`, `store/`, `signal/`, `guaranteed-aeron/`, `guaranteed-inproc/`, `sbe-adapters/`, `benchmarks/`, `conformance-tests/`, `qa/`, `repo-memory/`, top‑level `build.gradle` + `gradle.properties`.
 
 The `FeatureGoalContract` the bring‑up test passes to the council:
@@ -356,13 +356,13 @@ The `FeatureGoalContract` the bring‑up test passes to the council:
   ],
   "constraints": [
     "Zero allocation on the publish hot path stays invariant — snapshotting may not allocate on publish.",
-    "qa/smoke.sh must still pass the :benchmarks:jmhSmokeCheck alloc gate after the change.",
+    "Direct :benchmarks:jmhSmokeCheck with smoke properties must still pass after the change.",
     "Restore latency under 10ms for a 1M-key snapshot."
   ],
   "acceptance_criteria": [
     "Round-trip integration test: write keys → snapshot → kill JVM → restore → read keys → all keys present and identical.",
     "Crash-mid-journal test: write some keys, simulate journal-write failure, snapshot, restore — only journal-acknowledged writes are visible after restore.",
-    "Alloc gate (qa/smoke.sh) passes with snapshot enabled.",
+    "Alloc gate (:benchmarks:jmhSmokeCheck with smoke properties) passes with snapshot enabled.",
     "JMH benchmark restore-latency-1m-keys < 10ms p99.",
     "CRC mismatch on a page during restore aborts restore and reports a structured invariant failure."
   ],
@@ -452,7 +452,7 @@ Plus a tiny helper `tests/fixtures/fake_cli_provider.py` that subclasses or wrap
      - ≥ 1 × `implementer` whose `allowed_paths` includes paths under both SINGLE and DOUBLE store implementations (one slice or two — either is acceptable as long as both surfaces are covered)
      - ≥ 1 × `implementer` whose `objective` mentions journal cursor reconciliation
      - ≥ 1 × `qa.author` (`task_type == "engineering.qa.author"`) scheduled **before** every implementer slice; `allowed_paths` ⊆ `{"tests/**", "qa/fixtures/**"}`; `objective` references writing failing tests for the snapshot/restore acceptance criteria; implementer slices do not claim those write paths
-     - ≥ 1 × `qa.verify.scrutiny` (`task_type == "engineering.qa.verify.scrutiny"`) scheduled **after** every reviewer slice; `verification_commands` includes lint/type/smoke/full‑suite coverage
+     - ≥ 1 × `qa.verify.scrutiny` (`task_type == "engineering.qa.verify.scrutiny"`) scheduled **after** every reviewer slice; `verification_commands` includes lint/build, feature-specific tests, and direct benchmark-smoke coverage
      - ≥ 1 × `qa.verify.usertest` (`task_type == "engineering.qa.verify.usertest"`) scheduled after scrutiny unless `usertest_harness.kind = "none"`; validates live app/service or CLI replay evidence
      - ≥ 1 × `reviewer`
    - `acceptance_test_matrix` covers all three lifecycle categories per § 6.2.

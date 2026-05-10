@@ -14,6 +14,8 @@ from tests.unit.test_planner_council import _plan_contract
 
 def test_substance_flags_broad_only_implementer_verification() -> None:
     plan = _plan_contract()
+    impl = next(item for item in plan.task_slices if item.slice_id == "impl-store")
+    impl.verification_commands = [["./qa/smoke.sh"]]
 
     report = evaluate_planner_substance(
         plan,
@@ -118,6 +120,8 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
 
 def test_repair_brief_includes_substance_findings() -> None:
     plan = _plan_contract()
+    impl = next(item for item in plan.task_slices if item.slice_id == "impl-store")
+    impl.verification_commands = [["./qa/smoke.sh"]]
     substance = evaluate_planner_substance(
         plan,
         project_context=ProjectContext(project_root=Path(".")),

@@ -8,7 +8,11 @@ from pgloom_engineering.contracts import (
     TaskSliceContract,
     validate_plan_contract,
 )
-from pgloom_engineering.planner.critic import compute_verdict, deterministic_check_results
+from pgloom_engineering.planner.critic import (
+    CriticCheckResult,
+    compute_verdict,
+    deterministic_check_results,
+)
 
 
 def test_r003_range_query_fixture_accepts_compact_plan() -> None:
@@ -338,7 +342,9 @@ def _impl_slice(
         allowed_paths=["store/", "sbe-adapters/", "conformance-tests/"],
         forbidden_paths=["tests/", "qa/fixtures/", ".git/"],
         depends_on=depends_on,
-        verification_commands=[["./qa/smoke.sh"]],
+        verification_commands=[
+            ["./gradlew", ":store:test", "--tests", "com.example.FeatureScopedTest"]
+        ],
     )
 
 
@@ -368,7 +374,9 @@ def _qa_author_slice(depends_on: list[str]) -> TaskSliceContract:
         forbidden_paths=["store/", "sbe-adapters/", "conformance-tests/", "docs/", ".git/"],
         depends_on=depends_on,
         expected_outputs=["QAAuthorContract"],
-        verification_commands=[["./qa/smoke.sh"]],
+        verification_commands=[
+            ["./gradlew", ":store:test", "--tests", "com.example.FeatureScopedTest"]
+        ],
     )
 
 
@@ -389,7 +397,7 @@ def _qa_verify_slice(
         expected_outputs=["QAResultContract"],
         verification_commands=[
             ["./gradlew", ":store:test", "--tests", "*Range*"],
-            ["./qa/smoke.sh"],
+            ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
         ],
     )
 
@@ -441,11 +449,12 @@ def _slice(
         forbidden_paths=forbidden_paths or [".git/"],
         depends_on=depends_on or [],
         expected_outputs=expected_outputs or [f"{role} contract"],
-        verification_commands=verification_commands or [["./qa/smoke.sh"]],
+        verification_commands=verification_commands
+        or [["./gradlew", ":store:test", "--tests", "com.example.FeatureScopedTest"]],
     )
 
 
-def _check(checks: object, check_id: str) -> object:
+def _check(checks: list[CriticCheckResult], check_id: str) -> CriticCheckResult:
     for check in checks:
         if check.check_id == check_id:
             return check

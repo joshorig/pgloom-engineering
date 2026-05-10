@@ -34,7 +34,7 @@ Required JSON shape:
       "forbidden_paths": ["..."],
       "depends_on": [],
       "expected_outputs": ["DesignContract"],
-      "verification_commands": [["./qa/smoke.sh"]],
+      "verification_commands": [["./gradlew", ":core:compileJava"]],
       "acceptance_assertion_ids": ["assertion-1"],
       "grading_criteria": ["..."],
       "validation_strategy": {"scrutiny": ["..."], "usertest": ["..."]},
@@ -118,10 +118,12 @@ Rules:
   before implementation and review exist.
 - Prefer module-local verification commands for QA author and implementer slices.
   Feature QA scrutiny should run lint/build commands, feature-specific tests, and
-  benchmark smoke gates such as `qa/smoke.sh` or `:benchmarks:jmhSmokeCheck`.
-  Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
-  `:benchmarks:jmh` sweeps as a per-feature validation blocker; those are
-  periodic or broad project gates.
+  direct benchmark smoke gates such as `:benchmarks:jmhSmokeCheck` with the
+  project-required smoke properties. Do not schedule `qa/smoke.sh`,
+  `qa/regression.sh`, bare `./gradlew test/check`, or full `:benchmarks:jmh`
+  sweeps as per-feature validation blockers; those are periodic or broad
+  project gates unless project metadata explicitly supplies a feature-scoped
+  replacement command.
 - Gradle `--tests` filters are case-sensitive. Use concrete class or
   class.method identifiers that the QA-author slice is instructed to create.
   Do not use a variant wildcard such as `*Mmap*RangeScan*` unless the QA-author

@@ -1099,7 +1099,9 @@ def _qa_verify_findings(
             )
     for verify in scrutinies:
         commands = {_command_text(command) for command in verify.verification_commands}
-        has_smoke = any("qa/smoke.sh" in command for command in commands)
+        has_benchmark_smoke = any(
+            _is_feature_benchmark_smoke_command(command) for command in commands
+        )
         has_periodic_regression = any(
             "qa/regression.sh" in command
             or command.endswith(":benchmarks:jmh")
@@ -1138,21 +1140,22 @@ def _qa_verify_findings(
                     definition,
                     "qa_verify_uses_broad_project_check",
                     (
-                        "Feature QA scrutiny must not run bare ./gradlew test/check; "
-                        "use scoped compile/lint/build commands plus feature-specific "
-                        "tests and benchmark smoke."
+                        "Feature QA scrutiny must not run broad project smoke or bare "
+                        "./gradlew test/check; use scoped compile/lint/build commands "
+                        "plus feature-specific tests and direct benchmark smoke."
                     ),
                     verify.slice_id,
                 )
             )
-        if not has_smoke or not has_feature_specific:
+        if not has_benchmark_smoke or not has_feature_specific:
             findings.append(
                 _finding(
                     definition,
                     "qa_verify_missing_feature_validation",
                     (
-                        "QA scrutiny must include smoke/benchmark-smoke plus "
-                        "feature-specific lint/build/test commands."
+                        "QA scrutiny must include direct benchmark-smoke plus "
+                        "feature-specific lint/build/test commands; do not rely on "
+                        "broad project smoke scripts as the benchmark gate."
                     ),
                     verify.slice_id,
                 )
@@ -1220,6 +1223,8 @@ def _is_broad_usertest_gate(command: str) -> bool:
 
 
 def _is_bare_gradle_project_gate(command: str) -> bool:
+    if "qa/smoke.sh" in command:
+        return True
     parts = command.split()
     if not parts:
         return False
@@ -1231,6 +1236,16 @@ def _is_bare_gradle_project_gate(command: str) -> bool:
         if part not in {"--no-daemon", "--console=plain", "--console", "plain"}
     ]
     return meaningful in (["check"], ["test"])
+
+
+def _is_feature_benchmark_smoke_command(command: str) -> bool:
+    lowered = command.lower()
+    return (
+        ":benchmarks:jmhsmokecheck" in lowered
+        or "jmhsmokecheck" in lowered
+        or "benchmark-smoke" in lowered
+        or "benchmark smoke" in lowered
+    )
 
 
 def _qa_paths_disjoint_findings(
