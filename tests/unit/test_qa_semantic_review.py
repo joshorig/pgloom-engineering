@@ -720,6 +720,118 @@ def test_semantic_review_accepts_range_benchmark_with_descending_and_prefix() ->
     ] == []
 
 
+def test_semantic_review_blocks_benchmark_store_visitor_signature_mismatch() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/main/java/com/example/StoreVisitor.java": """
+            package com.example;
+            public interface StoreVisitor {
+                void visit(int slotId, DirectBuffer payload, int offset, int length);
+            }
+            """,
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private StoreVisitor visitor;
+
+                void setup() {
+                    visitor = this::recordPayload;
+                }
+
+                @Benchmark
+                public void ascendingRangeSmoke() {
+                    store.ascendingRange(0, 31, visitor);
+                }
+
+                private void recordPayload(int slotId, DirectBuffer payload) {
+                    checksum += slotId + payload.capacity();
+                }
+            }
+            """,
+        },
+        plan_text="Range benchmark smoke must prove StoreVisitor allocation behavior.",
+        task_text="Write JMH benchmark smoke for StoreVisitor range scans.",
+        project_metadata={},
+    )
+
+    mismatch = [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_benchmark_visitor_signature_mismatch"
+    ]
+    assert len(mismatch) == 1
+    assert mismatch[0].severity == "blocking"
+    assert mismatch[0].details["method_reference"] == "recordPayload"
+    assert mismatch[0].details["expected_signature"] == [
+        "int",
+        "DirectBuffer",
+        "int",
+        "int",
+    ]
+    assert mismatch[0].details["actual_signature"] == ["int", "DirectBuffer"]
+
+
+def test_semantic_review_accepts_matching_benchmark_store_visitor_signature() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/main/java/com/example/StoreVisitor.java": """
+            package com.example;
+            public interface StoreVisitor {
+                void visit(int slotId, DirectBuffer payload, int offset, int length);
+            }
+            """,
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private StoreVisitor visitor;
+                private byte[] prefix;
+
+                void setup() {
+                    visitor = this::recordPayload;
+                }
+
+                @Benchmark
+                public void ascendingRangeSmoke() {
+                    store.ascendingRange(0, 31, visitor);
+                }
+
+                @Benchmark
+                public void descendingRangeSmoke() {
+                    store.descendingRange(31, 0, visitor);
+                }
+
+                @Benchmark
+                public void prefixRangeSmoke() {
+                    store.ascendingRange(0, 31, prefix, visitor);
+                }
+
+                private void recordPayload(
+                        int slotId,
+                        DirectBuffer payload,
+                        int offset,
+                        int length) {
+                    checksum += slotId + payload.getByte(offset) + length;
+                }
+            }
+            """,
+        },
+        plan_text=(
+            "Range benchmark smoke must prove ascending, descending, prefix, and "
+            "StoreVisitor allocation behavior."
+        ),
+        task_text="Write JMH benchmark smoke for StoreVisitor range scans.",
+        project_metadata={},
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_benchmark_visitor_signature_mismatch"
+    ] == []
+
+
 def test_semantic_review_blocks_reflective_range_api_tests() -> None:
     findings = review_semantic_quality(
         files={
@@ -869,6 +981,35 @@ def test_semantic_review_accepts_range_prefix_behavior_coverage() -> None:
                     assertEquals(List.of(1, 2), visited);
                     store.ascendingRange(0, 7, PREFIX_NON_MATCH, 4, visitor);
                     assertEquals(List.of(), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans must support matching and non-matching prefix filters.",
+        task_text="Write conformance tests for range prefix behavior.",
+        project_metadata={},
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_behavior_missing"
+    ]
+
+
+def test_semantic_review_accepts_range_prefix_miss_wording() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                private static final byte[] PREFIX_MATCH = new byte[] {1};
+                private static final byte[] PREFIX_MISS = new byte[] {2};
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0, 7, PREFIX_MATCH, visitor);
+                    assertEntriesEqual("ascending prefix match", expected, actual);
+                    store.ascendingRange(0, 7, PREFIX_MISS, visitor);
+                    assertEntriesEqual("ascending prefix miss", List.of(), actual);
                 }
             }
             """

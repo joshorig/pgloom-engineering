@@ -51,6 +51,7 @@ def review_semantic_quality(
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
     findings.extend(_range_benchmark_behavior_findings(files, context, conventions))
+    findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
@@ -491,6 +492,53 @@ def _range_benchmark_behavior_findings(
     return findings
 
 
+def _benchmark_visitor_signature_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    benchmark_config = _mapping(conventions.get("range_benchmark"))
+    if benchmark_config.get("validate_store_visitor_signature") is False:
+        return []
+    normalized_context = context.lower()
+    if "storevisitor" not in normalized_context and "range" not in normalized_context:
+        return []
+    expected = _store_visitor_signature(files)
+    if not expected:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not _looks_like_jmh_benchmark(path, text):
+            continue
+        if "StoreVisitor" not in text or "::" not in text:
+            continue
+        method_params = _java_method_parameter_types(text)
+        for method_name, line_no in _store_visitor_method_references(text):
+            actual = method_params.get(method_name)
+            if actual is None or actual == expected:
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_benchmark_visitor_signature_mismatch",
+                    severity="blocking",
+                    message=(
+                        "Generated JMH benchmark StoreVisitor method references must "
+                        "match the current public StoreVisitor callback signature; "
+                        "mismatched arity or parameter types can compile against stale "
+                        "fixtures and fail downstream review."
+                    ),
+                    file=path,
+                    line=line_no,
+                    details={
+                        "method_reference": method_name,
+                        "expected_signature": expected,
+                        "actual_signature": actual,
+                    },
+                )
+            )
+    return findings
+
+
 def _range_test_reflective_api_findings(
     files: dict[str, str],
     context: str,
@@ -575,9 +623,12 @@ def _range_prefix_behavior_findings(
         for marker in [
             "prefix_non_match",
             "prefixnonmatch",
+            "prefix_miss",
+            "prefixmiss",
             "non-matching prefix",
             "nonmatching prefix",
             "non match prefix",
+            "prefix miss",
         ]
     )
     if has_range_call and has_matching_prefix and has_nonmatching_prefix:
@@ -682,6 +733,64 @@ def _has_spring_http_harness(text: str) -> bool:
 def _looks_like_jmh_benchmark(path: str, text: str) -> bool:
     lowered = path.lower()
     return "src/jmh/" in lowered or "benchmark" in lowered or "@Benchmark" in text
+
+
+def _store_visitor_signature(files: dict[str, str]) -> list[str]:
+    for path, text in files.items():
+        if not path.endswith("StoreVisitor.java") or "interface StoreVisitor" not in text:
+            continue
+        for match in re.finditer(
+            r"(?:public\s+)?(?:abstract\s+)?void\s+\w+\s*\(([^)]*)\)\s*;",
+            text,
+            re.MULTILINE,
+        ):
+            params = _java_parameter_types(match.group(1))
+            if params:
+                return params
+    return []
+
+
+def _store_visitor_method_references(text: str) -> list[tuple[str, int]]:
+    references: list[tuple[str, int]] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if "::" not in line:
+            continue
+        if "StoreVisitor" not in line and "=" not in line:
+            continue
+        for match in re.finditer(r"(?:(?:this|[A-Z]\w*)\s*::\s*)([A-Za-z_]\w*)", line):
+            references.append((match.group(1), line_no))
+    return references
+
+
+def _java_method_parameter_types(text: str) -> dict[str, list[str]]:
+    methods: dict[str, list[str]] = {}
+    pattern = re.compile(
+        r"(?:public|protected|private)?\s*"
+        r"(?:static\s+)?(?:final\s+)?"
+        r"[\w<>\[\].?,\s]+\s+"
+        r"([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(text):
+        methods[match.group(1)] = _java_parameter_types(match.group(2))
+    return methods
+
+
+def _java_parameter_types(params: str) -> list[str]:
+    params = params.strip()
+    if not params:
+        return []
+    types: list[str] = []
+    for raw_param in params.split(","):
+        param = re.sub(r"@\w+(?:\([^)]*\))?\s*", "", raw_param.strip())
+        param = re.sub(r"\bfinal\s+", "", param)
+        pieces = param.split()
+        if len(pieces) < 2:
+            continue
+        param_type = " ".join(pieces[:-1]).replace("...", "[]")
+        param_type = re.sub(r"<[^>]+>", "", param_type)
+        types.append(param_type.split(".")[-1])
+    return types
 
 
 def _has_cold_restore_rotation(text: str) -> bool:
