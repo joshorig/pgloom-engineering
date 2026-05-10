@@ -63,19 +63,21 @@ projects:
         quality_gates:
           - Preserve zero-allocation hot paths for store and publish behavior.
           - Prefer module-local Gradle tests over detached top-level tests.
-          - Use qa/smoke.sh for allocation-sensitive smoke validation.
+          - Use feature-scoped Gradle compile/test commands plus direct :benchmarks:jmhSmokeCheck with smoke properties for per-feature allocation-sensitive validation.
+          - Treat qa/smoke.sh as a broad project smoke gate, not a per-feature QA scrutiny blocker.
           - JMH benchmark methods must allocate no garbage after @Setup.
           - Cold restore JMH benchmarks must use SingleShotTime with enough preallocated fresh targets for warmup plus measurement, or an explicit project-approved reset outside measured methods.
           - Failed or staged journal writes must not advance restored durable cursors.
           - Byte and memory payload tests should use structured byte-array assertions.
         required_gates:
-          - id: smoke
+          - id: project_smoke
             command:
               - ./qa/smoke.sh
             must_cover:
               - allocation
               - benchmark_smoke
               - unit_regression
+            cadence: periodic
         feature_smoke_commands:
           - id: range_scan_jmh_smoke
             match_terms:
