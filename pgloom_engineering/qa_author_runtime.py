@@ -754,6 +754,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_reflective_invocation",
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
+        "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_build_file_string_assertion",
@@ -824,6 +825,11 @@ def build_qa_quality_repair_prompt(
                     "benchmark harness. Import the typed feature API directly and call it "
                     "from the @Benchmark method or a typed setup-created helper so JMH "
                     "executes the feature and not an adapter."
+                ),
+                (
+                    "For range benchmark behavior gaps, add benchmark methods or parameters "
+                    "that exercise ascending, descending, and prefix-filtered StoreVisitor "
+                    "range scans through typed public APIs."
                 ),
                 (
                     "For build/script string assertion findings, remove the generated test "

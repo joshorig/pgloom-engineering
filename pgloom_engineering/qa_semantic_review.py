@@ -50,6 +50,7 @@ def review_semantic_quality(
     findings.extend(_jmh_cold_restore_findings(files, context, conventions))
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
+    findings.extend(_range_benchmark_behavior_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
@@ -439,6 +440,51 @@ def _range_benchmark_api_findings(
                 line=_first_line_containing_any(
                     text,
                     ["readSlicePooled", "ReadOnlySlice"],
+                ),
+            )
+        )
+    return findings
+
+
+def _range_benchmark_behavior_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_benchmark"))
+    if range_config.get("require_behavior_coverage") is False:
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "benchmark" not in normalized_context:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not _looks_like_jmh_benchmark(path, text):
+            continue
+        lowered = text.lower()
+        if "range" not in lowered:
+            continue
+        has_ascending = "ascendingrange" in lowered
+        has_descending = "descendingrange" in lowered
+        has_prefix = "ascendingrange" in lowered and "prefix" in lowered
+        if not (has_ascending or has_descending):
+            continue
+        if has_ascending and has_descending and has_prefix:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_range_benchmark_behavior_gap",
+                severity="blocking",
+                message=(
+                    "Range benchmark smoke must cover the behavior surfaces named by "
+                    "the feature: ascending, descending, and prefix-filtered visitor "
+                    "range scans. A single ascending-only benchmark can miss ordering "
+                    "or filter-path allocation defects."
+                ),
+                file=path,
+                line=_first_line_containing_any(
+                    text,
+                    ["ascendingRange", "descendingRange", "prefix"],
                 ),
             )
         )

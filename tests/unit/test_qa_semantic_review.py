@@ -646,6 +646,80 @@ def test_semantic_review_accepts_range_benchmark_that_calls_public_range_api() -
     ] == []
 
 
+def test_semantic_review_blocks_ascending_only_range_benchmark() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private LvcStore store;
+                private StoreVisitor visitor;
+
+                @Benchmark
+                public void rangeSmoke() {
+                    store.ascendingRange(0, 1023, visitor);
+                }
+            }
+            """
+        },
+        plan_text=(
+            "Range benchmark smoke must prove ascending, descending, and prefix range "
+            "visitor behavior."
+        ),
+        task_text="Write JMH benchmark smoke for range scans.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_benchmark_behavior_gap"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_range_benchmark_with_descending_and_prefix() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private LvcStore store;
+                private StoreVisitor visitor;
+                private byte[] prefix;
+
+                @Benchmark
+                public void ascendingRangeSmoke() {
+                    store.ascendingRange(0, 1023, visitor);
+                }
+
+                @Benchmark
+                public void descendingRangeSmoke() {
+                    store.descendingRange(1023, 0, visitor);
+                }
+
+                @Benchmark
+                public void prefixRangeSmoke() {
+                    store.ascendingRange(0, 1023, prefix, visitor);
+                }
+            }
+            """
+        },
+        plan_text=(
+            "Range benchmark smoke must prove ascending, descending, and prefix range "
+            "visitor behavior."
+        ),
+        task_text="Write JMH benchmark smoke for range scans.",
+        project_metadata={},
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_benchmark_behavior_gap"
+    ] == []
+
+
 def test_semantic_review_blocks_reflective_range_api_tests() -> None:
     findings = review_semantic_quality(
         files={
