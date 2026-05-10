@@ -513,8 +513,30 @@ def normalize_task_result_payload(payload: object) -> object:
         normalized = dict(payload)
         normalized["checks"] = _normalize_check_items(normalized.get("checks"))
         normalized["commands_run"] = _normalize_check_items(normalized.get("commands_run"))
+        for key in (
+            "changed_files",
+            "artifacts",
+            "deviations",
+            "blockers",
+        ):
+            if key in normalized:
+                normalized[key] = _normalize_string_items(normalized.get(key))
         return normalized
     return payload
+
+
+def _normalize_string_items(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_string_item(item) for item in value if item is not None]
+
+
+def _string_item(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict | list):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return str(value)
 
 
 def _normalize_check_items(value: object) -> list[dict[str, Any]]:

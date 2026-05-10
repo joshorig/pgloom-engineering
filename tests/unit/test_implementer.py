@@ -142,6 +142,38 @@ class PersistentStaleBlockerImplementerProvider(ImplementerProvider):
         )
 
 
+class StructuredEvidenceImplementerProvider(ImplementerProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del profile, prompt, kwargs
+        self.calls += 1
+        self.worktree.joinpath("src").mkdir(exist_ok=True)
+        self.worktree.joinpath("src/App.java").write_text("class App {}\n", encoding="utf-8")
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "TaskResultContract": {
+                        "feature_id": "feature-1",
+                        "task_id": "impl-1",
+                        "changed_files": ["src/App.java"],
+                        "deviations": [
+                            {
+                                "type": "verification_note",
+                                "message": "kept generated QA test unchanged",
+                            }
+                        ],
+                        "blockers": [
+                            {
+                                "type": "stale_tool_failure",
+                                "message": "initial command output was stale",
+                            }
+                        ],
+                    }
+                }
+            ),
+            model_usage_id=500 + self.calls,
+        )
+
+
 def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -231,6 +263,33 @@ def test_implementer_clears_persistent_reported_blockers_when_verification_passe
             "reported_blocker_cleared_by_orchestrator_verification: "
             "stale command failure still reported"
         )
+    ]
+
+
+def test_implementer_normalizes_structured_blockers_and_deviations(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    worktree = _git_repo(tmp_path)
+    worktree.joinpath("tests").mkdir()
+    worktree.joinpath("tests/test_red.py").write_text(
+        "def test_red():\n    assert False\n",
+        encoding="utf-8",
+    )
+
+    _patch_live_contracts(monkeypatch, worktree)
+    provider = StructuredEvidenceImplementerProvider(worktree)
+    result = ImplementerHandler(provider=provider).handle(_task())
+
+    assert result.status == "done"
+    assert provider.calls == 1
+    contract = result.result["task_result_contract"]
+    assert contract["blockers"] == []
+    assert contract["deviations"] == [
+        '{"message":"kept generated QA test unchanged","type":"verification_note"}',
+        (
+            "reported_blocker_cleared_by_orchestrator_verification: "
+            '{"message":"initial command output was stale","type":"stale_tool_failure"}'
+        ),
     ]
 
 
