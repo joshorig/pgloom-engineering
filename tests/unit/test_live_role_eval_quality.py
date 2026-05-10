@@ -7,6 +7,7 @@ from pgloom_engineering.live_role_eval import (
     _grade_implementation,
     _grade_plan,
     _grade_qa_author,
+    _grade_workflow_state,
     _patched_env,
     _role_command,
 )
@@ -108,6 +109,73 @@ def test_live_role_grade_rejects_allocating_range_benchmark(tmp_path) -> None:
         "implementation_allocating_benchmark_visitor",
         "implementation_range_benchmark_not_gated",
     }
+
+
+def test_live_role_grade_uses_latest_completed_role_output() -> None:
+    aggregate = {
+        "task_contracts": [
+            {
+                "status": "completed",
+                "input_contract": {"task_type": "engineering.implement"},
+                "output_contract": {
+                    "task_result_contract": {
+                        "changed_files": ["src/Old.java"],
+                        "blockers": [],
+                    }
+                },
+            },
+            {
+                "status": "completed",
+                "input_contract": {"task_type": "engineering.implement"},
+                "output_contract": {
+                    "task_result_contract": {
+                        "changed_files": ["src/New.java"],
+                        "blockers": ["latest corrective output still failed"],
+                    }
+                },
+            },
+        ]
+    }
+
+    grade = _grade_implementation(aggregate, {"git_diff_path": ""})
+
+    assert grade["verdict"] == "revise"
+    assert any(
+        "latest corrective output still failed" in finding["message"]
+        for finding in grade["findings"]
+    )
+
+
+def test_live_role_grade_rejects_unfinished_workflow_tasks() -> None:
+    grade = _grade_workflow_state(
+        {
+            "tasks": [
+                {
+                    "id": "impl-1",
+                    "task_type": "engineering.implement",
+                    "state": "blocked",
+                    "blocker_code": "engineering.implementation_verification_failed",
+                },
+                {
+                    "id": "review-1",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                },
+            ]
+        }
+    )
+
+    assert grade["verdict"] == "revise"
+    assert grade["findings"] == [
+        {
+            "severity": "blocking",
+            "code": "workflow_task_not_complete",
+            "message": (
+                "engineering.implement task impl-1 is blocked "
+                "(engineering.implementation_verification_failed)."
+            ),
+        }
+    ]
 
 
 def test_forbidden_model_grade_ignores_guardrail_documentation() -> None:

@@ -1370,6 +1370,7 @@ def _production_grade_review(
     output_evidence: dict[str, Any],
 ) -> dict[str, Any]:
     dimensions = [
+        _grade_workflow_state(aggregate),
         _grade_plan(aggregate),
         _grade_qa_author(aggregate, output_evidence),
         _grade_implementation(aggregate, output_evidence),
@@ -1397,6 +1398,46 @@ def _production_grade_review(
         "advisory_findings": advisory,
     }
     return review
+
+
+def _grade_workflow_state(aggregate: dict[str, Any]) -> dict[str, Any]:
+    tasks = [row for row in aggregate.get("tasks") or [] if isinstance(row, dict)]
+    if not tasks:
+        return _dimension(
+            "workflow_state",
+            "missing",
+            _finding("blocking", "workflow_no_tasks", "No workflow tasks found."),
+        )
+    incomplete_states = {
+        "queued",
+        "leased",
+        "running",
+        "blocked",
+        "retry",
+        "awaiting_approval",
+        "failed",
+    }
+    findings: list[dict[str, str]] = []
+    for task in tasks:
+        state = str(task.get("state") or "")
+        if state not in incomplete_states:
+            continue
+        task_id = str(task.get("id") or "")
+        task_type = str(task.get("task_type") or "")
+        blocker = str(task.get("blocker_code") or task.get("blocker_reason") or "")
+        suffix = f" ({blocker})" if blocker else ""
+        findings.append(
+            _finding(
+                "blocking",
+                "workflow_task_not_complete",
+                f"{task_type} task {task_id} is {state}{suffix}.",
+            )
+        )
+    return _dimension(
+        "workflow_state",
+        "production_grade" if not findings else "revise",
+        *findings,
+    )
 
 
 def _grade_plan(aggregate: dict[str, Any]) -> dict[str, Any]:
@@ -1722,6 +1763,7 @@ def _grade_token_efficiency(output_evidence: dict[str, Any]) -> dict[str, Any]:
 
 
 def _output_for_task_type(aggregate: dict[str, Any], task_type: str) -> dict[str, Any]:
+    matches: list[dict[str, Any]] = []
     for row in aggregate.get("task_contracts") or []:
         if not isinstance(row, dict):
             continue
@@ -1729,8 +1771,14 @@ def _output_for_task_type(aggregate: dict[str, Any], task_type: str) -> dict[str
         if not isinstance(input_contract, dict) or input_contract.get("task_type") != task_type:
             continue
         output = row.get("output_contract")
-        return output if isinstance(output, dict) else {}
-    return {}
+        if isinstance(output, dict):
+            matches.append(row)
+    if not matches:
+        return {}
+    completed = [row for row in matches if row.get("status") == "completed"]
+    selected = (completed or matches)[-1]
+    output = selected.get("output_contract")
+    return output if isinstance(output, dict) else {}
 
 
 def _task_for_type(aggregate: dict[str, Any], task_type: str) -> dict[str, Any]:
