@@ -42,6 +42,12 @@ export function FeatureOverview({ featureId, events }: Props) {
           <PauseButton paused onClick={togglePause} />
         </div>
       )}
+      {data?.state === "aborted" && (
+        <div className="cc-banner cc-banner-pause">
+          <span className="mono cc-banner-tag">{data.abort_reason || "unknown"}</span>
+          <div style={{ flex: 1 }}>{data.abort_detail || "Feature aborted without additional detail."}</div>
+        </div>
+      )}
       <div className="cc-hero">
         <div className="cc-hero-l">
           <div className="cc-kicker mono">FEATURE · {shortId(featureId)}</div>
@@ -64,7 +70,7 @@ export function FeatureOverview({ featureId, events }: Props) {
         <Stat k="elapsed wall-clock" v={formatSeconds(data?.running_seconds)} d={<span className="cc-dim">{wallSummary(wallMix)}</span>} />
         <Stat k="runs · attempts" v={`${data?.runs || 0} · ${runRows.reduce((sum, row) => sum + Number(row.attempt || 0), 0)}`} d={<span className="cc-dim">all roles</span>} />
         <Stat k="tokens in" v={formatTokens(data?.input_tokens)} d={<span className="cc-tok-cached">{formatTokens(data?.cached_input_tokens)} cached</span>} />
-        <Stat k="next claimable" v={nextTask ? shortId(nextTask.id) : "-"} d={nextTask ? <RoleBadge role={nextTask.role} /> : <span className="cc-dim">none</span>} />
+        <Stat k="next claimable" v={nextTask ? <a href={`/feature/${featureId}/task/${encodeURIComponent(nextTask.id)}`}>{shortId(nextTask.id)}</a> : "-"} d={nextTask ? <RoleBadge role={nextTask.role} /> : <span className="cc-dim">none</span>} />
         <Stat k="savings" v={formatTokens((data?.token_savior_saved_tokens || 0) + (data?.rtk_saved_tokens || 0))} d={<span className="cc-dim">Token Savior + RTK</span>} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, minHeight: 0, flex: 1 }}>

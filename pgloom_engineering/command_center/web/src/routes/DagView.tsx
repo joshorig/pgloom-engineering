@@ -73,13 +73,15 @@ export function DagView({ featureId }: { featureId: string }) {
               if (!p) return null;
               const isSelected = task.id === selectedTask?.id;
               return (
-                <g key={task.id} transform={`translate(${p.x},${p.y})`} className="cc-dag-node" onClick={() => setSelected(task.id)}>
-                  <rect x="0" y="0" width={nodeWidth} height={nodeHeight} rx="3" fill="var(--panel)" stroke={isSelected ? "var(--accent)" : roleColor(task.role)} strokeWidth={isSelected ? 1.8 : 1} />
-                  <rect x="0" y="0" width="3" height={nodeHeight} fill={roleColor(task.role)} />
-                  <text x="8" y="14" fill="var(--t1)" style={{ font: "500 10.5px var(--f-mono)" }}>{shortId(task.id)}</text>
-                  <text x="8" y="27" fill="rgba(170,178,188,0.7)" style={{ font: "400 9.5px var(--f-sans)" }}>{task.role}</text>
-                  <circle cx={nodeWidth - 11} cy="10" r="3" fill={`var(--st-${statusClass(task.status)})`} />
-                </g>
+                <a key={task.id} href={`/feature/${featureId}/task/${encodeURIComponent(task.id)}`}>
+                  <g transform={`translate(${p.x},${p.y})`} className="cc-dag-node" onMouseEnter={() => setSelected(task.id)} onFocus={() => setSelected(task.id)}>
+                    <rect x="0" y="0" width={nodeWidth} height={nodeHeight} rx="3" fill="var(--panel)" stroke={isSelected ? "var(--accent)" : roleColor(task.role)} strokeWidth={isSelected ? 1.8 : 1} />
+                    <rect x="0" y="0" width="3" height={nodeHeight} fill={roleColor(task.role)} />
+                    <text x="8" y="14" fill="var(--t1)" style={{ font: "500 10.5px var(--f-mono)" }}>{shortId(task.id)}</text>
+                    <text x="8" y="27" fill="rgba(170,178,188,0.7)" style={{ font: "400 9.5px var(--f-sans)" }}>{task.role}</text>
+                    <circle cx={nodeWidth - 11} cy="10" r="3" fill={`var(--st-${statusClass(task.status)})`} />
+                  </g>
+                </a>
               );
             })}
           </svg>
@@ -94,6 +96,7 @@ export function DagView({ featureId }: { featureId: string }) {
               <div className="cc-dag-side-title mono">{shortId(selectedTask.id)}</div>
               <div className="mono cc-dim cc-break">{selectedTask.id}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}><StatusPill status={selectedTask.status} /><span className="mono cc-dim">milestone {selectedTask.milestone_id.toUpperCase()}</span>{selectedTask.task_slice_id && <span className="mono cc-dim">slice {selectedTask.task_slice_id}</span>}</div>
+              <a className="cc-btn cc-btn-primary" href={`/feature/${featureId}/task/${encodeURIComponent(selectedTask.id)}`} style={{ marginTop: 10 }}>Open task</a>
             </div>
             <div className="cc-dag-side-sect" style={{ padding: 12 }}><RoleBadge role={selectedTask.role} full /></div>
             <div className="cc-dag-side-sect">

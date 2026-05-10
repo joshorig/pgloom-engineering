@@ -131,6 +131,86 @@ const handoff = {
   updated_at: "2026-05-10T00:20:10Z"
 };
 
+const taskHeader = {
+  task_id: "t1",
+  feature_id: featureId,
+  plan_contract_id: "plan-1",
+  role: "implementer",
+  status: "active",
+  runtime_state: "running",
+  task_type: "engineering.implement",
+  slot: "implementer",
+  milestone_id: "m1",
+  task_slice_id: "impl-implement",
+  input_contract: { objective: "ship reliable core scaffold", allowed_paths: ["core/**"] },
+  output_contract: { expected_outputs: ["result.md"] },
+  validation_errors: [],
+  created_at: "2026-05-10T00:10:00Z",
+  updated_at: "2026-05-10T00:20:00Z"
+};
+
+const taskTelemetry = {
+  runs: 1,
+  input_tokens: 1800,
+  cached_input_tokens: 400,
+  output_tokens: 700,
+  reasoning_tokens: 200,
+  cost_usd_micros: 8200,
+  running_seconds: 210,
+  queued_seconds: 4,
+  leased_seconds: 12,
+  model_seconds: 44,
+  verification_seconds: 6,
+  blocked_seconds: 1
+};
+
+const artifacts = [
+  {
+    id: "artifact-diff",
+    feature_id: featureId,
+    task_id: "t1",
+    kind: "worktree_diff",
+    name: "worktree.diff",
+    path: "/tmp/worktree.diff",
+    sha256: "abcdef123456",
+    metadata: { files_changed: 3 },
+    created_at: "2026-05-10T00:25:00Z"
+  }
+];
+
+const council = {
+  id: "council-1",
+  feature_id: featureId,
+  task_id: "t0",
+  role: "planner",
+  purpose: "initial_plan",
+  status: "passed",
+  legacy: false,
+  critic_verdict: "accept",
+  cost_usd_micros: 2000,
+  total_tokens: 1220,
+  iterations_used: 1,
+  iteration_max: 2,
+  panelists: [{ id: 1, panelist_kind: "panelist", panelist_ordinal: 0, status: "passed", cost_usd_micros: 900 }],
+  worker_runs: [run],
+  started_at: "2026-05-10T00:00:00Z",
+  finished_at: "2026-05-10T00:05:00Z"
+};
+
+const legacyCouncil = {
+  id: "council_legacy_plan-1_0",
+  feature_id: featureId,
+  task_id: "t0",
+  role: "planner",
+  purpose: "initial_plan",
+  status: "passed",
+  legacy: true,
+  critic_verdict: "accept",
+  report: { critic: { verdict: "accept" } },
+  panelists: [],
+  worker_runs: []
+};
+
 const runsAggregate = [
   {
     row_id: 1,
@@ -256,6 +336,28 @@ async function mockApi(page) {
       payload = slots;
     } else if (requestPath === `/api/features/${featureId}/handoffs`) {
       payload = [handoff];
+    } else if (requestPath === `/api/features/${featureId}/councils`) {
+      payload = [council, legacyCouncil];
+    } else if (requestPath === `/api/features/${featureId}/councils/council-1`) {
+      payload = council;
+    } else if (requestPath === `/api/features/${featureId}/councils/council_legacy_plan-1_0`) {
+      payload = legacyCouncil;
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1`) {
+      payload = taskHeader;
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/runs`) {
+      payload = [run];
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/handoffs`) {
+      payload = [handoff];
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/qa`) {
+      payload = [];
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/recovery`) {
+      payload = [];
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/interventions`) {
+      payload = [];
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/artifacts`) {
+      payload = artifacts;
+    } else if (requestPath === `/api/features/${featureId}/tasks/t1/telemetry`) {
+      payload = taskTelemetry;
     } else if (requestPath === `/api/features/${featureId}/qa-signoffs`) {
       payload = [];
     } else if (requestPath === `/api/features/${featureId}/interventions`) {
@@ -314,6 +416,16 @@ test("feature DAG and handoff routes render", async ({ page }) => {
   await go(page, `/feature/${featureId}/handoffs`);
   await expect(page.getByText("HANDOFFS · 1")).toBeVisible();
   await expect(page.getByText("HANDOFF · handoff-1")).toBeVisible();
+
+  await go(page, `/feature/${featureId}/task/t1`);
+  await expect(page.getByRole("heading", { name: "impl-implement" })).toBeVisible();
+  await expect(page.getByText("Evidence gallery")).toBeVisible();
+  await expect(page.getByText("worktree_diff")).toBeVisible();
+
+  await go(page, `/feature/${featureId}/councils`);
+  await expect(page.getByText("COUNCILS · 2")).toBeVisible();
+  await go(page, `/feature/${featureId}/councils/council_legacy_plan-1_0`);
+  await expect(page.getByText("This council was projected from plan-contract JSON")).toBeVisible();
 
   await go(page, `/feature/${featureId}/telemetry`);
   await expect(page.getByText("TELEMETRY DETAIL", { exact: false })).toBeVisible();

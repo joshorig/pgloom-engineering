@@ -89,10 +89,10 @@ export function HandoffView({ featureId }: { featureId: string }) {
           <div className="cc-h-d-bar">
             <div className="cc-h-d-pair">
               <RoleBadge role={details.fromRole} full />
-              <span className="mono cc-dim">{shortId(details.fromTask)}</span>
+              <a className="mono cc-dim" href={`/feature/${featureId}/task/${encodeURIComponent(details.fromTask)}`}>{shortId(details.fromTask)}</a>
               <span className="cc-h-arrow">→</span>
               <RoleBadge role={details.toRole} full />
-              <span className="mono cc-dim">{shortId(details.toTask)}</span>
+              <a className="mono cc-dim" href={`/feature/${featureId}/task/${encodeURIComponent(details.toTask)}`}>{shortId(details.toTask)}</a>
             </div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 18 }}>
               <KV k="paths" v={<span className="mono">{details.files}</span>} />
@@ -545,7 +545,7 @@ function ValidationRunFallback({ runs }: { runs: RunRow[] }) {
             {runs.map((run) => (
               <tr key={run.id}>
                 <td className="mono">{run.id}</td>
-                <td className="mono cc-dim cc-ellipsis">{run.task_id || "-"}</td>
+                <td className="mono cc-dim cc-ellipsis">{run.task_id ? <a href={`/feature/${run.feature_id || ""}/task/${encodeURIComponent(run.task_id)}`}>{shortId(run.task_id)}</a> : "-"}</td>
                 <td><RoleBadge role={run.role} /></td>
                 <td className="mono cc-dim">{run.phase}</td>
                 <td><StatusPill status={run.status} /></td>
