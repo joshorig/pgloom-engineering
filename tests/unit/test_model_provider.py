@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pgloom.db.postgres import connect
@@ -151,7 +152,47 @@ def test_engineering_provider_records_codex_jsonl_usage(
     assert row["metadata"]["duration_seconds"] >= 0
 
 
-def _usage_row(database_url: str, usage_id: int) -> dict[str, object]:
+def test_engineering_provider_reprices_zero_codex_cost(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "codex_json_zero_cost.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "print(json.dumps({",
+                "  'result': '{\"ok\": true}',",
+                "  'total_cost_usd': 0,",
+                "  'usage': {",
+                "    'input_tokens': 10,",
+                "    'cache_read_input_tokens': 90,",
+                "    'output_tokens': 12",
+                "  }",
+                "}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = EngineeringCLIModelProvider(database_url=database_url).invoke(
+        profile=CLIModelProfile(
+            name="implementer",
+            command=[sys.executable, str(script), "codex"],
+            parse_response="json",
+        ),
+        prompt="hello",
+    )
+
+    assert result.input_tokens == 100
+    assert result.output_tokens == 12
+    assert result.cost_usd == pytest.approx(0.000405)
+    assert result.model_usage_id is not None
+    row = _usage_row(database_url, result.model_usage_id)
+    assert float(row["cost_usd"]) == pytest.approx(0.000405)
+
+
+def _usage_row(database_url: str, usage_id: int) -> dict[str, Any]:
     with connect(database_url) as conn:
         row = conn.execute("select * from model_usage where id = %s", (usage_id,)).fetchone()
     assert row is not None

@@ -49,7 +49,11 @@ class EngineeringCLIModelProvider:
         output_tokens = usage.output_tokens or _approx_tokens(text)
         route_metadata = _command_route_metadata(profile.command)
         cost_usd = usage.cost_usd
-        if cost_usd is None:
+        if cost_usd is None or _needs_fallback_cost(
+            cost_usd=cost_usd,
+            route_metadata=route_metadata,
+            usage_source=usage.source,
+        ):
             cost_usd = _fallback_cost_usd(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -300,8 +304,22 @@ def _fallback_cost_usd(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         reasoning_tokens=_int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0,
-        cached_input_tokens=_int_or_none(usage_metadata.get("cached_input_tokens")) or 0,
+        cached_input_tokens=(
+            (_int_or_none(usage_metadata.get("cached_input_tokens")) or 0)
+            + (_int_or_none(usage_metadata.get("cache_read_input_tokens")) or 0)
+        ),
     )
+
+
+def _needs_fallback_cost(
+    *,
+    cost_usd: float,
+    route_metadata: dict[str, Any],
+    usage_source: str,
+) -> bool:
+    if cost_usd != 0:
+        return False
+    return route_metadata.get("provider") == "codex" or usage_source.startswith("codex_")
 
 
 def _codex_cost_usd(

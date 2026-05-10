@@ -73,11 +73,12 @@ pgloom_engineering/command_center/
     features.py           # /api/features, /api/features/{id}
     dag.py                # /api/features/{id}/dag
     runs.py               # /api/features/{id}/runs
+    tasks.py              # /api/features/{id}/tasks/{task_id}/...
     handoffs.py
     qa.py
     telemetry.py
     interventions.py      # POST handlers; insert + NOTIFY
-  serializers.py          # row -> JSON (cents-of-dollar, ISO timestamps)
+  serializers.py          # row -> JSON (usd_micros, ISO timestamps)
   schema/
     010_command_center_notify.sql  # triggers + intervention indexes
 ```
@@ -97,6 +98,7 @@ pgloom_engineering/command_center/web/
       FeaturesList.tsx
       FeatureOverview.tsx
       DagView.tsx          # Cytoscape canvas
+      TaskView.tsx         # per-task detail page
       HandoffView.tsx
       ValidationView.tsx
       TelemetryView.tsx
@@ -196,8 +198,9 @@ incoming events.
 - Edges: dependencies from the plan contract; milestone-locking edges drawn
   with a dashed amber stroke.
 - Group/compound nodes per milestone, collapsible.
-- Click a node → side panel with worker-run history, handoffs in/out, QA
-  signoffs, artifact links.
+- Click a node → opens the Task view (`/feature/:id/task/:taskId`, see §8a).
+  A lightweight side-panel preview is acceptable on hover, but the canonical
+  detail surface is the dedicated Task view.
 - Live updates: `task.update` events patch the node in place. New tasks
   trigger an incremental layout (don't relayout the world on every tick).
 - Persist user view state (zoom, pan, expanded milestones) in `localStorage`
@@ -345,6 +348,9 @@ Minimum useful views, each its own route under `/feature/:id/...`:
   next claimable task, blockers, cumulative cost, elapsed time, paused
   banner if applicable, recent interventions strip.
 - **DAG view**: Cytoscape canvas (see §5) with side panel.
+- **Task view** (see §8a): everything about a single task — contract,
+  worker runs, handoffs in/out, QA signoffs, recovery, interventions
+  scoped to the task, artifacts, telemetry roll-up.
 - **Handoff view**: compact chain (`from_task → to_task`) with handoff_type
   badges, artifact links, cumulative telemetry per hop.
 - **Validation view**: scrutiny and user-test evidence side by side, attempted
@@ -359,6 +365,97 @@ Minimum useful views, each its own route under `/feature/:id/...`:
 Top-level `/features` route is a sortable table with the columns from
 `pgloom-review.sh list`: feature_id, project, branch, state, runs, cost_usd,
 roles_seen, last_blocker, created_at.
+
+## 8a. Task view
+
+Route: `/feature/:featureId/task/:taskId`. This is the canonical "everything
+about one task" page and is the primary destination from DAG node clicks,
+Handoff view rows, Validation view rows, and the feature overview's
+"current / next / blocked task" links.
+
+### Header strip
+
+- task_id, role badge, current status pill (`pending`, `claimable`,
+  `running`, `passed`, `failed`, `superseded`)
+- milestone badge (clickable → DAG view focused on that milestone)
+- contract_version, `input_contract_hash` prefix
+- attempt count, repair_count, cumulative cost (micros → formatted),
+  cumulative tokens
+- last blocker_code if any, with timestamp
+- pause-state inheritance: if the parent feature is currently paused (per
+  `engineering_feature_intervention_state`), show a banner
+
+### Sections
+
+1. **Contract pane** (`engineering_task_contracts`): full input contract
+   JSON, validation_errors array, contract diff vs prior version if the task
+   was replanned. JSON viewer is collapsible per top-level key.
+
+2. **Worker runs timeline**: every row from `engineering_worker_runs` for
+   this task_id, oldest first. Each row shows:
+   - role / phase / validator_type / model_provider / model / reasoning_level
+   - status, attempt, repair_count
+   - wall-clock stacked bar (`queue_seconds`, `lease_seconds`,
+     `model_seconds`, `verification_seconds`, `blocked_seconds`)
+   - tokens (input / cached_input / cache_creation / output / reasoning)
+   - cost (per-run + cumulative)
+   - Token Savior reduction (`token_savior_saved_tokens`,
+     `token_savior_reduction_ratio`) and `rtk_saved_tokens`
+   - `blocker_code` if present
+   - expand → prompt artifact link, response artifact link, log link, diff
+     link, screenshot/trace gallery
+   - Live-update via `worker_run.update` events filtered to this task_id.
+
+3. **Handoffs** in and out: rows from `engineering_handoffs` where
+   `from_task_id = :taskId` or `to_task_id = :taskId`. Each row links to the
+   peer task's Task view. Show handoff_type badge, status, artifact link
+   bundle, cumulative telemetry on the hop.
+
+4. **QA signoffs** scoped to this task: rows from
+   `engineering_qa_signoffs` where `task_id = :taskId`. Group by
+   `validator_type` (`scrutiny` / `usertest`), show verdict, evidence count,
+   artifact count, expand to full evidence/artifact lists. If the task is
+   itself a `qa.author` task, also show the *authored* contract that the
+   verify slices are checking against.
+
+5. **Recovery actions**: rows from `engineering_recovery_actions` where the
+   recovery is scoped to this task. Show blocker_code, action (including
+   `corrective_slice`), status, attempt / max_attempts, outcome snippet,
+   linked recovery handoff if one was emitted.
+
+6. **Self-repair issues** (when present): rows from
+   `engineering_self_repair_issues` where `task_id = :taskId`. Expand to
+   show the deliberation thread.
+
+7. **Interventions affecting this task**: filter
+   `engineering_operator_interventions` to interventions whose
+   `payload->>'task_id' = :taskId` (covers `skip_slice`, `drop_slice`) plus
+   feature-wide interventions (`pause_feature`, `resume_feature`,
+   `replan_from_milestone`) that bracket the task's lifetime. Render as a
+   small inline timeline.
+
+8. **Artifacts** (cross-cutting gallery): every artifact id referenced by
+   any of the rows above, deduplicated, grouped by kind (prompt, response,
+   log, diff, screenshot, trace, report). Click → opens the artifact in a
+   side drawer or new tab depending on type.
+
+9. **Telemetry roll-up**: same shape as Telemetry view (§8) but scoped to
+   this task. Cost by phase / model / validator_type, token breakdown,
+   wall-clock split, repair counts, cache hit rate.
+
+### Realtime
+
+Subscribes to events with `feature_id` matching the parent and either
+`task_id = :taskId` (worker_run, handoff, qa.signoff, recovery, task) or
+relevant feature-wide kinds (intervention, plan). The page is live without a
+manual refresh.
+
+### Cross-linking
+
+Every other view that mentions a task_id renders it as a link to this view.
+Specifically: DAG nodes, Handoff view rows, Validation view rows, Feature
+overview "current / next / blocked task" cells, Intervention view rows
+whose payload carries `task_id`, and Self-repair entries.
 
 ## 9. Data shapes — single source of truth
 
@@ -375,6 +472,14 @@ contract for what the API returns. Wrap each section as a dedicated endpoint:
 | `GET /api/features/{id}/token-savior`         | section 4                                  |
 | `GET /api/features/{id}/plans`                | section 5                                  |
 | `GET /api/features/{id}/tasks`                | section 6                                  |
+| `GET /api/features/{id}/tasks/{task_id}`      | task view header + contract pane           |
+| `GET /api/features/{id}/tasks/{task_id}/runs` | worker_runs filtered to task               |
+| `GET /api/features/{id}/tasks/{task_id}/handoffs`  | handoffs in/out for task              |
+| `GET /api/features/{id}/tasks/{task_id}/qa`        | qa_signoffs scoped to task            |
+| `GET /api/features/{id}/tasks/{task_id}/recovery`  | recovery_actions scoped to task       |
+| `GET /api/features/{id}/tasks/{task_id}/interventions` | interventions touching task       |
+| `GET /api/features/{id}/tasks/{task_id}/artifacts` | dedup artifact roll-up                |
+| `GET /api/features/{id}/tasks/{task_id}/telemetry` | per-task telemetry roll-up            |
 | `GET /api/features/{id}/handoffs`             | section 7                                  |
 | `GET /api/features/{id}/recovery`             | section 8                                  |
 | `GET /api/features/{id}/qa-signoffs`          | section 9                                  |
@@ -462,3 +567,8 @@ this slice cost too much, and where did the time go?"
 7. The Cytoscape DAG renders the R17-shape feature (planner + qa.author +
    implementer + reviewer + qa.verify.scrutiny + qa.verify.usertest) with
    correct dependency edges and milestone columns.
+8. The Task view renders for any task_id in the feature and shows: contract,
+   every worker run, in/out handoffs, scoped QA signoffs, scoped recovery,
+   scoped interventions, deduped artifacts, and a per-task telemetry
+   roll-up. A new `engineering_worker_runs` insert for the open task appears
+   live.
