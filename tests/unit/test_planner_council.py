@@ -491,6 +491,70 @@ def test_production_grade_preempts_model_critic_when_clean() -> None:
     assert outcome.final.council_reports[0]["planner_substance"]["score"] <= 100
 
 
+def test_production_grade_blockers_force_council_revision() -> None:
+    plan = _plan_contract()
+    impl_index = next(
+        index
+        for index, task_slice in enumerate(plan.task_slices)
+        if task_slice.role == "implementer"
+    )
+    plan.task_slices[impl_index] = plan.task_slices[impl_index].model_copy(
+        update={
+            "slice_id": "impl-range-api-single",
+            "objective": "Implement SINGLE range scans.",
+            "allowed_paths": ["store/src/main/java/"],
+            "forbidden_paths": ["conformance-tests/src/test/java/"],
+            "expected_outputs": ["SINGLE direct/mmap range scan implementation"],
+            "verification_commands": [["./gradlew", ":core:test"]],
+        }
+    )
+    plan.task_slices.insert(
+        impl_index + 1,
+        plan.task_slices[impl_index].model_copy(
+            update={
+                "slice_id": "impl-range-double-mmap",
+                "objective": "Implement DOUBLE-store and remaining direct/mmap behavior.",
+                "expected_outputs": [
+                    "DOUBLE direct/mmap range scan implementation",
+                    "Updated store documentation for SINGLE and DOUBLE range scans",
+                ],
+                "verification_commands": [
+                    [
+                        "./gradlew",
+                        ":conformance-tests:test",
+                        "--tests",
+                        "com.example.RangeScanConformanceTest",
+                    ]
+                ],
+            }
+        ),
+    )
+    for task_slice in plan.task_slices:
+        if task_slice.slice_id == "review":
+            task_slice.depends_on = ["impl-range-api-single", "impl-range-double-mmap"]
+    provider = RecordingProvider(
+        {
+            "planner-panelist": [plan.model_dump(mode="json")] * 2,
+            "planner-consolidator": [plan.model_dump(mode="json")],
+            "planner-critic": [_accept_verdict()],
+        }
+    )
+
+    with pytest.raises(PlannerCouncilExhausted) as exc_info:
+        PlannerCouncil(
+            config=CouncilConfig(panelist_count=2, max_iterations=1),
+            provider=provider,
+        ).run(feature_goal=_feature_goal(), project_context=_context())
+
+    iteration = exc_info.value.iterations[0]
+    assert iteration.critic.verdict == "revise"
+    assert any(
+        error.get("code") == "variant_slice_uses_broad_conformance_gate"
+        and error.get("source") == "planner.production_grade"
+        for error in iteration.validator_errors
+    )
+
+
 def test_role_model_routing_updates_claude_model() -> None:
     assert _route_model_command(
         ["claude", "-p", "--model", "sonnet"],

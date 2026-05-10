@@ -177,6 +177,7 @@ class PlannerCouncil:
                 project_root=project_context.project_root,
                 qa_write_paths=project_context.qa_write_paths,
             )
+            validator_errors.extend(_production_grade_validator_errors(production_grade))
             substance = evaluate_planner_substance(
                 consolidated,
                 project_context=project_context,
@@ -375,6 +376,20 @@ def _council_reports(iterations: list[CouncilIteration]) -> list[dict[str, Any]]
             }
         )
     return reports
+
+
+def _production_grade_validator_errors(
+    report: ProductionGradeReport,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "code": finding.code,
+            "message": finding.message,
+            "slice_id": finding.slice_id,
+            "source": "planner.production_grade",
+        }
+        for finding in report.blocking_findings
+    ]
 
 
 def _repair_unachievable_milestones(plan: PlanContract) -> PlanContract:
