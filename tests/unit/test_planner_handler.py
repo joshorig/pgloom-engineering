@@ -12,6 +12,7 @@ from pgloom_engineering.roles.planner import (
     _assign_task_slice_milestones,
     _canonicalize_plan_feature_id,
     _feature_scoped_verification_commands,
+    _normalize_feature_scoped_plan_verification,
 )
 
 
@@ -896,6 +897,83 @@ def test_feature_scoped_verification_commands_replace_broad_smoke_gate() -> None
             "-Pjmh.smoke=true",
         ],
         ["./gradlew", ":core:test"],
+    ]
+
+
+def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["RangeScanBenchmark smoke"]),
+        affected_surfaces=["core/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Run range benchmark smoke through ./qa/smoke.sh.",
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["core/src/main/java/"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[["./qa/smoke.sh"]],
+            )
+        ],
+        acceptance_test_matrix=["ascendingRange behavior"],
+        acceptance_assertions=["StoreVisitor range scan benchmark smoke"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Range",
+                slice_ids=["qa-scrutiny"],
+                validation_contract={
+                    "required_gates": [
+                        "./qa/smoke.sh",
+                        "./gradlew :benchmarks:jmhSmokeCheck",
+                    ]
+                },
+            )
+        ],
+    )
+
+    normalized = _normalize_feature_scoped_plan_verification(
+        plan,
+        project_metadata={
+            "qa": {
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["StoreVisitor", "range"],
+                        "replaces": [
+                            "./qa/smoke.sh",
+                            ":benchmarks:jmhSmokeCheck",
+                        ],
+                        "commands": [
+                            [
+                                "./gradlew",
+                                "--no-daemon",
+                                "--console=plain",
+                                ":benchmarks:jmhSmokeCheck",
+                                "-Pjmh.smoke=true",
+                            ]
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+
+    expected = [
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            ":benchmarks:jmhSmokeCheck",
+            "-Pjmh.smoke=true",
+        ]
+    ]
+    assert normalized.task_slices[0].verification_commands == expected
+    assert normalized.milestones[0].validation_contract["required_gates"] == [
+        "./gradlew --no-daemon --console=plain :benchmarks:jmhSmokeCheck -Pjmh.smoke=true"
     ]
 
 

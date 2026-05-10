@@ -176,6 +176,10 @@ class PlannerHandler:
             else None
         )
         project_metadata = project.metadata if project is not None else {}
+        contract = _normalize_feature_scoped_plan_verification(
+            contract,
+            project_metadata=project_metadata,
+        )
         plan_row = create_plan_contract(
             contract,
             planner_task_id=task.get("id"),
@@ -346,6 +350,82 @@ def _feature_scoped_verification_commands(
         replacement = _feature_smoke_replacement(command, rules, feature_text)
         scoped.extend(replacement or [command])
     return _dedupe_commands(scoped)
+
+
+def _normalize_feature_scoped_plan_verification(
+    contract: PlanContract,
+    *,
+    project_metadata: dict[str, Any],
+) -> PlanContract:
+    task_slices: list[TaskSliceContract] = []
+    for task_slice in contract.task_slices:
+        task_slices.append(
+            task_slice.model_copy(
+                update={
+                    "verification_commands": _feature_scoped_verification_commands(
+                        task_slice.verification_commands,
+                        plan=contract,
+                        task_objective=task_slice.objective,
+                        project_metadata=project_metadata,
+                    )
+                }
+            )
+        )
+    milestones = [
+        milestone.model_copy(
+            update={
+                "validation_contract": _normalize_validation_contract_required_gates(
+                    milestone.validation_contract,
+                    plan=contract,
+                    project_metadata=project_metadata,
+                )
+            }
+        )
+        for milestone in contract.milestones
+    ]
+    return contract.model_copy(
+        update={
+            "task_slices": task_slices,
+            "milestones": milestones,
+        }
+    )
+
+
+def _normalize_validation_contract_required_gates(
+    validation_contract: dict[str, Any],
+    *,
+    plan: PlanContract,
+    project_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    required_gates = validation_contract.get("required_gates")
+    if not isinstance(required_gates, list):
+        return validation_contract
+    normalized_gates: list[str] = []
+    for gate in required_gates:
+        command = _validation_gate_command(gate)
+        if command is None:
+            if isinstance(gate, str):
+                normalized_gates.append(gate)
+            continue
+        replacements = _feature_scoped_verification_commands(
+            [command],
+            plan=plan,
+            task_objective=" ".join(plan.acceptance_assertions),
+            project_metadata=project_metadata,
+        )
+        normalized_gates.extend(" ".join(item) for item in replacements)
+    return {
+        **validation_contract,
+        "required_gates": list(dict.fromkeys(normalized_gates)),
+    }
+
+
+def _validation_gate_command(gate: object) -> list[str] | None:
+    if isinstance(gate, list) and all(isinstance(item, str) for item in gate):
+        return list(gate)
+    if isinstance(gate, str) and gate.strip():
+        return gate.split()
+    return None
 
 
 def _feature_smoke_replacement(
