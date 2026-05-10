@@ -118,6 +118,10 @@ Rules:
   Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
   `:benchmarks:jmh` sweeps as a per-feature validation blocker; those are
   periodic or broad project gates.
+- Gradle `--tests` filters are case-sensitive. Use concrete class or
+  class.method identifiers that the QA-author slice is instructed to create.
+  Do not use a variant wildcard such as `*Mmap*RangeScan*` unless the QA-author
+  objective explicitly creates a matching `Mmap...RangeScan...` class or method.
 - Do not use `grep`, `cat`, `echo`, list-only, or dry-run commands as the only
   verification evidence for any slice.
 - Dependency IDs must refer only to earlier slices.

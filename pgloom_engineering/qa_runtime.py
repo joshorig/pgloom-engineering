@@ -780,7 +780,39 @@ def _quoted_paths(text: str) -> list[str]:
 
 def _proof_excerpt(result: QAVerificationResult) -> str:
     combined = "\n".join(part for part in [result.stdout_excerpt, result.stderr_excerpt] if part)
+    diagnostic = _diagnostic_excerpt(result)
+    if diagnostic:
+        combined = "\n".join(part for part in [diagnostic, combined] if part)
     return combined[-2000:]
+
+
+def _diagnostic_excerpt(result: QAVerificationResult) -> str:
+    combined = "\n".join(
+        part for part in [result.original.stdout, result.original.stderr] if part
+    )
+    if not combined:
+        return ""
+    lines = combined.splitlines()
+    selected: list[str] = []
+    triggers = (
+        "cannot find symbol",
+        "cannot resolve symbol",
+        "symbol not found",
+        "unresolved reference",
+        "package does not exist",
+        "error: cannot",
+        "error: incompatible",
+    )
+    for index, line in enumerate(lines):
+        lowered = line.lower()
+        if not any(trigger in lowered for trigger in triggers):
+            continue
+        start = max(0, index - 1)
+        end = min(len(lines), index + 4)
+        for candidate in lines[start:end]:
+            if candidate not in selected:
+                selected.append(candidate)
+    return "\n".join(selected)[-1600:]
 
 
 def _deep_merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:

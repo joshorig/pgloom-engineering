@@ -1106,3 +1106,14 @@ def test_deterministic_critic_accepts_metadata_test_support_paths() -> None:
     assert "qa_author_paths_not_restricted" not in blocked_codes
     assert "qa_verify_paths_not_restricted" not in blocked_codes
     assert "qa_benchmark_output_path_not_allowed" not in blocked_codes
+
+
+def test_planner_prompts_warn_gradle_test_filters_are_case_sensitive() -> None:
+    prompt_dir = Path("pgloom_engineering/planner/prompts")
+
+    panelist = prompt_dir.joinpath("panelist.md").read_text(encoding="utf-8")
+    consolidator = prompt_dir.joinpath("consolidator.md").read_text(encoding="utf-8")
+
+    for prompt in [panelist, consolidator]:
+        assert "Gradle `--tests` filters are case-sensitive" in prompt
+        assert "*Mmap*RangeScan*" in prompt

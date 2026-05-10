@@ -688,6 +688,11 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     assert capsule["qa_handoff"]["tests_added"] == ["tests/test_red.py#test_red"]
     assert capsule["recall"]["memory_digest"] == "prior decision: preserve zero allocation"
     assert "src/App.java" in capsule["recall"]["source_queries"]
+    assert "scope_boundary" in capsule["slice"]
+
+    instructions = " ".join(prompt["instructions"])
+    assert "Treat the TaskContract objective as the scope boundary" in instructions
+    assert "later plan slices" in instructions
 
 
 def test_implementer_prompt_forbids_extra_broad_project_gates(tmp_path: Path) -> None:

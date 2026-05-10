@@ -266,6 +266,11 @@ def build_qa_author_prompt(
                 "benchmark coverage over every required variant."
             ),
             "The orchestrator will run verification and create canonical red_proof.",
+            (
+                "matrix_coverage must include every exact string from "
+                "plan.acceptance_test_matrix as a key, with each value naming the concrete "
+                "authored test, benchmark, or configured QA gate that covers that criterion."
+            ),
             "Return only a QAAuthorContract JSON object.",
             (
                 "Do not include command logs, exploration notes, file diffs, or "

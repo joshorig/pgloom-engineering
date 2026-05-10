@@ -59,6 +59,10 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         and "LambdaMetafactory" in instruction
         for instruction in payload["instructions"]
     )
+    assert any(
+        "matrix_coverage must include every exact string" in instruction
+        for instruction in payload["instructions"]
+    )
 
 
 def test_qa_author_prompt_includes_shared_role_context() -> None:

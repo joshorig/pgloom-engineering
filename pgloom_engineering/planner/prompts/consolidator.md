@@ -75,6 +75,10 @@ Rules:
   smoke. Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
   `:benchmarks:jmh` sweeps as per-feature blockers; those are project-scheduled
   periodic or broad project gates.
+- Gradle `--tests` filters are case-sensitive. Keep concrete class or
+  class.method identifiers that the QA-author slice is instructed to create.
+  Do not preserve variant wildcards such as `*Mmap*RangeScan*` unless the final
+  QA-author objective names a matching `Mmap...RangeScan...` class or method.
 - QA user-test is not another broad gate runner. It must specify a
   user-facing CLI/API/browser/app flow, or for a pure library a focused
   consumer-style command/harness using the public API. Do not put `qa/smoke.sh`,

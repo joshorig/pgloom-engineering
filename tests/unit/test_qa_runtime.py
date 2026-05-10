@@ -591,6 +591,35 @@ def test_missing_expected_api_compile_failure_can_be_red_proof() -> None:
         result,
         task_text="Add public API contract for StoreVisitor range scan methods.",
     )
+    assert "StoreVisitor" in canonical_red_proof(result)[0]["failure_excerpt"]
+
+
+def test_red_proof_keeps_diagnostic_lines_when_filtered_tail_is_generic() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./gradlew", ":core:test", "--tests", "RangeScanApiTest"],
+            exit_code=1,
+            stdout=(
+                "> Task :core:compileTestJava FAILED\n"
+                "/src/RangeScanApiTest.java:12: error: cannot find symbol\n"
+                "  symbol:   class StoreVisitor\n"
+                "  location: package com.example\n"
+                "100 errors\n"
+            ),
+            stderr="BUILD FAILED",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="> Task :core:compileTestJava FAILED",
+        stderr_excerpt="> Compilation failed; see the compiler error output for details.",
+        infra_error=None,
+    )
+
+    proof = canonical_red_proof(result)[0]
+
+    assert "StoreVisitor" in proof["failure_excerpt"]
+    assert "Compilation failed; see the compiler error output" in proof["failure_excerpt"]
 
 
 def test_syntax_compile_failure_is_not_expected_api_red_proof() -> None:

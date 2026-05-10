@@ -354,6 +354,12 @@ def build_implementer_prompt(
                 "Work in the provided worktree and preserve QA-authored test files unchanged.",
                 "Only edit paths allowed by the TaskContract; never edit forbidden paths.",
                 (
+                    "Treat the TaskContract objective as the scope boundary even when "
+                    "allowed_paths are broad. Do not implement variants, modules, or later "
+                    "plan slices that are outside this task objective just because their "
+                    "paths are allowed."
+                ),
+                (
                     "Keep source inspection targeted: use rg for symbol discovery and read "
                     "only the smallest relevant file ranges before editing."
                 ),
@@ -489,6 +495,11 @@ def build_implementer_context_capsule(
             "objective": task_contract.objective,
             "allowed_paths": _string_list(task_contract.allowed_paths),
             "forbidden_paths": _string_list(task_contract.forbidden_paths),
+            "scope_boundary": (
+                "Only implement behavior named by this task objective and its "
+                "acceptance_assertion_ids. Broad allowed_paths are path permissions, "
+                "not permission to complete future slices."
+            ),
             "acceptance_assertion_ids": acceptance,
             "verification_commands": task_contract.verification_commands,
             "required_procedures": _string_list(task_contract.required_procedures),
