@@ -247,8 +247,9 @@ def build_qa_author_prompt(
             (
                 "For range-scan or public API acceptance, compile tests and benchmarks "
                 "against the typed public API directly. Do not use Class.forName, "
-                "Method.invoke, InvocationHandler, Proxy, MethodHandle adapters, or "
-                "LambdaMetafactory to avoid compile-time API checks."
+                "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "
+                "MethodHandle adapters, LambdaMetafactory, class metadata assertions, or "
+                "annotation-presence checks to avoid compile-time API checks."
             ),
             (
                 "Before final submission, run the narrowest compile/test command for every "
@@ -812,8 +813,10 @@ def build_qa_quality_repair_prompt(
                     "assertions for payload contracts, and use a non-allocating cold benchmark "
                     "strategy that cannot exhaust a finite one-shot target pool during JMH "
                     "measurement. For range-scan API tests, import and compile against "
-                    "the typed public API directly; do not use Class.forName, Method.invoke, "
-                    "InvocationHandler, or Proxy to avoid compile-time API checks."
+                    "the typed public API directly; do not use Class.forName, "
+                    "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "
+                    "class metadata assertions, or annotation-presence checks to avoid "
+                    "compile-time API checks."
                 ),
                 (
                     "For JMH reflective invocation findings, remove reflection, Proxy, "

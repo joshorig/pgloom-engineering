@@ -137,9 +137,11 @@ Rules:
     It writes failing tests/fixtures only, so `allowed_paths` must be limited
     to PROJECT_CONTEXT.qa_write_paths, including metadata-declared
     test_support_paths when benchmark/test gate wiring is required.
-    It must name concrete test files/fixtures, required endpoint harnesses,
-    assertion style, benchmark variants, and module-local red commands when
-    PROJECT_CONTEXT.qa_policy_summary provides them.
+    It must name concrete test files/fixtures, required project-declared
+    interaction harnesses, assertion style, benchmark variants, and module-local
+    red commands when PROJECT_CONTEXT.qa_policy_summary provides them. Require
+    HTTP endpoint harnesses only when project metadata declares endpoint
+    acceptance.
   - `engineering.qa.verify.scrutiny` is a `role: "qa"` slice after every
     reviewer. It runs lint/build, feature-specific tests, benchmark smoke, and
     fresh-context code scrutiny. Its `allowed_paths` must also be limited to
