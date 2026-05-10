@@ -1,5 +1,8 @@
 import json
 import os
+from pathlib import Path
+
+from pytest import MonkeyPatch
 
 from pgloom_engineering.contracts import MilestoneContract
 from pgloom_engineering.live_role_eval import (
@@ -41,7 +44,7 @@ def test_live_role_plan_grade_rejects_unachievable_milestone_signoff() -> None:
     )
 
 
-def test_live_role_grade_rejects_allocating_range_benchmark(tmp_path) -> None:
+def test_live_role_grade_rejects_allocating_range_benchmark(tmp_path: Path) -> None:
     snapshots = tmp_path / "file-snapshots.json"
     benchmark_path = "benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/RangeScanBenchmark.java"
     conformance_path = (
@@ -109,6 +112,58 @@ def test_live_role_grade_rejects_allocating_range_benchmark(tmp_path) -> None:
         "implementation_allocating_benchmark_visitor",
         "implementation_range_benchmark_not_gated",
     }
+
+
+def test_live_role_qa_grade_rejects_payload_prefix_drift(tmp_path: Path) -> None:
+    snapshots = tmp_path / "file-snapshots.json"
+    conformance_path = (
+        "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/"
+        "RangeScanConformanceTest.java"
+    )
+    snapshots.write_text(
+        json.dumps(
+            {
+                conformance_path: {
+                    "excerpt": """
+                    class RangeScanConformanceTest {
+                        void prefixFilterMatchesAndRejectsKeysForSingleAndDoubleStores() {
+                            collectAscending(store, 0, 7, PREFIX_MATCH);
+                        }
+                        private static byte[] payloadFor(int slot) {
+                            byte[] payload = new byte[16];
+                            payload[0] = PREFIX_MATCH[0];
+                            payload[1] = PREFIX_MATCH[1];
+                            return payload;
+                        }
+                    }
+                    """
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    aggregate = {
+        "task_contracts": [
+            {
+                "input_contract": {"task_type": "engineering.qa.author"},
+                "output_contract": {
+                    "qa_author_contract": {
+                        "tests_added": ["RangeScanConformanceTest"],
+                        "red_proof": [{"cmd": ["./gradlew", "test"]}],
+                        "matrix_coverage": {"assert-prefix": ["RangeScanConformanceTest"]},
+                    }
+                },
+            },
+        ]
+    }
+
+    grade = _grade_qa_author(aggregate, {"file_snapshots_path": str(snapshots)})
+
+    assert grade["verdict"] == "revise"
+    assert any(
+        finding["code"] == "qa_key_prefix_drifted_to_payload_prefix"
+        for finding in grade["findings"]
+    )
 
 
 def test_live_role_grade_uses_latest_completed_role_output() -> None:
@@ -207,7 +262,10 @@ def test_live_role_codex_commands_use_full_access_sandbox() -> None:
     assert command[command.index("-C") + 1] == "{worktree}"
 
 
-def test_live_role_env_enables_role_context_isolation(tmp_path, monkeypatch) -> None:
+def test_live_role_env_enables_role_context_isolation(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
     monkeypatch.chdir(tmp_path)
 
     with _patched_env(

@@ -767,6 +767,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
+        "qa_semantic_range_key_prefix_not_payload_prefix",
         "qa_semantic_build_file_string_assertion",
     }
     codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
@@ -840,6 +841,12 @@ def build_qa_quality_repair_prompt(
                     "For range benchmark behavior gaps, add benchmark methods or parameters "
                     "that exercise ascending, descending, and prefix-filtered StoreVisitor "
                     "range scans through typed public APIs."
+                ),
+                (
+                    "For key-prefix findings, prove prefix semantics against logical keys "
+                    "or an explicit key-mapping API. Do not satisfy key-prefix acceptance "
+                    "by writing matching bytes into payload[0..] and asserting payload "
+                    "prefix filtering."
                 ),
                 (
                     "For existing smoke threshold findings, keep unrelated "

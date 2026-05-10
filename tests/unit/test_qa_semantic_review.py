@@ -884,6 +884,99 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
     ] == []
 
 
+def test_semantic_review_blocks_payload_prefix_when_key_prefix_required() -> None:
+    conformance_path = (
+        "changed-files/conformance-tests/src/test/java/com/example/"
+        "RangeScanConformanceTest.java"
+    )
+    findings = review_semantic_quality(
+        files={
+            conformance_path: """
+            class RangeScanConformanceTest {
+                private static final byte[] PREFIX_MATCH = new byte[] {0x11, 0x22};
+
+                void prefixFilterMatchesAndRejectsKeysForStores() {
+                    Map<Integer, byte[]> expectedPayloads = seedStore(store);
+                    assertEntriesEqual(List.of(entry(1, expectedPayloads.get(1))),
+                        collectAscending(store, 0, 7, PREFIX_MATCH));
+                }
+
+                private static byte[] payloadFor(int slot) {
+                    byte[] payload = new byte[16];
+                    byte[] prefix = slot <= 2 ? PREFIX_MATCH : new byte[] {0x33, 0x44};
+                    payload[0] = prefix[0];
+                    payload[1] = prefix[1];
+                    payload[2] = (byte) slot;
+                    return payload;
+                }
+            }
+            """,
+        },
+        plan_text="R-003 requires optional key-prefix filtering for range scans.",
+        task_text="Write QA tests for ascendingRange prefix behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_prefix_behavior": {
+                        "required": True,
+                        "key_prefix_filter_required": True,
+                    }
+                }
+            }
+        },
+    )
+
+    key_prefix = [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_key_prefix_not_payload_prefix"
+    ]
+    assert len(key_prefix) == 1
+    assert key_prefix[0].severity == "blocking"
+    assert key_prefix[0].details["payload_prefix_seed_detected"] is True
+
+
+def test_semantic_review_accepts_explicit_logical_key_prefix_coverage() -> None:
+    conformance_path = (
+        "changed-files/conformance-tests/src/test/java/com/example/"
+        "RangeScanConformanceTest.java"
+    )
+    findings = review_semantic_quality(
+        files={
+            conformance_path: """
+            class RangeScanConformanceTest {
+                void keyPrefixFilterUsesLogicalKeyMapping() {
+                    KeyIndex index = new FixedOneDimIndex(16);
+                    GenericLvc lvc = GenericLvcFactory.newGenericLvc(store, index);
+                    writeLogicalKey(lvc, "AB-001", payloadOne);
+                    writeLogicalKey(lvc, "CD-001", payloadTwo);
+                    assertVisitedKeys(List.of("AB-001"),
+                        collectAscendingByKeyPrefix(lvc, 0, 15, keyBytes("AB")));
+                }
+            }
+            """,
+        },
+        plan_text="R-003 requires optional key-prefix filtering for range scans.",
+        task_text="Write QA tests for ascendingRange prefix behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_prefix_behavior": {
+                        "required": True,
+                        "key_prefix_filter_required": True,
+                    }
+                }
+            }
+        },
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_key_prefix_not_payload_prefix"
+    ] == []
+
+
 def test_semantic_review_blocks_too_strict_range_benchmark_class_threshold() -> None:
     findings = review_semantic_quality(
         files={

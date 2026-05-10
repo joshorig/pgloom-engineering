@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -1534,9 +1535,24 @@ def _grade_qa_author(
                 ),
             )
         )
+    diff_path = output_evidence.get("git_diff_path")
+    diff_text = (
+        Path(str(diff_path)).read_text(encoding="utf-8", errors="replace")
+        if diff_path
+        else ""
+    )
     conformance = _snapshot_text(
         snapshots,
         "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeConformanceTest.java",
+    )
+    if not conformance:
+        conformance = _snapshot_text(
+            snapshots,
+            "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeScanConformanceTest.java",
+        )
+    journey = _snapshot_text(
+        snapshots,
+        "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeScanConsumerJourneyTest.java",
     )
     support = _snapshot_text(
         snapshots,
@@ -1560,7 +1576,66 @@ def _grade_qa_author(
                     ),
                 )
             )
+    prefix_surface = f"{conformance}\n{journey}\n{diff_text}"
+    if _range_prefix_looks_payload_based(prefix_surface):
+        findings.append(
+            _finding(
+                "blocking",
+                "qa_key_prefix_drifted_to_payload_prefix",
+                (
+                    "R-003 asks for key-prefix filtering, but accepted QA artifacts "
+                    "appear to seed matching bytes into payloads instead of proving "
+                    "prefix matching against logical keys or an explicit key mapping."
+                ),
+            )
+        )
     return _dimension("qa_author", "production_grade" if not findings else "revise", *findings)
+
+
+def _range_prefix_looks_payload_based(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    if "prefix" not in lowered:
+        return False
+    has_prefix_range_exercise = any(
+        marker in lowered
+        for marker in [
+            "ascendingrange",
+            "descendingrange",
+            "collectascending",
+            "collectdescending",
+        ]
+    )
+    if not has_prefix_range_exercise:
+        return False
+    key_signals = [
+        "keyprefix",
+        "key prefix",
+        "keyindex",
+        "genericlvc",
+        "longkeyindex",
+        "toslotid",
+        "logical key",
+        "logical-key",
+        "key bytes",
+        "keybytes",
+    ]
+    if any(signal in lowered for signal in key_signals):
+        return False
+    compact = re.sub(r"\s+", "", lowered)
+    payload_signals = [
+        "payload[0]=",
+        "payload[1]=",
+        ".putbyte(0,",
+        ".putbyte(1,",
+        "payload.putbyte(0,",
+        "payload.putbyte(1,",
+        "matchesprefix(buffer,payloadoffset,len,prefix)",
+        "matchesprefix(slab,payloadoffset,len,prefix)",
+        "buffer.getbyte(offset+i)!=prefix[i]",
+    ]
+    return any(signal in compact for signal in payload_signals) or "payloadprefix" in compact
 
 
 def _grade_implementation(

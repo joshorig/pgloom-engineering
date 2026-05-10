@@ -56,6 +56,7 @@ def review_semantic_quality(
     findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
+    findings.extend(_range_key_prefix_semantics_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
 
@@ -656,6 +657,97 @@ def _range_prefix_behavior_findings(
             ),
         )
     ]
+
+
+def _range_key_prefix_semantics_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_prefix_behavior"))
+    if not range_config.get("key_prefix_filter_required"):
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "prefix" not in normalized_context:
+        return []
+    if "key-prefix" not in normalized_context and "key prefix" not in normalized_context:
+        return []
+    candidate_files = {
+        path: text
+        for path, text in files.items()
+        if path.endswith(".java") and "test" in path.lower()
+    }
+    if not candidate_files:
+        return []
+    combined = "\n".join(candidate_files.values())
+    lowered = combined.lower()
+    has_prefix_range_exercise = any(
+        marker in lowered
+        for marker in [
+            "ascendingrange",
+            "descendingrange",
+            "collectascending",
+            "collectdescending",
+        ]
+    )
+    if not has_prefix_range_exercise:
+        return []
+    if "prefix" not in lowered:
+        return []
+    has_key_prefix_signal = any(
+        marker in lowered
+        for marker in [
+            "keyprefix",
+            "key prefix",
+            "keyindex",
+            "genericlvc",
+            "longkeyindex",
+            "toslotid",
+            "logical key",
+            "logical-key",
+            "key bytes",
+            "keybytes",
+        ]
+    )
+    payload_prefix_seed = _payload_prefix_seed_signal(combined)
+    if has_key_prefix_signal and not payload_prefix_seed:
+        return []
+    first_path = next(iter(candidate_files))
+    return [
+        SemanticFinding(
+            code="qa_semantic_range_key_prefix_not_payload_prefix",
+            severity="blocking",
+            message=(
+                "R-003 requires key-prefix filtering. QA tests must prove prefix "
+                "matching against logical keys or an explicit key mapping; seeding "
+                "matching bytes into payload[0..] only proves payload-prefix filtering."
+            ),
+            file=first_path,
+            line=_first_line_containing_any(
+                candidate_files[first_path],
+                ["ascendingRange", "descendingRange", "prefix"],
+            ),
+            details={"payload_prefix_seed_detected": payload_prefix_seed},
+        )
+    ]
+
+
+def _payload_prefix_seed_signal(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text.lower())
+    return any(
+        marker in compact
+        for marker in [
+            "payload[0]=",
+            "payload[1]=",
+            ".putbyte(0,",
+            ".putbyte(1,",
+            "payload.putbyte(0,",
+            "payload.putbyte(1,",
+            "matchesprefix(buffer,payloadoffset,len,prefix)",
+            "matchesprefix(slab,payloadoffset,len,prefix)",
+            "buffer.getbyte(offset+i)!=prefix[i]",
+        ]
+    )
 
 
 def _range_benchmark_smoke_threshold_findings(

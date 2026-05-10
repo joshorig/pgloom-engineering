@@ -142,6 +142,9 @@ projects:
           build_hook_tests:
             allow_build_file_string_assertions: false
             deterministic_gate_validation_required: true
+          range_prefix_behavior:
+            required: true
+            key_prefix_filter_required: true
 
   - name: trade-research-platform
     root: /Volumes/devssd/repos/apps/trade-research-platform
