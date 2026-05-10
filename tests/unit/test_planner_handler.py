@@ -13,6 +13,7 @@ from pgloom_engineering.roles.planner import (
     _canonicalize_plan_feature_id,
     _feature_scoped_verification_commands,
     _normalize_feature_scoped_plan_verification,
+    _plan_validation_error_summary,
 )
 
 
@@ -42,6 +43,25 @@ def test_canonicalize_plan_feature_id_uses_workflow_id() -> None:
 
     assert canonical.feature_id == "wf_live"
     assert plan.feature_id == "R-003"
+
+
+def test_plan_validation_error_summary_includes_actionable_codes() -> None:
+    summary = _plan_validation_error_summary(
+        [
+            {
+                "code": "slice_missing_acceptance_assertion",
+                "message": "impl must claim at least one acceptance assertion.",
+            },
+            {
+                "code": "acceptance_assertion_unclaimed",
+                "message": "Acceptance assertions have no claiming slice: benchmark smoke.",
+            },
+        ]
+    )
+
+    assert "slice_missing_acceptance_assertion" in summary
+    assert "impl must claim" in summary
+    assert "acceptance_assertion_unclaimed" in summary
 
 
 def test_apply_replan_supersession_marks_corrective_plan() -> None:

@@ -187,10 +187,16 @@ class PlannerHandler:
             qa_write_paths=qa_write_paths,
         )
         if plan_row["status"] != "valid":
+            validation_summary = _plan_validation_error_summary(
+                plan_row["validation_errors"]
+            )
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.plan_contract_invalid",
-                blocker_reason="plan contract failed validation",
+                blocker_reason=(
+                    "plan contract failed validation"
+                    + (f": {validation_summary}" if validation_summary else "")
+                ),
                 result={
                     "plan_contract_id": plan_row["id"],
                     "errors": plan_row["validation_errors"],
@@ -1293,6 +1299,28 @@ def _accepted_plan_summary(contract: PlanContract) -> str:
             *[f"- {item}" for item in contract.acceptance_test_matrix[:8]],
         ]
     )
+
+
+def _plan_validation_error_summary(errors: object, *, limit: int = 4) -> str:
+    if not isinstance(errors, list):
+        return ""
+    parts: list[str] = []
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        code = str(error.get("code") or "").strip()
+        message = str(error.get("message") or "").strip()
+        if code and message:
+            parts.append(f"{code}: {message}")
+        elif code:
+            parts.append(code)
+        elif message:
+            parts.append(message)
+        if len(parts) >= limit:
+            break
+    if len(errors) > limit:
+        parts.append(f"+{len(errors) - limit} more")
+    return "; ".join(parts)
 
 
 def _qa_command_memory(contract: PlanContract) -> str:
