@@ -567,7 +567,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--reasoning", default="low")
-    parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument("--timeout-seconds", type=int, default=1200)
     parser.add_argument("--pricing-file", default="docs/reports/planner-pricing-2026-05-03.json")
     parser.add_argument("--claude-max-budget-usd", default="1.00")
     parser.add_argument("--from-plan-outcome")

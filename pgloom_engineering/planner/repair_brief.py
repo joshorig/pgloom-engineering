@@ -78,7 +78,7 @@ def _codes(
 def _action_for_code(code: str) -> str:
     actions = {
         "qa_paths_not_restricted": (
-            "Restrict every engineering.qa.author and engineering.qa.verify allowed_paths "
+            "Restrict every engineering.qa.author and split QA validator allowed_paths "
             "entry to registered QA/test roots only."
         ),
         "qa_author_paths_not_restricted": (
@@ -86,18 +86,20 @@ def _action_for_code(code: str) -> str:
             "before every implementer."
         ),
         "qa_verify_paths_not_restricted": (
-            "Make the QA verify slice write only registered QA/test roots and schedule it "
-            "after every reviewer."
+            "Make QA scrutiny/user-test slices write only registered QA/test roots "
+            "and schedule them after every reviewer."
         ),
         "qa_verify_not_after_reviewer": (
-            "Move engineering.qa.verify after all reviewer slices and depend on the final reviewer."
+            "Move engineering.qa.verify.scrutiny after all reviewer slices and make "
+            "engineering.qa.verify.usertest depend on scrutiny."
         ),
         "missing_qa_author": (
             "Add one engineering.qa.author slice before implementers for failing tests/fixtures."
         ),
         "missing_qa_verify": (
-            "Add one engineering.qa.verify slice after reviewers with smoke and full "
-            "regression commands."
+            "Add engineering.qa.verify.scrutiny after reviewers with lint/build, "
+            "feature-specific tests, and benchmark-smoke commands; add "
+            "engineering.qa.verify.usertest after scrutiny."
         ),
         "implementer_claims_qa_paths": (
             "Remove registered QA/test roots from implementer allowed_paths; implementers may "
@@ -106,14 +108,15 @@ def _action_for_code(code: str) -> str:
         "invalid_role_task_type": (
             "Use the canonical role/task_type mapping: designer engineering.design, "
             "implementer engineering.implement, reviewer engineering.review, qa "
-            "engineering.qa.author or engineering.qa.verify, historian engineering.history."
+            "engineering.qa.author, engineering.qa.verify.scrutiny, or "
+            "engineering.qa.verify.usertest, historian engineering.history."
         ),
         "small_feature_too_many_reviewers": (
             "Compact small plans to design, qa.author, one or two implementers, one reviewer, "
-            "and qa.verify. Do not add separate finalization or historian slices."
+            "and split QA verification. Do not add separate finalization or historian slices."
         ),
         "small_feature_too_many_slices": (
-            "Reduce small or single-surface plans to 4-6 slices unless the feature has clear "
+            "Reduce small or single-surface plans to 5-7 slices unless the feature has clear "
             "cross-module risk."
         ),
         "critic_failed_check_without_finding": (
@@ -126,7 +129,8 @@ def _action_for_code(code: str) -> str:
         ),
         "planner_broad_gate_without_module_local_command": (
             "Replace broad-only slice verification with module-local build/test commands while "
-            "keeping smoke/regression gates for final QA verification."
+            "keeping smoke/benchmark-smoke gates for feature QA verification. Full regression "
+            "belongs to project-scheduled periodic validation."
         ),
         "planner_non_verification_command": (
             "Remove grep/cat/echo/list-only/dry-run commands as verification proof; use commands "
@@ -144,6 +148,11 @@ def _action_for_code(code: str) -> str:
             "For benchmark acceptance, make the QA author slice enumerate all configured "
             "benchmark variants and generate coverage for each variant."
         ),
+        "qa_benchmark_output_path_not_allowed": (
+            "If the QA author slice is expected to author JMH or benchmark artifacts, include "
+            "metadata-declared benchmark_roots such as benchmarks/src/jmh/java/ in allowed_paths "
+            "or remove benchmark artifacts from QA expected_outputs."
+        ),
         "planner_qa_expected_outputs_too_generic": (
             "Replace generic QA author expected_outputs with concrete test files, fixtures, "
             "or benchmark artifacts."
@@ -151,6 +160,23 @@ def _action_for_code(code: str) -> str:
         "planner_implementation_outputs_too_generic": (
             "Replace generic implementer expected_outputs with concrete APIs, classes, files, "
             "or behavior artifacts."
+        ),
+        "milestone_validator_signoff_unachievable": (
+            "Repair milestone gates so every scrutiny_and_usertest milestone includes both "
+            "engineering.qa.verify.scrutiny and engineering.qa.verify.usertest slice ids. "
+            "For a small or medium feature, prefer one terminal validation milestone "
+            "containing all slices instead of lifecycle-phase milestones."
+        ),
+        "milestone_signoff_unachievable": (
+            "Repair milestone gates so every scrutiny_and_usertest milestone includes both "
+            "engineering.qa.verify.scrutiny and engineering.qa.verify.usertest slice ids. "
+            "For a small or medium feature, prefer one terminal validation milestone "
+            "containing all slices instead of lifecycle-phase milestones."
+        ),
+        "milestone_signoff_incomplete": (
+            "Add the missing split validator slice ids to the milestone requiring signoff, "
+            "or collapse the feature into one terminal validation milestone containing all "
+            "slices."
         ),
     }
     return actions.get(code, "")

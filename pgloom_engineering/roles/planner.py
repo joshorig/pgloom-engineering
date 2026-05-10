@@ -116,6 +116,10 @@ class PlannerHandler:
                 item.model_dump(mode="json") if hasattr(item, "model_dump") else item
                 for item in exc.iterations
             ]
+            invalid_proposals = [
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                for item in getattr(exc, "invalid_proposals", [])
+            ]
             record_recovery_action(
                 RecoveryDecisionContract(
                     feature_id=str(task.get("workflow_id")),
@@ -127,14 +131,17 @@ class PlannerHandler:
                     max_attempts=get_settings().planner_max_iterations,
                 ),
                 status="open",
-                outcome=json.dumps({"iterations": iterations}, default=str),
+                outcome=json.dumps(
+                    {"iterations": iterations, "invalid_proposals": invalid_proposals},
+                    default=str,
+                ),
                 database_url=database_url,
             )
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.planner_council_exhausted",
                 blocker_reason="planner council exhausted",
-                result={"iterations": iterations},
+                result={"iterations": iterations, "invalid_proposals": invalid_proposals},
             )
         _record_token_savior_for_planner_calls(
             feature_id=str(task.get("workflow_id")),
@@ -158,10 +165,20 @@ class PlannerHandler:
     ) -> HandlerResult:
         database_url = payload.get("database_url")
         contract = _canonicalize_plan_feature_id(contract, task)
+        contract = _apply_replan_supersession(contract, payload)
+        contract = _apply_corrective_slice_scope(contract, payload)
+        project = _project_from_payload(payload, contract.project, database_url)
+        qa_write_paths = (
+            _project_metadata_qa_write_paths(project.metadata, project.root)
+            if project is not None
+            else None
+        )
+        project_metadata = project.metadata if project is not None else {}
         plan_row = create_plan_contract(
             contract,
             planner_task_id=task.get("id"),
             database_url=database_url,
+            qa_write_paths=qa_write_paths,
         )
         if plan_row["status"] != "valid":
             return HandlerResult(
@@ -176,7 +193,6 @@ class PlannerHandler:
 
         created: dict[str, str] = {}
         deferred: list[dict[str, str]] = []
-        project = _project_from_payload(payload, contract.project, database_url)
         for task_slice in contract.task_slices:
             if project is not None and not role_enabled(project, task_slice.role):
                 deferred.append(
@@ -219,12 +235,13 @@ class PlannerHandler:
                 workflow_id=contract.feature_id,
                 domain="engineering",
                 task_type=task_slice.task_type,
-                slot="qa-engineer" if task_slice.role == "qa" else task_slice.role,
+                slot=_slot_for_slice(task_slice.role, task_slice.task_type),
                 payload={
                     "feature_id": contract.feature_id,
                     "plan_contract_id": plan_row["id"],
                     "plan_contract_hash": plan_row["contract_hash"],
                     "task_slice_id": task_slice.slice_id,
+                    "milestone_id": task_slice.milestone_id,
                     "project": payload.get("project") or contract.project,
                     "allow_unregistered_project": payload.get("allow_unregistered_project", False),
                     "requires_multi_agent_review": True,
@@ -249,12 +266,24 @@ class PlannerHandler:
                     "plan_contract_id": plan_row["id"],
                     "task_id": child["id"],
                     "task_slice_id": task_slice.slice_id,
+                    "milestone_id": task_slice.milestone_id,
+                    "acceptance_assertion_ids": task_slice.acceptance_assertion_ids,
+                    "grading_criteria": task_slice.grading_criteria,
+                    "validation_strategy": task_slice.validation_strategy,
+                    "context_budget": task_slice.context_budget,
+                    "model_route_hint": task_slice.model_route_hint,
                 },
                 allowed_paths=task_slice.allowed_paths,
                 forbidden_paths=task_slice.forbidden_paths,
                 dependencies=depends_on,
                 expected_outputs=task_slice.expected_outputs,
-                verification_commands=task_slice.verification_commands,
+                verification_commands=_feature_scoped_verification_commands(
+                    task_slice.verification_commands,
+                    plan=contract,
+                    task_objective=task_slice.objective,
+                    project_metadata=project_metadata,
+                ),
+                required_procedures=task_slice.required_procedures,
                 handoff_requirements=["produce TaskResultContract"],
             )
             upsert_task_contract(child["id"], task_contract, database_url=database_url)
@@ -279,6 +308,88 @@ class PlannerHandler:
         )
 
 
+def _slot_for_slice(role: str, task_type: str) -> str:
+    if task_type == "engineering.qa.verify.scrutiny":
+        return "qa-scrutiny"
+    if task_type == "engineering.qa.verify.usertest":
+        return "qa-usertest"
+    if role == "qa":
+        return "qa-engineer"
+    return role
+
+
+def _feature_scoped_verification_commands(
+    commands: list[list[str]],
+    *,
+    plan: PlanContract,
+    task_objective: str,
+    project_metadata: dict[str, Any],
+) -> list[list[str]]:
+    qa = project_metadata.get("qa") if isinstance(project_metadata, dict) else None
+    rules = qa.get("feature_smoke_commands") if isinstance(qa, dict) else None
+    if not isinstance(rules, list) or not rules:
+        return commands
+
+    feature_text = " ".join(
+        [
+            plan.problem_statement,
+            task_objective,
+            " ".join(plan.acceptance_assertions),
+            " ".join(plan.acceptance_test_matrix),
+            " ".join(plan.design_contract.acceptance_tests),
+        ]
+    ).lower()
+    scoped: list[list[str]] = []
+    for command in commands:
+        replacement = _feature_smoke_replacement(command, rules, feature_text)
+        scoped.extend(replacement or [command])
+    return _dedupe_commands(scoped)
+
+
+def _feature_smoke_replacement(
+    command: list[str],
+    rules: list[Any],
+    feature_text: str,
+) -> list[list[str]]:
+    command_text = " ".join(command)
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        match_terms = [
+            str(term).lower()
+            for term in rule.get("match_terms", [])
+            if isinstance(term, str)
+        ]
+        if match_terms and not any(term in feature_text for term in match_terms):
+            continue
+        replaces = [str(item) for item in rule.get("replaces", []) if isinstance(item, str)]
+        if replaces and not any(item in command_text for item in replaces):
+            continue
+        raw_commands = rule.get("commands")
+        if not isinstance(raw_commands, list):
+            continue
+        parsed = [
+            [str(part) for part in item]
+            for item in raw_commands
+            if isinstance(item, list) and item
+        ]
+        if parsed:
+            return parsed
+    return []
+
+
+def _dedupe_commands(commands: list[list[str]]) -> list[list[str]]:
+    seen: set[tuple[str, ...]] = set()
+    deduped: list[list[str]] = []
+    for command in commands:
+        key = tuple(command)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(command)
+    return deduped
+
+
 def _canonicalize_plan_feature_id(
     contract: PlanContract,
     task: dict[str, Any],
@@ -287,6 +398,143 @@ def _canonicalize_plan_feature_id(
     if not workflow_id or contract.feature_id == workflow_id:
         return contract
     return contract.model_copy(update={"feature_id": workflow_id})
+
+
+def _apply_replan_supersession(
+    contract: PlanContract,
+    payload: dict[str, Any],
+) -> PlanContract:
+    if contract.supersedes_plan_id and contract.supersession_rationale:
+        return contract
+    context = payload.get("replan_context")
+    if not isinstance(context, dict) or context.get("mode") != "corrective_slice":
+        return contract
+    active_plan_id = context.get("active_plan_contract_id")
+    if not active_plan_id:
+        return contract
+    blocker_code = str(context.get("blocker_code") or "engineering.blocked")
+    blocker_reason = str(context.get("blocker_reason") or "blocked corrective slice")
+    return contract.model_copy(
+        update={
+            "supersedes_plan_id": str(active_plan_id),
+            "supersession_rationale": (
+                "Corrective-slice recovery supersedes the prior active plan after "
+                f"{blocker_code}: {blocker_reason}"
+            ),
+        }
+    )
+
+
+def _apply_corrective_slice_scope(
+    contract: PlanContract,
+    payload: dict[str, Any],
+) -> PlanContract:
+    context = payload.get("replan_context")
+    if not isinstance(context, dict) or context.get("mode") != "corrective_slice":
+        return contract
+    blocker_code = str(context.get("blocker_code") or "")
+    if blocker_code not in {
+        "engineering.implementation_verification_failed",
+        "engineering.implementation_path_violation",
+        "engineering.implementer_contract_invalid",
+        "engineering.invalid_handler_output",
+        "engineering.qa_handoff_missing",
+        "engineering.qa_semantic_quality_failed",
+        "engineering.qa_usertest_contract_invalid",
+        "engineering.review_rejected",
+        "engineering.qa_verify_failed",
+        "engineering.qa_usertest_failed",
+    }:
+        return contract
+    allowed_task_types = _corrective_allowed_task_types(context)
+    kept = [
+        task_slice
+        for task_slice in contract.task_slices
+        if task_slice.task_type in allowed_task_types
+    ]
+    if not kept:
+        return contract
+
+    kept_ids = {task_slice.slice_id for task_slice in kept}
+    scoped_slices = [
+        task_slice.model_copy(
+            update={
+                "depends_on": [
+                    dependency for dependency in task_slice.depends_on if dependency in kept_ids
+                ]
+            }
+        )
+        for task_slice in kept
+    ]
+    scoped_milestones = [
+        milestone.model_copy(
+            update={
+                "slice_ids": [
+                    slice_id for slice_id in milestone.slice_ids if slice_id in kept_ids
+                ]
+            }
+        )
+        for milestone in contract.milestones
+    ]
+    return contract.model_copy(
+        update={
+            "task_slices": scoped_slices,
+            "milestones": scoped_milestones,
+        }
+    )
+
+
+def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
+    if str(context.get("blocker_code") or "") == "engineering.qa_semantic_quality_failed":
+        return {
+            "engineering.qa.author",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
+    if str(context.get("blocker_code") or "") == "engineering.qa_handoff_missing":
+        return {
+            "engineering.qa.author",
+            "engineering.implement",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
+    allowed = {
+        "engineering.implement",
+        "engineering.review",
+        "engineering.qa.verify.scrutiny",
+        "engineering.qa.verify.usertest",
+    }
+    blocker_code = str(context.get("blocker_code") or "")
+    if blocker_code not in {
+        "engineering.implementation_verification_failed",
+        "engineering.implementation_path_violation",
+    }:
+        return allowed
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    qa_owned_signals = [
+        "qa-authored",
+        "qa author",
+        "benchmarks/src/jmh",
+        "benchmarks/build.gradle",
+        "missing smoke benchmark result",
+        "wrongmethodtypeexception",
+        "classnotfoundexception",
+        "forbidden benchmark",
+        "forbidden qa",
+    ]
+    if any(signal in context_text for signal in qa_owned_signals):
+        return {
+            "engineering.qa.author",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
+    return allowed
 
 
 def _build_council(
@@ -472,7 +720,7 @@ def _build_project_context(
         qa_smoke_path=root.joinpath("qa/smoke.sh"),
         qa_regression_path=root.joinpath("qa/regression.sh"),
         relevant_paths=list(metadata.get("relevant_paths") or []),
-        qa_write_paths=list(metadata.get("qa_write_paths") or discover_qa_write_paths(root)),
+        qa_write_paths=_project_metadata_qa_write_paths(metadata, root),
         qa_policy_summary=planner_qa_policy_summary(metadata),
     ), None
 
@@ -520,7 +768,7 @@ def _merge_project_context_metadata(
                 dict.fromkeys(
                     [
                         *context.qa_write_paths,
-                        *list(metadata.get("qa_write_paths") or []),
+                        *_project_metadata_qa_write_paths(metadata, context.project_root),
                     ]
                 )
             ),
@@ -530,6 +778,27 @@ def _merge_project_context_metadata(
             },
         }
     )
+
+
+def _project_metadata_qa_write_paths(
+    metadata: dict[str, Any],
+    project_root: Path,
+) -> list[str]:
+    paths = [str(item) for item in metadata.get("qa_write_paths") or [] if isinstance(item, str)]
+    qa = metadata.get("qa")
+    if isinstance(qa, dict):
+        for key in [
+            "test_roots",
+            "browser_test_roots",
+            "benchmark_roots",
+            "test_support_paths",
+        ]:
+            raw = qa.get(key)
+            if isinstance(raw, list):
+                paths.extend(str(item) for item in raw if isinstance(item, str))
+    if not paths:
+        paths = discover_qa_write_paths(project_root)
+    return list(dict.fromkeys(path.rstrip("/") + "/" for path in paths if path.strip()))
 
 
 def _adaptive_panelist_count(
@@ -754,7 +1023,8 @@ def _guardrail_memory(contract: PlanContract) -> str:
     return "\n".join(
         [
             "Use two QA phases: engineering.qa.author before implementers and "
-            "engineering.qa.verify after reviewers.",
+            "engineering.qa.verify.scrutiny plus engineering.qa.verify.usertest "
+            "after reviewers.",
             "QA write paths stay restricted to tests/ and qa/fixtures/.",
             "Implementer slices must not claim QA write paths.",
             f"recent_qa_paths: {', '.join(qa_paths) or 'none'}",

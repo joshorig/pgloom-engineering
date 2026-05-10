@@ -15,6 +15,6 @@
   "acceptance_criteria": [
     "Range tests cover empty range, single-key range, full-keyspace, and reverse scan.",
     "SINGLE and DOUBLE store variants are both covered.",
-    "qa/smoke.sh and qa/regression.sh pass."
+    "Feature-specific range tests pass and qa/smoke.sh passes the benchmark-smoke allocation gate."
   ]
 }

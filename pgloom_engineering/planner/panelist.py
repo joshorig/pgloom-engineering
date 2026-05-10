@@ -64,7 +64,11 @@ class PanelistRunner:
             payload = extract_json(raw)
             candidate = PlanContract.model_validate(payload)
         except Exception as exc:
-            raise CandidateInvalid(raw, str(exc)) from exc
+            raise CandidateInvalid(
+                raw,
+                str(exc),
+                model_usage_id=getattr(response, "model_usage_id", None),
+            ) from exc
         return candidate, raw, getattr(response, "model_usage_id", None)
 
     def _build_prompt(

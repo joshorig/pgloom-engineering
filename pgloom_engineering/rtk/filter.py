@@ -22,8 +22,8 @@ class FilteredSubprocessResult(BaseModel):
     tokens_after: int = Field(ge=0)
     tokens_saved: int = Field(ge=0)
     reduction_ratio: float = Field(ge=0, le=1)
-    artifact_id_unfiltered_stdout: int | None = None
-    artifact_id_unfiltered_stderr: int | None = None
+    artifact_id_unfiltered_stdout: str | None = None
+    artifact_id_unfiltered_stderr: str | None = None
 
 
 def filter_subprocess_result(
@@ -137,8 +137,8 @@ def _result(
     method: Literal["rtk", "passthrough", "rtk_unavailable"],
     tokens_before: int,
     encoder_name: str,
-    artifact_stdout: int | None,
-    artifact_stderr: int | None,
+    artifact_stdout: str | None,
+    artifact_stderr: str | None,
 ) -> FilteredSubprocessResult:
     tokens_after = count_tokens(stdout + stderr, encoder_name=encoder_name)
     tokens_saved = max(0, tokens_before - tokens_after)
@@ -162,8 +162,8 @@ def _register_originals(
     database_url: str | None,
     workflow_id: str | None,
     task_id: str | None,
-) -> tuple[int | None, int | None]:
-    if database_url is None or workflow_id is None:
+) -> tuple[str | None, str | None]:
+    if workflow_id is None:
         return None, None
     stdout_id = _register_stream(
         result.stdout,
@@ -192,18 +192,21 @@ def _register_stream(
     database_url: str,
     workflow_id: str,
     task_id: str | None,
-) -> int | None:
+) -> str | None:
     if not value:
         return None
-    row = register_artifact(
-        workflow_id=workflow_id,
-        task_id=task_id,
-        artifact_type=f"subprocess-{stream}",
-        content=value.encode("utf-8", errors="replace"),
-        metadata={"argv": result.argv, "exit_code": result.exit_code, "stream": stream},
-        database_url=database_url,
-    )
-    return int(row["id"]) if row.get("id") is not None else None
+    try:
+        row = register_artifact(
+            workflow_id=workflow_id,
+            task_id=task_id,
+            artifact_type=f"subprocess-{stream}",
+            content=value.encode("utf-8", errors="replace"),
+            metadata={"argv": result.argv, "exit_code": result.exit_code, "stream": stream},
+            database_url=database_url,
+        )
+    except Exception:
+        return None
+    return str(row["id"]) if row.get("id") is not None else None
 
 
 def _record(
@@ -215,29 +218,32 @@ def _record(
     role: str | None,
     result: SubprocessResult,
 ) -> None:
-    if database_url is None or feature_id is None:
+    if feature_id is None:
         return
     command = result.argv[0] if result.argv else ""
-    record_token_savior_usage(
-        TokenSaviorUsage(
-            feature_id=feature_id,
-            workflow_id=workflow_id,
-            task_id=task_id,
-            profile_name=role,
-            input_tokens_original=filtered.tokens_before,
-            input_tokens_after_savior=filtered.tokens_after,
-            tokens_saved=filtered.tokens_saved,
-            reduction_ratio=filtered.reduction_ratio,
-            metadata={
-                "method": filtered.filter_method if filtered.filter_method != "rtk" else "rtk",
-                "role": role,
-                "command": command,
-                "artifact_id_unfiltered_stdout": filtered.artifact_id_unfiltered_stdout,
-                "artifact_id_unfiltered_stderr": filtered.artifact_id_unfiltered_stderr,
-            },
-        ),
-        database_url=database_url,
-    )
+    try:
+        record_token_savior_usage(
+            TokenSaviorUsage(
+                feature_id=feature_id,
+                workflow_id=workflow_id,
+                task_id=task_id,
+                profile_name=role,
+                input_tokens_original=filtered.tokens_before,
+                input_tokens_after_savior=filtered.tokens_after,
+                tokens_saved=filtered.tokens_saved,
+                reduction_ratio=filtered.reduction_ratio,
+                metadata={
+                    "method": filtered.filter_method if filtered.filter_method != "rtk" else "rtk",
+                    "role": role,
+                    "command": command,
+                    "artifact_id_unfiltered_stdout": filtered.artifact_id_unfiltered_stdout,
+                    "artifact_id_unfiltered_stderr": filtered.artifact_id_unfiltered_stderr,
+                },
+            ),
+            database_url=database_url,
+        )
+    except Exception:
+        return
 
 
 def _truncate_to_token_budget(text: str, budget: int, *, encoder_name: str) -> str:

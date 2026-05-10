@@ -34,7 +34,26 @@ Required JSON shape:
       "forbidden_paths": ["..."],
       "depends_on": [],
       "expected_outputs": ["DesignContract"],
-      "verification_commands": [["./qa/smoke.sh"]]
+      "verification_commands": [["./qa/smoke.sh"]],
+      "acceptance_assertion_ids": ["assertion-1"],
+      "grading_criteria": ["..."],
+      "validation_strategy": {"scrutiny": ["..."], "usertest": ["..."]},
+      "context_budget": 4000,
+      "model_route_hint": "default",
+      "required_procedures": ["..."],
+      "milestone_id": "m1"
+    }
+  ],
+  "acceptance_assertions": ["assertion-1"],
+  "milestones": [
+    {
+      "milestone_id": "m1",
+      "name": "Milestone 1",
+      "slice_ids": ["design-feature-contract"],
+      "acceptance_assertions": ["assertion-1"],
+      "validation_contract": {"scrutiny": true, "usertest": true},
+      "depends_on": [],
+      "signoff_policy": "scrutiny_and_usertest"
     }
   ],
   "acceptance_test_matrix": [
@@ -61,13 +80,21 @@ Rules:
   endpoint harness, structured assertion, benchmark variant, required gate, and
   avoid-pattern guidance in QA author objectives/outputs when the feature touches
   those domains.
+- If benchmark acceptance must be enforced by an existing smoke/benchmark-smoke gate,
+  include metadata-declared benchmark roots and any metadata-declared
+  test_support_paths needed to wire that benchmark into the gate. A benchmark file
+  that is never run by the required gate is not valid acceptance evidence.
+- Behavioral requirements such as prefix/filter/query semantics need matching and
+  non-matching behavior tests. Inventory-only checks for method or route presence
+  are not sufficient QA coverage.
 - Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
   `historian`. Do not emit `worker`, `developer`, `review`, or `test`.
 - Use the canonical role/task_type mapping:
   - `designer` -> `engineering.design`
   - `implementer` -> `engineering.implement`
   - `reviewer` -> `engineering.review`
-  - `qa` -> `engineering.qa.author` or `engineering.qa.verify`
+  - `qa` -> `engineering.qa.author`, `engineering.qa.verify.scrutiny`, or
+    `engineering.qa.verify.usertest`
   - `historian` -> `engineering.history`
 - `affected_surfaces` must be non-empty and should include every repo area the
   plan will touch.
@@ -75,9 +102,22 @@ Rules:
   `parallel_candidates`, `council_decides`, or `single`.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
+- Every task slice must claim at least one `acceptance_assertion_ids` entry, and
+  every acceptance assertion must be claimed by at least one slice.
+- Emit executable milestone contracts. A milestone dependency locks every slice
+  in the downstream milestone until the prerequisite milestone is signed off.
+  Therefore a milestone with `signoff_policy: "scrutiny_and_usertest"` must
+  include both `engineering.qa.verify.scrutiny` and
+  `engineering.qa.verify.usertest` slices in that same milestone. Do not place
+  design/QA-author-only work in a validator-signoff milestone that implementation
+  depends on; that creates an impossible gate because validators cannot run
+  before implementation and review exist.
 - Prefer module-local verification commands for QA author and implementer slices.
-  Use broad `qa/smoke.sh` and `qa/regression.sh` as final gates or extra gate
-  evidence, not as the only proof for module-specific work.
+  Feature QA scrutiny should run lint/build commands, feature-specific tests, and
+  benchmark smoke gates such as `qa/smoke.sh` or `:benchmarks:jmhSmokeCheck`.
+  Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
+  `:benchmarks:jmh` sweeps as a per-feature validation blocker; those are
+  periodic or broad project gates.
 - Do not use `grep`, `cat`, `echo`, list-only, or dry-run commands as the only
   verification evidence for any slice.
 - Dependency IDs must refer only to earlier slices.
@@ -91,13 +131,19 @@ Rules:
 - Use two QA phases:
   - `engineering.qa.author` is a `role: "qa"` slice before every implementer.
     It writes failing tests/fixtures only, so `allowed_paths` must be limited
-    to PROJECT_CONTEXT.qa_write_paths.
+    to PROJECT_CONTEXT.qa_write_paths, including metadata-declared
+    test_support_paths when benchmark/test gate wiring is required.
     It must name concrete test files/fixtures, required endpoint harnesses,
     assertion style, benchmark variants, and module-local red commands when
     PROJECT_CONTEXT.qa_policy_summary provides them.
-  - `engineering.qa.verify` is a `role: "qa"` slice after every reviewer. It
-    runs smoke plus full regression/full-suite verification. Its `allowed_paths`
-    must also be limited to PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify.scrutiny` is a `role: "qa"` slice after every
+    reviewer. It runs lint/build, feature-specific tests, benchmark smoke, and
+    fresh-context code scrutiny. Its `allowed_paths` must also be limited to
+    PROJECT_CONTEXT.qa_write_paths.
+  - `engineering.qa.verify.usertest` is a `role: "qa"` slice after scrutiny
+    unless project metadata declares `usertest_harness.kind = "none"`. It
+    launches the app/service or CLI harness, records replay evidence, or records
+    the metadata-authorized skip.
 - Implementer slices must depend on the QA author slice and must not include
   PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
 - Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
@@ -107,16 +153,20 @@ Rules:
   invariant/CRC or equivalent invariant-failure, and failure/partial acceptance
   entries. Do not add snapshot/CRC/journal acceptance entries for unrelated
   features.
-- Compactness pressure: for small or single-surface roadmap items, prefer 4-6
+- Compactness pressure: for small or single-surface roadmap items, prefer 6
   slices total: design, QA author, 1-2 implementation slices, one reviewer
-  slice, and QA verify. Do not add a separate historian or finalization slice
-  unless the roadmap item explicitly requires repo-memory or release-note
-  updates.
+  slice, QA scrutiny, and QA user-test. Do not add a separate historian or
+  finalization slice unless the roadmap item explicitly requires repo-memory or
+  release-note updates.
+- Code-heavy hot-path features that touch multiple backends or variants should
+  not collapse all implementation into one broad slice. Prefer 2-4 smaller
+  implementer slices split by API/core surface and backend/variant surface so
+  implementer sessions read less context and reviewers get narrower diffs.
 - Wide/system features should not be collapsed into one broad implementer.
   Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
   lifecycle/overflow/invariants when those concerns exist.
-- Include at least one reviewer slice, one QA author slice, and one QA verify
-  slice.
+- Include at least one reviewer slice, one QA author slice, one QA scrutiny
+  slice, and one QA user-test slice unless metadata authorizes user-test skip.
 - If PRIOR_ITERATION contains a repair_brief, satisfy every item in
   `required_repairs` before optimizing for extra coverage. Deterministic
   validator and critic checks are authoritative.

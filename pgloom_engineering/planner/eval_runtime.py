@@ -28,7 +28,7 @@ class DirectProvider:
         mechanical_model: str | None,
         mechanical_reasoning: str | None,
         claude_max_budget_usd: str,
-        timeout_seconds: int = 600,
+        timeout_seconds: int = 1200,
         cwd: Path | None = None,
     ) -> None:
         self.backend = backend

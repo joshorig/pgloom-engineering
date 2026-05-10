@@ -53,6 +53,19 @@ Combined: **~50% cost reduction on revise features, ~30% on accept‑iter‑1**.
 - DB schema migrations.
 - Implementer / Reviewer / QA Engineer handlers.
 
+**Architecture constraints from the autonomy plan.**
+
+- User-testing is usually wall-clock dominated rather than token dominated. Do
+  not measure success only by model cost; record queue, lock wait, launch,
+  interaction, verification, and teardown time.
+- Treat `engineering.qa.verify.scrutiny` and
+  `engineering.qa.verify.usertest` as separate roles/slots. Planner economy work
+  must not collapse them back into one `qa.verify` phase.
+- Every worker run and repair phase must emit telemetry suitable for
+  `engineering_worker_runs`: wall-clock, cost, tokens, Token Savior savings,
+  RTK/log-filter savings, model route, blocker, commands, artifact ids, and
+  handoff id.
+
 ---
 
 ## 3. Required surfaces
@@ -202,6 +215,19 @@ For each captured run: replay it 6 times — baseline (all flags off), each item
 
 Emit `docs/reports/iter2-economy-baseline-YYYY-MM-DD.md` with a per‑feature table and aggregates. The eval is the gate for this brief — every item must pass independently and the combined run must not regress quality versus baseline.
 
+Add wall-clock fields to the replay report even when model usage is the primary
+optimization target:
+
+- queued seconds
+- model seconds
+- deterministic validation seconds
+- repair/retry seconds
+- user-test lock wait seconds where present
+- user-test launch/exercise/teardown seconds where present
+
+These fields are required because user-test validators can dominate elapsed
+time while contributing relatively little token spend.
+
 ---
 
 ## 4. Tests
@@ -282,6 +308,15 @@ Emit `docs/reports/iter2-economy-baseline-YYYY-MM-DD.md` with a per‑feature ta
 - **production_grade preemption is risky if production_grade is too lenient.** Today it returns `accept (100)` on every passing run in the corpus. If we make it the only critic, any blind spot in production_grade becomes a permanent blind spot. The conservative posture: invoke the model critic on every Nth accepted iteration (configurable, default 1 in 10) as a sanity check; record the disagreement rate over time. Add this as a separate flag `planner_production_grade_critic_sample_rate: float = 0.1`.
 - **Cost recording attribution.** Every change in this brief should produce `engineering_token_savior_usage` rows with a distinct `metadata.method` so the dashboard can attribute savings cleanly. Methods to introduce: `iter_2_diff_mode`, `iter_2_consolidator_scoped`, `iter_2_single_panelist`, `model_routing_haiku`, `production_grade_preempted_critic`.
 - **Wall clock improves too.** R006's 10 calls took ~31 minutes wall clock. Cutting iter‑2 calls and routing consolidator/critic to Haiku (which is faster) likely halves that. Record the elapsed time alongside cost in the eval report.
+- **Worker telemetry is mandatory.** Economy wins should be visible through
+  `engineering_worker_runs`, not only ad hoc reports. Record model route,
+  reasoning level, per-call and cumulative cost, input/output/reasoning/cache
+  tokens, Token Savior savings, RTK savings, commands, artifacts, and handoff
+  id for each planner/panelist/consolidator/critic run.
+- **Keep validator slots separate.** Scrutiny can be token-heavy because of
+  tests and code-review agents. User-test is usually lock/wall-clock-heavy
+  because it launches real systems. Model routing and concurrency settings
+  should be tuned independently for `qa-scrutiny` and `qa-usertest`.
 
 ---
 

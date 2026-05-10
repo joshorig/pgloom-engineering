@@ -133,6 +133,24 @@ def test_path_violations_accepts_project_benchmark_roots_when_allowed() -> None:
     )
 
 
+def test_path_violations_accepts_benchmark_root_when_task_requires_jmh() -> None:
+    task = _task_contract().model_copy(
+        update={
+            "objective": "Write failing JMH benchmark coverage.",
+            "expected_outputs": ["benchmarks/src/jmh/java/com/example/RestoreBenchmark.java"],
+        }
+    )
+
+    assert (
+        path_violations(
+            ["benchmarks/src/jmh/java/com/example/RestoreBenchmark.java"],
+            task,
+            {"qa": {"benchmark_roots": ["benchmarks/src/jmh/java"]}},
+        )
+        == []
+    )
+
+
 def test_path_violations_accepts_project_test_support_paths() -> None:
     task = _task_contract()
 

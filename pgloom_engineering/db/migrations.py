@@ -17,6 +17,9 @@ REQUIRED_TABLES = {
     "engineering_recovery_actions",
     "engineering_projects",
     "engineering_project_context_capsules",
+    "engineering_worker_runs",
+    "engineering_operator_interventions",
+    "engineering_qa_signoffs",
 }
 
 

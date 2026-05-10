@@ -23,6 +23,10 @@ class ReviewerProvider:
         del profile, kwargs
         payload = json.loads(prompt)
         assert payload["task_result_contract"]["changed_files"] == ["src/App.java"]
+        assert any(
+            "Do not block solely because QA-owned commands" in instruction
+            for instruction in payload["instructions"]
+        )
         return SimpleNamespace(
             text=json.dumps(
                 {
@@ -80,6 +84,43 @@ def test_normalize_review_payload_accepts_wrappers() -> None:
     assert normalize_review_payload({"review_verdict_contract": {"verdict": "approve"}}) == {
         "verdict": "approve"
     }
+
+
+def test_normalize_review_payload_maps_revise_and_structured_findings() -> None:
+    normalized = normalize_review_payload(
+        {
+            "verdict": "reject",
+            "findings": [{"severity": "blocking", "message": "bad"}],
+        }
+    )
+
+    assert normalized["verdict"] == "coder_repair"
+    assert '"severity": "blocking"' in normalized["findings"][0]
+
+
+def test_reviewer_accepts_payload_contract_with_reject_alias() -> None:
+    result = ReviewerHandler().handle(
+        {
+            "id": "review-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.review",
+            "payload": {
+                "review_verdict_contract": {
+                    "feature_id": "feature-1",
+                    "task_id": "review-1",
+                    "panel": ["automated-reviewer"],
+                    "verdict": "reject",
+                    "rationale": "Implementation needs repair.",
+                    "findings": [{"severity": "blocking", "message": "bug"}],
+                }
+            },
+        }
+    )
+
+    assert result.status == "done"
+    contract = result.result["review_verdict_contract"]
+    assert contract["verdict"] == "coder_repair"
+    assert '"severity": "blocking"' in contract["findings"][0]
 
 
 def _patch_live_contracts(monkeypatch: Any) -> None:

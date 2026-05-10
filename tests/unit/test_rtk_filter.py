@@ -50,6 +50,29 @@ def test_rtk_truncates_to_token_budget_when_configured(monkeypatch) -> None:  # 
     assert filtered.tokens_after <= 20
 
 
+def test_rtk_registers_artifacts_with_default_database_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls: list[dict[str, object]] = []
+
+    def fake_register_artifact(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"id": f"artifact-{len(calls)}"}
+
+    monkeypatch.setattr("pgloom_engineering.rtk.filter.register_artifact", fake_register_artifact)
+
+    filtered = filter_subprocess_result(
+        _result(stdout="build output", stderr="warning"),
+        policy=FilterPolicy(enabled=False),
+        record_in=None,
+        workflow_id="wf_1",
+        task_id="task_1",
+    )
+
+    assert filtered.artifact_id_unfiltered_stdout == "artifact-1"
+    assert filtered.artifact_id_unfiltered_stderr == "artifact-2"
+    assert calls[0]["database_url"] is None
+    assert calls[0]["workflow_id"] == "wf_1"
+
+
 def _result(
     *,
     argv: list[str] | None = None,

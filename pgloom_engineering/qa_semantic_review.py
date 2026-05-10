@@ -48,6 +48,7 @@ def review_semantic_quality(
     findings.extend(_spring_endpoint_harness_findings(files, conventions))
     findings.extend(_structured_payload_assertion_findings(files, conventions))
     findings.extend(_jmh_cold_restore_findings(files, context, conventions))
+    findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
 
@@ -355,6 +356,45 @@ def _build_file_hook_findings(
                 ),
                 file=path,
                 line=_first_line_containing_any(text, ["build.gradle", "pom.xml", "qa/smoke.sh"]),
+            )
+        )
+    return findings
+
+
+def _jmh_reflective_invocation_findings(
+    files: dict[str, str],
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    jmh_config = _mapping(conventions.get("jmh_benchmark"))
+    severity: Severity = (
+        "warning" if jmh_config.get("allow_reflective_invocation") else "blocking"
+    )
+    findings: list[SemanticFinding] = []
+    reflective_markers = [
+        "LambdaMetafactory",
+        "MethodHandles.lookup()",
+        ".unreflect(",
+        ".getMethod(",
+        "Proxy.newProxyInstance(",
+        "Method.invoke(",
+    ]
+    for path, text in files.items():
+        if not _looks_like_jmh_benchmark(path, text):
+            continue
+        if not any(marker in text for marker in reflective_markers):
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_jmh_reflective_invocation",
+                severity=severity,
+                message=(
+                    "Generated JMH smoke benchmarks should call the feature through typed "
+                    "interfaces, not reflection, Proxy, or LambdaMetafactory; reflective "
+                    "harnesses can fail during JMH setup or measure the harness instead of "
+                    "the feature."
+                ),
+                file=path,
+                line=_first_line_containing_any(text, reflective_markers),
             )
         )
     return findings

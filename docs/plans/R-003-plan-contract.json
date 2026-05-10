@@ -1,0 +1,499 @@
+{
+  "contract_version": "engineering.contracts.v1",
+  "feature_id": "R-003",
+  "project": "lvc-standard",
+  "problem_statement": "The LVC store API lacks a zero-allocation range-scan capability. Callers must either iterate the full keyspace or use Consumer boxing, both of which violate the allocation-free hot-path invariant. R-003 adds StoreVisitor-based ascending and descending range scans for SINGLE and DOUBLE stores with optional prefix filtering via DirectBuffer, covering empty, single-key, full-keyspace, and reverse-scan scenarios.",
+  "assumptions": [
+    "StoreVisitor.java stub and default LvcStore range method signatures already exist in the worktree from prior QA-author work; the implementer must provide allocation-free concrete SINGLE and DOUBLE store overrides.",
+    "Prefix filtering uses a DirectBuffer key prefix to avoid Consumer boxing; no secondary indexes or sorted-by-value queries are introduced.",
+    "The existing JMH benchmark harness supports new @Benchmark methods for range variants without build-system changes beyond method additions.",
+    "All concrete SINGLE and DOUBLE store classes are reachable under core/src/main/java/ or a sibling module visible via the multi-module Gradle build.",
+    "The alloc gate in qa/smoke.sh exercises JMH benchmark output and will detect any visitor hot-path allocations introduced by the range scan.",
+    "Empty-range guard (fromSlot > toSlot) must be an explicit no-op; the default implementations do not already enforce this."
+  ],
+  "design_contract": {
+    "public_api": "interface StoreVisitor (@FunctionalInterface) { void visit(int slotId); } in com.joshorig.ull.lvc.api; LvcStore declares: default void ascendingRange(int fromSlotInclusive, int toSlotInclusive, StoreVisitor visitor), default void ascendingRange(int fromSlotInclusive, int toSlotInclusive, DirectBuffer prefix, StoreVisitor visitor), default void descendingRange(int fromSlotInclusive, int toSlotInclusive, StoreVisitor visitor), default void descendingRange(int fromSlotInclusive, int toSlotInclusive, DirectBuffer prefix, StoreVisitor visitor). Concrete SINGLE and DOUBLE store classes override these with allocation-free seqlock-safe iteration.",
+    "ownership_boundaries": "core/ owns StoreVisitor interface and LvcStore API default stubs. Concrete SINGLE and DOUBLE store classes own the range-scan hot path. conformance-tests/ owns cross-variant behavioural contracts via RangeApiTestSupport. benchmarks/ owns JMH range-scan benchmark methods for single/double and direct/mmap variants.",
+    "concurrency_protocol": "Range scans read each slot under the existing per-slot seqlock; iteration order is slot-id ascending or descending; no global lock is acquired. Prefix-filter comparison is performed inline before calling visitor.visit(); no internal buffer reference is held across the visit() call boundary.",
+    "persistence_protocol": "Range scan is strictly read-only; it must not write, checkpoint, advance any durable cursor, or mutate journal state during or after a scan.",
+    "hard_constraints": [
+      "Zero allocations on the visitor hot path after @Setup / after store construction; verified by smoke.sh alloc gate.",
+      "No Consumer<>, lambda captures of heap objects, or autoboxing in the scan loop.",
+      "No sorted-by-value queries, composite keys, or secondary indexes.",
+      "Prefix filtering must use DirectBuffer index-based comparison only; no byte[] copies.",
+      "ascendingRange and descendingRange must be inclusive on both bounds.",
+      "Empty range (fromSlot > toSlot) must be an explicit no-op yielding zero visits and no exception."
+    ],
+    "forbidden_alternatives": [
+      "Consumer<Integer> or BiConsumer callbacks on the hot path.",
+      "Collecting slot IDs into a List or array before visiting.",
+      "Introducing a sorted secondary index for range queries.",
+      "Using reflection or dynamic dispatch inside the scan loop.",
+      "Calling DirectBuffer.getBytes() into a heap array inside the prefix-filter path.",
+      "Advancing any durable cursor or journal position during a scan."
+    ],
+    "acceptance_tests": [
+      "Empty range (fromSlot > toSlot) on SINGLE and DOUBLE stores yields 0 visits with no exception.",
+      "Single-key range (fromSlot == toSlot) on SINGLE and DOUBLE stores yields exactly 1 visit with the correct slot ID.",
+      "Full-keyspace ascending range on SINGLE and DOUBLE stores visits all slot IDs in strictly ascending order.",
+      "Full-keyspace descending range on SINGLE and DOUBLE stores visits all slot IDs in strictly descending order.",
+      "Prefix-filter ascending range on SINGLE and DOUBLE stores skips non-matching slots with no Consumer boxing or heap allocation.",
+      "smoke.sh alloc gate reports zero allocations for range-scan JMH benchmark methods on single/double direct/mmap variants.",
+      "qa/smoke.sh and qa/regression.sh both exit 0 after implementation."
+    ]
+  },
+  "affected_surfaces": [
+    "core/src/main/java/",
+    "core/src/test/java/",
+    "conformance-tests/src/test/java/",
+    "benchmarks/",
+    "docs/",
+    "repo-memory/",
+    "qa/"
+  ],
+  "implementation_topology": "single",
+  "acceptance_test_matrix": [
+    "Empty range (fromSlot > toSlot) on SINGLE store yields 0 visits with no exception",
+    "Empty range (fromSlot > toSlot) on DOUBLE store yields 0 visits with no exception",
+    "Single-key range (fromSlot == toSlot) on SINGLE store yields exactly 1 visit with the correct slot ID",
+    "Single-key range (fromSlot == toSlot) on DOUBLE store yields exactly 1 visit with the correct slot ID",
+    "Full-keyspace ascending range on SINGLE store visits all slot IDs in strictly ascending order",
+    "Full-keyspace ascending range on DOUBLE store visits all slot IDs in strictly ascending order",
+    "Full-keyspace descending range on SINGLE store visits all slot IDs in strictly descending order",
+    "Full-keyspace descending range on DOUBLE store visits all slot IDs in strictly descending order",
+    "Prefix-filter ascending range on SINGLE store skips non-matching slots with no Consumer boxing or heap allocation",
+    "Prefix-filter ascending range on DOUBLE store skips non-matching slots with no Consumer boxing or heap allocation",
+    "smoke.sh alloc gate is green for range-scan JMH benchmark methods on single, double, direct, and mmap variants",
+    "qa/smoke.sh exits 0 covering allocation, benchmark_smoke, and unit_regression gates",
+    "qa/regression.sh exits 0 covering benchmark_full for all range-scan variants"
+  ],
+  "acceptance_assertions": [
+    "AA-001: Empty range (fromSlot > toSlot) on SINGLE store yields 0 visits with no exception",
+    "AA-002: Empty range (fromSlot > toSlot) on DOUBLE store yields 0 visits with no exception",
+    "AA-003: Single-key range (fromSlot == toSlot) on SINGLE store yields exactly 1 visit with the correct slot ID",
+    "AA-004: Single-key range (fromSlot == toSlot) on DOUBLE store yields exactly 1 visit with the correct slot ID",
+    "AA-005: Full-keyspace ascending range on SINGLE store visits all slot IDs in strictly ascending order",
+    "AA-006: Full-keyspace ascending range on DOUBLE store visits all slot IDs in strictly ascending order",
+    "AA-007: Full-keyspace descending range on SINGLE store visits all slot IDs in strictly descending order",
+    "AA-008: Full-keyspace descending range on DOUBLE store visits all slot IDs in strictly descending order",
+    "AA-009: Prefix-filter ascending range on SINGLE store skips non-matching slots with no Consumer boxing or heap allocation",
+    "AA-010: Prefix-filter ascending range on DOUBLE store skips non-matching slots with no Consumer boxing or heap allocation",
+    "AA-011: smoke.sh alloc gate is green for range-scan JMH benchmark methods on single, double, direct, and mmap variants",
+    "AA-012: qa/smoke.sh exits 0 covering allocation, benchmark_smoke, and unit_regression gates",
+    "AA-013: qa/regression.sh exits 0 covering benchmark_full for all range-scan variants"
+  ],
+  "task_slices": [
+    {
+      "slice_id": "design",
+      "role": "designer",
+      "task_type": "engineering.design",
+      "objective": "Lock the StoreVisitor @FunctionalInterface contract in core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java and the four range-scan method signatures in LvcStore.java; document the zero-allocation contract, inclusive-bound semantics, empty-range guard, and DirectBuffer prefix-filter protocol in docs/Stores.md; record the R-003 API decision (int slotId over Integer, DirectBuffer over byte[]) in repo-memory/DECISIONS.md.",
+      "allowed_paths": [
+        "docs/",
+        "repo-memory/",
+        "core/src/main/java/com/joshorig/ull/lvc/api/LvcStore.java",
+        "core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java"
+      ],
+      "forbidden_paths": [
+        "core/src/test/",
+        "conformance-tests/src/test/",
+        "tests/",
+        "qa/fixtures/",
+        "benchmarks/"
+      ],
+      "depends_on": [],
+      "expected_outputs": [
+        "DesignContract recorded in this plan",
+        "docs/Stores.md updated with range-scan API section covering empty-range, prefix-filter, and allocation rules",
+        "repo-memory/DECISIONS.md entry for R-003 API choices (StoreVisitor shape, DirectBuffer over byte[], forbidden alternatives)"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":core:compileJava"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010"
+      ],
+      "grading_criteria": [
+        "StoreVisitor @FunctionalInterface exists and compiles in com.joshorig.ull.lvc.api",
+        "LvcStore declares all four range-scan method signatures with correct parameter types",
+        "docs/Stores.md includes range-scan API section documenting empty-range guard, inclusive bounds, DirectBuffer prefix-filter, and zero-allocation constraint",
+        "repo-memory/DECISIONS.md has R-003 entry with rationale for int slotId over Integer and DirectBuffer over byte[]",
+        "./gradlew :core:compileJava exits 0 with no warnings on the new API surface"
+      ],
+      "validation_strategy": {
+        "approach": "compile_and_doc_review",
+        "compile_gate": "./gradlew :core:compileJava exits 0",
+        "doc_check": "docs/Stores.md and repo-memory/DECISIONS.md reviewed in reviewer slice for completeness"
+      },
+      "required_procedures": [
+        "Lock StoreVisitor @FunctionalInterface in core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java before writing documentation",
+        "Add four range-scan default method signatures to LvcStore.java with empty-range guard javadoc before closing slice",
+        "Update docs/Stores.md with range-scan API section before closing slice",
+        "Record R-003 API decision in repo-memory/DECISIONS.md"
+      ],
+      "milestone_id": "M1"
+    },
+    {
+      "slice_id": "qa-author",
+      "role": "qa",
+      "task_type": "engineering.qa.author",
+      "objective": "Write failing JUnit tests in conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/ covering empty range, single-key range, full-keyspace ascending, and descending (reverse) scan for both SINGLE and DOUBLE store variants; extend RangeApiTestSupport.java with a reusable visitedSlots() StoreVisitor collector that accumulates slot IDs without boxing inside visit(); add a prefix-filter scenario asserting no Consumer boxing; verify all new tests compile but fail red before impl-primary.",
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "conformance-tests/src/test/",
+        "conformance-tests/src/test/java/",
+        "core/src/test/",
+        "core/src/test/java/"
+      ],
+      "forbidden_paths": [
+        "core/src/main/",
+        "benchmarks/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "depends_on": ["design"],
+      "expected_outputs": [
+        "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeApiSingleStoreTest.java with failing test cases for AA-001, AA-003, AA-005, AA-007, AA-009",
+        "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeApiDoubleStoreTest.java with failing test cases for AA-002, AA-004, AA-006, AA-008, AA-010",
+        "conformance-tests/src/test/java/com/joshorig/ull/lvc/conformance/RangeApiTestSupport.java updated with visitedSlots() collector helper accumulating slot IDs without boxing",
+        "core/src/test/java/com/joshorig/ull/lvc/api/LvcStoreApiDefaultsTest.java extended with range-method default-impl and StoreVisitor interface assertions"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiSingleStoreTest", "--info"],
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiDoubleStoreTest", "--info"],
+        ["./gradlew", ":core:test", "--tests", "com.joshorig.ull.lvc.api.LvcStoreApiDefaultsTest", "--info"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010"
+      ],
+      "grading_criteria": [
+        "All new test classes compile without errors",
+        "All new test cases fail red before impl-primary (not compile-error red; assertion-failure red)",
+        "visitedSlots() collector in RangeApiTestSupport does not box int inside visit()",
+        "Assertions AA-001 through AA-010 each have at least one dedicated failing test case",
+        "Prefix-filter test explicitly asserts no Consumer boxing occurs on the hot path"
+      ],
+      "validation_strategy": {
+        "approach": "red_green",
+        "red_gate": "Tests must fail with assertion or method-not-implemented error before implementation; confirm test count matches expected failing cases",
+        "boxing_check": "visitedSlots() uses primitive int accumulation; no Integer autoboxing inside visit()"
+      },
+      "required_procedures": [
+        "Write all test cases before running any verification commands",
+        "Confirm each test fails red with a descriptive assertion error (not a missing-class compile error) by running the module-local test commands",
+        "Do not implement any production logic in this slice",
+        "Verify visitedSlots() collector does not use Integer or List<Integer> internally"
+      ],
+      "milestone_id": "M2"
+    },
+    {
+      "slice_id": "impl-primary",
+      "role": "implementer",
+      "task_type": "engineering.implement",
+      "objective": "Implement zero-allocation ascending and descending range scans with empty-range guard in the concrete SINGLE and DOUBLE store classes under core/src/main/java/; implement prefix-filter overloads using inline DirectBuffer index-based comparison with no byte[] copies; add JMH @Benchmark methods in benchmarks/ for range-scan covering single, double, direct, and mmap variants; update repo-memory/ROADMAP.md to mark R-003 in-progress.",
+      "allowed_paths": [
+        "core/src/main/java/",
+        "benchmarks/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "forbidden_paths": [
+        "core/src/test/",
+        "conformance-tests/src/test/",
+        "tests/",
+        "qa/fixtures/"
+      ],
+      "depends_on": ["qa-author"],
+      "expected_outputs": [
+        "Concrete SINGLE store ascendingRange and descendingRange overrides with empty-range guard in core/src/main/java/",
+        "Concrete DOUBLE store ascendingRange and descendingRange overrides with empty-range guard in core/src/main/java/",
+        "Prefix-filter overloads for both store variants using DirectBuffer index-based comparison with no byte[] copies",
+        "JMH @Benchmark methods for range scan covering single, double, direct, and mmap variants in benchmarks/",
+        "repo-memory/ROADMAP.md R-003 status updated to in-progress"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":core:compileJava"],
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiSingleStoreTest"],
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiDoubleStoreTest"],
+        ["./gradlew", ":core:test", "--tests", "com.joshorig.ull.lvc.api.LvcStoreApiDefaultsTest"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010", "AA-011"
+      ],
+      "grading_criteria": [
+        "./gradlew :conformance-tests:test passes all RangeApiSingleStoreTest and RangeApiDoubleStoreTest cases",
+        "./gradlew :core:test passes LvcStoreApiDefaultsTest",
+        "Explicit fromSlot > toSlot guard present in all four method overrides for both store variants",
+        "No Consumer<>, lambda captures of heap objects, or autoboxing in any scan loop (verified in review)",
+        "DirectBuffer prefix-filter uses index-based comparison only; no byte[] copies (verified in review)",
+        "JMH benchmark method names follow project naming convention for smoke.sh alloc gate discovery"
+      ],
+      "validation_strategy": {
+        "approach": "test_green",
+        "module_gate": "./gradlew :core:compileJava and :conformance-tests:test (all RangeApi tests pass)",
+        "allocation_gate_deferred": "smoke.sh alloc gate executed in qa-scrutiny"
+      },
+      "required_procedures": [
+        "Locate concrete SINGLE and DOUBLE store classes via Gradle subproject source sets before writing overrides",
+        "Use DirectBuffer index-based comparison only in prefix-filter path; never call getBytes() into a heap array",
+        "Cap seqlock retry or delegate to the existing store retry protocol; do not spin unbounded",
+        "Verify JMH benchmark method names follow project naming convention by comparing against existing benchmark class patterns before submitting",
+        "Add explicit fromSlot > toSlot no-op guard in all four method overrides before running verification",
+        "Reconcile any stub conflicts from prior worktree work to avoid duplicate method compilation errors"
+      ],
+      "milestone_id": "M2"
+    },
+    {
+      "slice_id": "review",
+      "role": "reviewer",
+      "task_type": "engineering.review",
+      "objective": "Review the concrete SINGLE and DOUBLE store range-scan implementations in core/src/main/java/ and JMH benchmark methods in benchmarks/ for allocation correctness, seqlock safety, inclusive-bound handling, empty-range guard, and prefix-filter DirectBuffer protocol; verify no boxing, no internal buffer reference leaks, and no forbidden alternatives; issue a pass/fail verdict per acceptance assertion AA-001 through AA-011.",
+      "allowed_paths": [
+        "core/src/main/java/",
+        "core/src/test/java/",
+        "conformance-tests/src/test/java/",
+        "benchmarks/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "forbidden_paths": [
+        "tests/",
+        "qa/fixtures/"
+      ],
+      "depends_on": ["impl-primary"],
+      "expected_outputs": [
+        "ReviewReport with explicit pass/fail verdict per acceptance assertion AA-001 through AA-011",
+        "Annotated list of any allocation risks, seqlock violations, or bound-handling defects found",
+        "Confirmation that prefix-filter overloads release all DirectBuffer references before returning and do not hold references across the visit() call boundary"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":core:compileJava"],
+        ["./gradlew", ":conformance-tests:test"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010", "AA-011"
+      ],
+      "grading_criteria": [
+        "Explicit pass/fail verdict issued for every assertion AA-001 through AA-011",
+        "Allocation risks documented with source location evidence",
+        "No unresolved seqlock violations or inclusive-bound off-by-one defects left open",
+        "DirectBuffer reference lifecycle confirmed clean across all prefix-filter code paths",
+        "Reverse-scan (descending) inclusive-bound at toSlotInclusive explicitly verified to be correct"
+      ],
+      "validation_strategy": {
+        "approach": "fresh_context_review",
+        "focus_areas": [
+          "allocation correctness (no Consumer boxing, no autoboxing, no heap array copies)",
+          "seqlock safety (per-slot reads under existing seqlock; no global lock; retry protocol respected)",
+          "inclusive-bound handling (both fromSlot and toSlot inclusive; descending off-by-one check)",
+          "empty-range guard (fromSlot > toSlot explicit no-op in all four overrides)",
+          "DirectBuffer prefix-filter protocol (index-based comparison; no reference held past visit())"
+        ]
+      },
+      "required_procedures": [
+        "Perform fresh-context read of all modified files in core/src/main/java/ before issuing verdicts",
+        "Issue explicit pass/fail per assertion AA-001 through AA-011 in the ReviewReport",
+        "Flag any DirectBuffer reference that escapes the visit() call boundary as a blocking defect",
+        "Verify reverse-scan inclusive-bound off-by-one is not present by tracing the loop termination condition",
+        "Confirm JMH benchmark method names will be discoverable by the smoke.sh alloc gate"
+      ],
+      "milestone_id": "M3"
+    },
+    {
+      "slice_id": "qa-scrutiny",
+      "role": "qa",
+      "task_type": "engineering.qa.verify.scrutiny",
+      "objective": "Run full Gradle test suites for core and conformance-tests modules, then execute ./qa/smoke.sh and ./qa/regression.sh; perform fresh-context allocation scrutiny of the range-scan hot path in core/src/main/java/ for boxing and seqlock correctness; record smoke gate terminal output as evidence in qa/fixtures/range-scan-smoke-evidence.txt.",
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "conformance-tests/src/test/",
+        "conformance-tests/src/test/java/",
+        "core/src/test/",
+        "core/src/test/java/"
+      ],
+      "forbidden_paths": [
+        "core/src/main/",
+        "benchmarks/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "depends_on": ["review"],
+      "expected_outputs": [
+        "ScrutinyReport with pass/fail for each required gate (smoke, regression)",
+        "Fresh-context allocation analysis of the range-scan hot path with no new findings",
+        "qa/fixtures/range-scan-smoke-evidence.txt containing full smoke gate terminal output"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":core:test"],
+        ["./gradlew", ":conformance-tests:test"],
+        ["./qa/smoke.sh"],
+        ["./qa/regression.sh"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-011", "AA-012", "AA-013"
+      ],
+      "grading_criteria": [
+        "./qa/smoke.sh exits 0 with alloc gate, benchmark_smoke, and unit_regression gates all green",
+        "./qa/regression.sh exits 0 with benchmark_full covering all range-scan variants",
+        "qa/fixtures/range-scan-smoke-evidence.txt written with full smoke gate terminal output",
+        "Fresh-context allocation analysis of hot path confirms no boxing or heap allocation introduced"
+      ],
+      "validation_strategy": {
+        "approach": "gate_execution",
+        "gates": ["./qa/smoke.sh", "./qa/regression.sh"],
+        "module_gates": ["./gradlew :core:test", "./gradlew :conformance-tests:test"],
+        "evidence_artifact": "qa/fixtures/range-scan-smoke-evidence.txt"
+      },
+      "required_procedures": [
+        "Execute ./qa/smoke.sh first and capture full terminal output before checking exit code",
+        "Write captured smoke gate terminal output to qa/fixtures/range-scan-smoke-evidence.txt",
+        "Execute ./qa/regression.sh and confirm it covers benchmark_full for all range-scan variants",
+        "Perform fresh-context static allocation analysis of the range-scan hot path after running gates"
+      ],
+      "milestone_id": "M4"
+    },
+    {
+      "slice_id": "qa-usertest",
+      "role": "qa",
+      "task_type": "engineering.qa.verify.usertest",
+      "objective": "Exercise ascending and descending range scans on SINGLE and DOUBLE stores via the Gradle test harness; record terminal output for all four scan scenarios (empty range, single-key, full-keyspace, reverse) and prefix-filter behaviour for both store variants; store replay evidence in qa/fixtures/range-scan-usertest-evidence.txt and record a pass/fail verdict per acceptance assertion AA-001 through AA-010 and AA-012.",
+      "allowed_paths": [
+        "tests/",
+        "qa/fixtures/",
+        "conformance-tests/src/test/",
+        "conformance-tests/src/test/java/",
+        "core/src/test/",
+        "core/src/test/java/"
+      ],
+      "forbidden_paths": [
+        "core/src/main/",
+        "benchmarks/",
+        "docs/",
+        "repo-memory/"
+      ],
+      "depends_on": ["qa-scrutiny"],
+      "expected_outputs": [
+        "qa/fixtures/range-scan-usertest-evidence.txt with terminal output showing each scan scenario on both SINGLE and DOUBLE stores",
+        "Recorded pass/fail verdict per acceptance assertion AA-001 through AA-010 and AA-012 with evidence line references"
+      ],
+      "verification_commands": [
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiSingleStoreTest", "--info"],
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.joshorig.ull.lvc.conformance.RangeApiDoubleStoreTest", "--info"],
+        ["./qa/smoke.sh"]
+      ],
+      "acceptance_assertion_ids": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010", "AA-012"
+      ],
+      "grading_criteria": [
+        "All four scan scenarios (empty range, single-key, full-keyspace, reverse) exercised on both SINGLE and DOUBLE stores",
+        "Prefix-filter behaviour recorded for both store variants",
+        "qa/fixtures/range-scan-usertest-evidence.txt written with captured terminal output",
+        "Explicit pass/fail verdict recorded per assertion AA-001 through AA-010 and AA-012 with evidence line references"
+      ],
+      "validation_strategy": {
+        "approach": "harness_replay",
+        "harness": "./gradlew :conformance-tests:test --info",
+        "evidence_artifact": "qa/fixtures/range-scan-usertest-evidence.txt",
+        "scenario_coverage": ["empty_range_single", "empty_range_double", "single_key_single", "single_key_double", "full_keyspace_ascending_single", "full_keyspace_ascending_double", "full_keyspace_descending_single", "full_keyspace_descending_double", "prefix_filter_single", "prefix_filter_double"]
+      },
+      "required_procedures": [
+        "Run conformance test classes with --info flag to capture per-test output",
+        "Record scenario-by-scenario output for all four scan types on both store variants",
+        "Write captured output to qa/fixtures/range-scan-usertest-evidence.txt before issuing verdicts",
+        "Record explicit pass/fail verdict per assertion AA-001 through AA-010 and AA-012 with line references into the evidence file"
+      ],
+      "milestone_id": "M4"
+    }
+  ],
+  "milestones": [
+    {
+      "milestone_id": "M1",
+      "name": "API Locked",
+      "slice_ids": ["design"],
+      "acceptance_assertions": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010"
+      ],
+      "validation_contract": {
+        "compile_gate": "./gradlew :core:compileJava exits 0",
+        "doc_required": [
+          "docs/Stores.md range-scan API section present",
+          "repo-memory/DECISIONS.md R-003 entry present"
+        ]
+      },
+      "depends_on": [],
+      "signoff_policy": "scrutiny_and_usertest"
+    },
+    {
+      "milestone_id": "M2",
+      "name": "Red-Green Gate",
+      "slice_ids": ["qa-author", "impl-primary"],
+      "acceptance_assertions": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010", "AA-011"
+      ],
+      "validation_contract": {
+        "red_gate": "All qa-author test cases fail red before impl-primary runs",
+        "green_gate": "./gradlew :conformance-tests:test (all RangeApi tests) and :core:test (LvcStoreApiDefaultsTest) pass after impl-primary"
+      },
+      "depends_on": ["M1"],
+      "signoff_policy": "scrutiny_and_usertest"
+    },
+    {
+      "milestone_id": "M3",
+      "name": "Review Gate",
+      "slice_ids": ["review"],
+      "acceptance_assertions": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010", "AA-011"
+      ],
+      "validation_contract": {
+        "review_required": "ReviewReport with pass/fail per assertion AA-001 through AA-011 and no unresolved blocking defects"
+      },
+      "depends_on": ["M2"],
+      "signoff_policy": "scrutiny_and_usertest"
+    },
+    {
+      "milestone_id": "M4",
+      "name": "QA Complete",
+      "slice_ids": ["qa-scrutiny", "qa-usertest"],
+      "acceptance_assertions": [
+        "AA-001", "AA-002", "AA-003", "AA-004", "AA-005",
+        "AA-006", "AA-007", "AA-008", "AA-009", "AA-010",
+        "AA-011", "AA-012", "AA-013"
+      ],
+      "validation_contract": {
+        "smoke_gate": "./qa/smoke.sh exits 0",
+        "regression_gate": "./qa/regression.sh exits 0",
+        "evidence_artifacts": [
+          "qa/fixtures/range-scan-smoke-evidence.txt",
+          "qa/fixtures/range-scan-usertest-evidence.txt"
+        ],
+        "verdict_required": "Pass/fail verdict recorded per assertion AA-001 through AA-013"
+      },
+      "depends_on": ["M3"],
+      "signoff_policy": "scrutiny_and_usertest"
+    }
+  ],
+  "risk_register": [
+    "Concrete SINGLE/DOUBLE store class locations may differ from core/src/main/java/ root — implementer must locate them via Gradle subproject source sets before writing overrides.",
+    "Prefix-filter DirectBuffer comparison may inadvertently call getBytes() into a heap array — implementer must use index-based comparison methods exclusively.",
+    "Seqlock retry loop in range scan may spin under heavy concurrent writer contention — implementer must cap retries or delegate to the existing store retry protocol.",
+    "JMH benchmark methods for range scan may not be discovered by smoke.sh if naming deviates from project convention — verify naming against existing benchmark class patterns before submitting.",
+    "Empty-range guard (fromSlot > toSlot) may be omitted causing a backward scan or ArrayIndexOutOfBounds — must be explicitly tested in qa-author and verified in review.",
+    "Default LvcStore range method stubs from prior worktree work may conflict with new concrete overrides — implementer must reconcile stubs to avoid duplicate method compilation errors.",
+    "Reverse-scan (descending) inclusive-bound off-by-one at toSlotInclusive is a common inversion error — conformance tests must assert the exact final slot is included."
+  ],
+  "self_heal_policy": "retry_repair_replan_then_escalate",
+  "finalization_policy": "open_final_feature_pr_for_human_merge",
+  "council_reports": [],
+  "supersedes_plan_id": null,
+  "supersession_rationale": null
+}

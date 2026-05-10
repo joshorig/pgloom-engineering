@@ -5,9 +5,12 @@ import pytest
 from pgloom_engineering.contracts import (
     AgentTopologyPolicy,
     DesignContract,
+    HandoffEnvelope,
     ImplementationTopology,
+    MilestoneContract,
     PlanContract,
     TaskSliceContract,
+    ValidationEvidence,
     validate_plan_contract,
 )
 
@@ -76,12 +79,116 @@ def test_plan_validation_rejects_role_task_type_mismatch() -> None:
 def test_plan_validation_accepts_module_test_roots_for_qa() -> None:
     plan = valid_plan()
     plan.task_slices[0].role = "qa"
-    plan.task_slices[0].task_type = "engineering.qa.verify"
+    plan.task_slices[0].task_type = "engineering.qa.verify.scrutiny"
     plan.task_slices[0].allowed_paths = ["tests/", "store/src/test/"]
 
     errors = validate_plan_contract(plan)
 
     assert "qa_paths_not_restricted" not in {row["code"] for row in errors}
+
+
+def test_plan_validation_accepts_metadata_test_support_paths_for_qa() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].role = "qa"
+    plan.task_slices[0].task_type = "engineering.qa.author"
+    plan.task_slices[0].allowed_paths = ["benchmarks/src/jmh/java/", "benchmarks/build.gradle/"]
+
+    errors = validate_plan_contract(
+        plan,
+        qa_write_paths=["benchmarks/src/jmh/java", "benchmarks/build.gradle"],
+    )
+
+    assert "qa_paths_not_restricted" not in {row["code"] for row in errors}
+
+
+def test_plan_validation_accepts_default_fixture_root_with_metadata_paths() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].role = "qa"
+    plan.task_slices[0].task_type = "engineering.qa.verify.usertest"
+    plan.task_slices[0].allowed_paths = ["qa/fixtures/", "core/src/test/java/"]
+
+    errors = validate_plan_contract(
+        plan,
+        qa_write_paths=["core/src/test/java", "benchmarks/src/jmh/java"],
+    )
+
+    assert "qa_paths_not_restricted" not in {row["code"] for row in errors}
+
+
+def test_plan_validation_rejects_legacy_single_qa_verify() -> None:
+    plan = valid_plan()
+    plan.task_slices[0].role = "qa"
+    plan.task_slices[0].task_type = "engineering.qa.verify"
+    plan.task_slices[0].allowed_paths = ["tests/"]
+
+    errors = validate_plan_contract(plan)
+
+    assert {row["code"] for row in errors} >= {"invalid_role_task_type"}
+
+
+def test_plan_validation_enforces_milestones_and_assertion_coverage() -> None:
+    plan = valid_plan()
+    plan.acceptance_assertions = ["assert-1", "assert-2"]
+    plan.task_slices[0].acceptance_assertion_ids = ["assert-1"]
+    plan.milestones = [
+        MilestoneContract(
+            milestone_id="m1",
+            name="Milestone 1",
+            slice_ids=["slice-1"],
+            acceptance_assertions=["assert-1", "assert-2"],
+        )
+    ]
+
+    errors = validate_plan_contract(plan)
+
+    assert {row["code"] for row in errors} >= {"acceptance_assertion_unclaimed"}
+
+
+def test_plan_validation_matches_assertion_ids_with_descriptions() -> None:
+    plan = valid_plan()
+    plan.acceptance_assertions = ["assert-1: Feature behavior is covered."]
+    plan.task_slices[0].acceptance_assertion_ids = ["assert-1"]
+    plan.milestones = [
+        MilestoneContract(
+            milestone_id="m1",
+            name="Milestone 1",
+            slice_ids=["slice-1"],
+            acceptance_assertions=["assert-1: Feature behavior is covered."],
+        )
+    ]
+
+    errors = validate_plan_contract(plan)
+
+    assert "acceptance_assertion_unclaimed" not in {row["code"] for row in errors}
+    assert "acceptance_assertion_unknown" not in {row["code"] for row in errors}
+
+
+def test_handoff_envelope_carries_typed_evidence_and_cumulative_telemetry() -> None:
+    envelope = HandoffEnvelope(
+        handoff_id="handoff-1",
+        handoff_type="validation",
+        feature_id="feature-1",
+        task_id="task-1",
+        role="qa",
+        summary="Scrutiny passed.",
+        evidence=[
+            ValidationEvidence(
+                evidence_id="evidence-1",
+                kind="test_run",
+                summary="pytest passed",
+                verdict="pass",
+            )
+        ],
+        cumulative_cost_usd="1.25",
+        cumulative_wall_clock_seconds=12.5,
+        cumulative_input_tokens=100,
+        cumulative_output_tokens=20,
+        cumulative_tokens_saved=75,
+        cumulative_model_calls=2,
+    )
+
+    assert envelope.evidence[0].kind == "test_run"
+    assert envelope.cumulative_model_calls == 2
 
 
 def test_plan_validation_rejects_implementer_qa_write_paths() -> None:

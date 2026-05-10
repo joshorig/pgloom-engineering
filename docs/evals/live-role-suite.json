@@ -1,0 +1,103 @@
+{
+  "name": "live-role-suite",
+  "acceptance": {
+    "required_status": "pass",
+    "min_pass_rate": 1.0
+  },
+  "cases": [
+    {
+      "id": "increment-implementer",
+      "role": "implementer",
+      "reasoning": "medium"
+    },
+    {
+      "id": "increment-reviewer",
+      "role": "reviewer",
+      "reasoning": "medium"
+    },
+    {
+      "id": "increment-qa-scrutiny",
+      "role": "qa-scrutiny",
+      "reasoning": "low"
+    },
+    {
+      "id": "increment-qa-usertest",
+      "role": "qa-usertest",
+      "reasoning": "low"
+    },
+    {
+      "id": "lvc-r003-full-orchestration",
+      "role": "orchestration",
+      "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+      "projects_file": "docs/evals/project-registry.yaml",
+      "feature_goal": "docs/evals/feature-goals/lvc-r003-range.json",
+      "role_routes": {
+        "planner": {
+          "backend": "codex",
+          "model": "gpt-5.5",
+          "reasoning": "medium"
+        },
+        "qa_author": {
+          "backend": "codex",
+          "model": "gpt-5.4",
+          "reasoning": "medium"
+        },
+        "implementer": {
+          "backend": "codex",
+          "model": "gpt-5.5",
+          "reasoning": "medium"
+        },
+        "reviewer": {
+          "backend": "codex",
+          "model": "gpt-5.5",
+          "reasoning": "medium"
+        },
+        "qa_validation": {
+          "backend": "codex",
+          "model": "gpt-5.4",
+          "reasoning": "medium"
+        }
+      },
+      "reasoning": "medium"
+    },
+    {
+      "id": "lvc-r003-r7-plan-qa-to-end",
+      "role": "qa-to-end",
+      "project_root": "/Volumes/devssd/repos/ull/lvc-standard",
+      "projects_file": "docs/evals/project-registry.yaml",
+      "feature_goal": "docs/evals/feature-goals/lvc-r003-range.json",
+      "from_plan_outcome": "docs/reports/live-role-suite-2026-05-09-lvc-r003-full-orchestration-mixed-r7/lvc-r003-full-orchestration__orchestration/outcome.json",
+      "enabled_roles": [
+        "qa_author",
+        "implementer",
+        "reviewer",
+        "qa_scrutiny",
+        "qa_usertest",
+        "recovery"
+      ],
+      "role_routes": {
+        "qa_author": {
+          "backend": "codex",
+          "model": "gpt-5.4",
+          "reasoning": "medium"
+        },
+        "implementer": {
+          "backend": "codex",
+          "model": "gpt-5.5",
+          "reasoning": "medium"
+        },
+        "reviewer": {
+          "backend": "codex",
+          "model": "gpt-5.5",
+          "reasoning": "medium"
+        },
+        "qa_validation": {
+          "backend": "codex",
+          "model": "gpt-5.4",
+          "reasoning": "medium"
+        }
+      },
+      "reasoning": "medium"
+    }
+  ]
+}

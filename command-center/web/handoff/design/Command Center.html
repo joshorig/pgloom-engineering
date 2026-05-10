@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Command Center · pgloom-engineering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="components.css" />
+<link rel="stylesheet" href="components-extra.css" />
+<link rel="stylesheet" href="extras-2.css" />
+<link rel="stylesheet" href="extras-3.css" />
+<link rel="stylesheet" href="extras-4.css" />
+<link rel="stylesheet" href="extras-5.css" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #07090b; font-family: var(--f-sans); color: var(--t1); }
+  .stage-wrap { width: 100vw; height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body data-theme="dark" data-density="comfortable" data-accent="cyan" data-type="inter" data-pulse="on">
+  <div id="root" class="stage-wrap"></div>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="shared.jsx"></script>
+  <script type="text/babel" src="chrome.jsx"></script>
+  <script type="text/babel" src="artboards-1.jsx"></script>
+  <script type="text/babel" src="artboards-2.jsx"></script>
+  <script type="text/babel" src="artboards-3.jsx"></script>
+  <script type="text/babel" src="artboards-4.jsx"></script>
+  <script type="text/babel" src="artboards-5.jsx"></script>
+  <script type="text/babel" src="artboards-6.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    /* eslint-disable */
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "dark",
+      "accent": "emerald",
+      "density": "comfortable",
+      "type": "inter",
+      "paused": true,
+      "pulse": true
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // sync DOM data attrs so theme tokens apply
+      React.useEffect(() => {
+        const b = document.body;
+        b.dataset.theme   = t.theme;
+        b.dataset.accent  = t.accent;
+        b.dataset.density = t.density;
+        b.dataset.type    = t.type;
+        b.dataset.pulse   = t.pulse ? 'on' : 'off';
+      }, [t]);
+
+      const onTogglePause = () => setTweak('paused', !t.paused);
+
+      return (
+        <>
+          <DesignCanvas
+            title="Command Center · v1"
+            subtitle="design system + key views · pgloom-engineering"
+            initialZoom={0.4}
+          >
+            <DCSection id="foundations" title="00 · Design system" subtitle="Tokens, primitives, principles">
+              <DCArtboard id="ds-spec" label="Foundations spec sheet" width={1280} height={1640}>
+                <ArtFoundations />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="top-level" title="01 · Top-level surface" subtitle="The list operators land on">
+              <DCArtboard id="features-list" label="Features list · table" width={1480} height={900}>
+                <ArtFeaturesList accent={t.accent} />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="feature" title="02 · Feature workspace" subtitle="Per-feature views — overview, DAG, handoffs, validation, telemetry, interventions">
+              <DCArtboard id="feature-overview" label="Feature overview" width={1480} height={980}>
+                <ArtFeatureOverview paused={t.paused} accent={t.accent} pulse={t.pulse} onTogglePause={onTogglePause} />
+              </DCArtboard>
+              <DCArtboard id="feature-dag" label="DAG view (selection: task_44)" width={1480} height={980}>
+                <ArtDAG paused={t.paused} accent={t.accent} pulse={t.pulse} />
+              </DCArtboard>
+              <DCArtboard id="feature-handoff" label="Handoff · implementer → reviewer" width={1480} height={980}>
+                <ArtHandoff paused={t.paused} accent={t.accent} pulse={t.pulse} />
+              </DCArtboard>
+              <DCArtboard id="feature-validation" label="Validation · scrutiny + user-test" width={1480} height={980}>
+                <ArtValidation paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+              <DCArtboard id="feature-telemetry" label="Telemetry · cost/tokens/wall-clock" width={1480} height={980}>
+                <ArtTelemetry paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+              <DCArtboard id="feature-audit" label="Interventions · audit log" width={1480} height={900}>
+                <ArtInterventions paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+              <DCArtboard id="feature-replan" label="Replan-from-milestone · confirm dialog" width={1480} height={980}>
+                <ArtReplan paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="realtime" title="03 · Realtime substrate" subtitle="What WebSocket subscribers actually see">
+              <DCArtboard id="feature-firehose" label="Live event firehose · cc_events" width={1480} height={900}>
+                <ArtFirehose paused={t.paused} accent={t.accent} pulse={t.pulse} />
+              </DCArtboard>
+              <DCArtboard id="feature-slots" label="qa-usertest slots · full_app_run locks" width={1480} height={900}>
+                <ArtSlots paused={t.paused} accent={t.accent} pulse={t.pulse} />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="loop" title="04 · Closing the loop" subtitle="intervention → recovery → corrective slice → token economy">
+              <DCArtboard id="feature-recovery" label="Recovery · corrective slices" width={1480} height={1000}>
+                <ArtRecovery paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+              <DCArtboard id="feature-token-economy" label="Token economy · detailed" width={1480} height={1080}>
+                <ArtTokenEconomy paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="states" title="05 · Edge · empty · error" subtitle="states the operator console must show plainly">
+              <DCArtboard id="feature-states" label="Empty · disconnected · error" width={1480} height={780}>
+                <ArtStates paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="registry" title="06 · Project registry" subtitle="per-project metadata · gates · semantic rules">
+              <DCArtboard id="feature-registry" label="Project registry · docs/evals/project-registry.yaml" width={1480} height={1000}>
+                <ArtRegistry paused={t.paused} accent={t.accent} />
+              </DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel title="Tweaks" defaultPosition={{ right: 24, bottom: 24 }}>
+            <TweakSection title="Theme">
+              <TweakRadio label="Mode" value={t.theme} onChange={(v) => setTweak('theme', v)}
+                options={[{ value: 'dark', label: 'Dark' }, { value: 'dim', label: 'Dim' }, { value: 'light', label: 'Light' }]} />
+              <TweakColor label="Accent" value={t.accent} onChange={(v) => setTweak('accent', v)}
+                options={['cyan', 'amber', 'emerald', 'violet']}
+                renderSwatch={(v) => ({
+                  cyan:    'oklch(0.82 0.13 196)',
+                  amber:   'oklch(0.82 0.13 70)',
+                  emerald: 'oklch(0.80 0.16 152)',
+                  violet:  'oklch(0.78 0.10 280)',
+                }[v])} />
+            </TweakSection>
+            <TweakSection title="Layout">
+              <TweakRadio label="Density" value={t.density} onChange={(v) => setTweak('density', v)}
+                options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} />
+              <TweakSelect label="Type pairing" value={t.type} onChange={(v) => setTweak('type', v)}
+                options={[
+                  { value: 'inter',    label: 'Inter Tight + JetBrains Mono' },
+                  { value: 'plex',     label: 'IBM Plex Sans + Plex Mono' },
+                  { value: 'berkeley', label: 'Berkeley Mono + Söhne (fallback)' },
+                  { value: 'mono',     label: 'All monospace' },
+                ]} />
+            </TweakSection>
+            <TweakSection title="Demo state">
+              <TweakToggle label="Pause demo feature" value={t.paused} onChange={(v) => setTweak('paused', v)} />
+              <TweakToggle label="Live-pulse animations" value={t.pulse} onChange={(v) => setTweak('pulse', v)} />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

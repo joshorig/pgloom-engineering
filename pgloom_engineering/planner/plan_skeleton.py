@@ -62,12 +62,23 @@ def build_deterministic_plan_skeleton(
             purpose="Multi-panel review of correctness, risks, and contract compliance.",
         ),
         SkeletonSlice(
-            slice_id="qa-verify",
+            slice_id="qa-scrutiny",
             role="qa",
-            task_type="engineering.qa.verify",
+            task_type="engineering.qa.verify.scrutiny",
             depends_on=["review"],
             allowed_path_hint=", ".join(qa_write_paths or ["tests/", "qa/fixtures/"]),
-            purpose="Run smoke and full regression after reviewer sign-off.",
+            purpose=(
+                "Run lint/build, feature-specific tests, benchmark smoke, and "
+                "fresh-context code scrutiny."
+            ),
+        ),
+        SkeletonSlice(
+            slice_id="qa-usertest",
+            role="qa",
+            task_type="engineering.qa.verify.usertest",
+            depends_on=["qa-scrutiny"],
+            allowed_path_hint=", ".join(qa_write_paths or ["tests/", "qa/fixtures/"]),
+            purpose="Launch the app/service or CLI harness and record user-test evidence.",
         ),
     ]
     return DeterministicPlanSkeleton(
@@ -78,12 +89,19 @@ def build_deterministic_plan_skeleton(
         local_expansion_rules=[
             "Keep slice IDs stable unless the feature clearly needs extra implementer slices.",
             "Do not add finalization or merge slices; finalization_policy carries the human gate.",
-            "QA author and QA verify write only registered QA/test roots.",
+            "QA author and split QA validators write only registered QA/test roots.",
             "QA author objectives must preserve project QA policy: endpoint harnesses, "
             "structured assertions, benchmark variants, required gates, and avoid patterns.",
             "Implementers write source/config/docs only and must not claim QA write paths.",
-            "Prefer module-local test/build commands for QA author and implementer slices; "
-            "broad smoke/regression gates belong primarily in final QA verify.",
+            "Prefer module-local test/build commands for QA author and implementer slices. "
+            "Feature QA scrutiny uses lint/build, feature-specific tests, and benchmark "
+            "smoke; full regression/JMH sweeps are periodic project gates, not "
+            "per-feature blockers. Live flows belong in QA user-test.",
+            "For small or medium features, prefer one executable validation milestone "
+            "containing design, QA author, implementation, review, QA scrutiny, and QA "
+            "user-test. Do not split milestones by lifecycle phase unless each "
+            "signoff-gated milestone contains the validator slices required by its "
+            "signoff_policy.",
             "Expand objectives, acceptance matrix, risk register, and verification commands "
             "from feature-specific evidence.",
         ],
@@ -113,6 +131,14 @@ def classify_task(feature_goal: FeatureGoalContract) -> TaskClass:
             "payment",
             "backpressure",
             "overflow",
+            "range scan",
+            "range-query",
+            "range query",
+            "storevisitor",
+            "zero-allocation",
+            "zero allocation",
+            "hot-path",
+            "hot path",
             "mmap",
             "spill",
             "signalspec",
@@ -146,6 +172,39 @@ def _implementer_slices(
     text: str,
 ) -> list[SkeletonSlice]:
     if task_class == "high_risk":
+        if "range" in text and (
+            "storevisitor" in text
+            or "zero-allocation" in text
+            or "zero allocation" in text
+            or ("single" in text and "double" in text)
+        ):
+            core_hint = _first_path_hint(source_paths, ("core/", "api/"))
+            single_hint = _first_path_hint(source_paths, ("single", "direct", "mmap", "store/"))
+            double_hint = _first_path_hint(source_paths, ("double", "direct", "mmap", "store/"))
+            return [
+                SkeletonSlice(
+                    slice_id="impl-range-api-single",
+                    role="implementer",
+                    task_type="engineering.implement",
+                    depends_on=["qa-author"],
+                    allowed_path_hint=f"{core_hint}, {single_hint}",
+                    purpose=(
+                        "Implement the range visitor API and SINGLE-store range scan behavior "
+                        "with zero-allocation hot-path constraints."
+                    ),
+                ),
+                SkeletonSlice(
+                    slice_id="impl-range-double-mmap",
+                    role="implementer",
+                    task_type="engineering.implement",
+                    depends_on=["impl-range-api-single"],
+                    allowed_path_hint=f"{double_hint}, mmap/direct store variants",
+                    purpose=(
+                        "Implement DOUBLE-store and remaining direct/mmap range scan variants "
+                        "without widening the first implementer slice."
+                    ),
+                ),
+            ]
         if "signalspec" in text or "signal spec" in text:
             return [
                 SkeletonSlice(
@@ -242,10 +301,18 @@ def _source_path_hints(relevant_paths: list[str]) -> list[str]:
 
 def _target_slice_count(task_class: TaskClass) -> str:
     if task_class == "small":
-        return "5 slices: design, qa-author, impl-primary, review, qa-verify"
+        return "6 slices: design, qa-author, impl-primary, review, qa-scrutiny, qa-usertest"
     if task_class == "high_risk":
-        return "6-8 slices with only justified extra implementers"
-    return "5-6 slices"
+        return "7-9 slices with only justified extra implementers"
+    return "6-7 slices"
+
+
+def _first_path_hint(source_paths: list[str], needles: tuple[str, ...]) -> str:
+    for path in source_paths:
+        lowered = path.lower()
+        if any(needle in lowered for needle in needles):
+            return path
+    return source_paths[0] if source_paths else "affected source paths"
 
 
 def _feature_text(feature_goal: FeatureGoalContract) -> str:

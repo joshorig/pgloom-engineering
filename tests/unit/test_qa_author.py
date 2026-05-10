@@ -18,9 +18,10 @@ from pgloom_engineering.contracts import (
 from pgloom_engineering.qa_author_runtime import (
     build_qa_author_prompt,
     qa_model_route,
+    qa_quality_repairable,
     route_model_command,
 )
-from pgloom_engineering.roles.qa import QAHandler
+from pgloom_engineering.roles.qa import QAHandler, normalize_qa_result_payload
 
 
 class FakeProvider:
@@ -154,6 +155,92 @@ class NoChangeProvider(FakeProvider):
                 }
             ),
             model_usage_id=42,
+        )
+
+
+class NoChangeThenRepairProvider(FakeProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            return NoChangeProvider().invoke(profile=profile, prompt=prompt, **kwargs)
+        payload = json.loads(prompt)
+        assert payload["role"] == "qa.author.no_changes_repair"
+        return super().invoke(profile=profile, prompt=prompt, **kwargs)
+
+
+class UserTestProvider:
+    def __init__(
+        self,
+        *,
+        shell_string_commands: bool = False,
+        verdict: str = "pass",
+        command: list[str] | str | None = None,
+        procedures_attestation: dict[str, object] | None = None,
+    ) -> None:
+        self.shell_string_commands = shell_string_commands
+        self.verdict = verdict
+        self.command = command
+        self.procedures_attestation = procedures_attestation
+
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del profile, kwargs
+        payload = json.loads(prompt)
+        assert payload["role"] == "qa.usertest"
+        assert payload["worktree"]
+        assert payload["role_context"]["contract"] == "engineering.role_context.v1"
+        command: list[str] | str
+        command = self.command or (
+            "python -c 'consumer flow'"
+            if self.shell_string_commands
+            else [
+                "python",
+                "-c",
+                "consumer flow",
+            ]
+        )
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "QAResultContract": {
+                        "feature_id": payload["task_contract"]["feature_id"],
+                        "task_id": payload["task_contract"]["inputs"]["task_id"],
+                        "verdict": self.verdict,
+                        "validator_type": "usertest",
+                        "commands": [command],
+                        "commands_run": [
+                            {
+                                "cmd": command,
+                                "exit_code": 0,
+                                "duration_s": 0.1,
+                            }
+                        ],
+                        "validation_evidence": [
+                            {
+                                "evidence_id": "user-flow",
+                                "kind": "integration_check",
+                                "summary": "Ran a consumer-style public API flow.",
+                                "verdict": "pass",
+                                "metadata": {"surface": "library"},
+                            }
+                        ],
+                        "evidence": ["consumer flow passed"],
+                        "procedures_attestation": self.procedures_attestation or {},
+                        "findings": [
+                            {
+                                "severity": "blocking",
+                                "summary": "consumer flow failed",
+                                "details": "user-test caught a feature defect",
+                            }
+                        ]
+                        if self.verdict != "pass"
+                        else [],
+                    }
+                }
+            ),
+            model_usage_id=77,
         )
 
 
@@ -582,6 +669,59 @@ def test_qa_author_rejects_red_proof_without_relevant_changes(
     assert result.blocker_code == "engineering.qa_no_changes"
 
 
+def test_qa_author_repairs_red_proof_without_relevant_changes(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    provider = NoChangeThenRepairProvider()
+    result = QAHandler(provider=provider).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert provider.calls == 2
+    assert result.result["repair_attempts"] == 1
+    assert result.result["qa_author_contract"]["paths_touched"] == ["tests/test_acceptance.py"]
+
+
 def test_qa_author_rechecks_path_policy_after_verification(
     tmp_path: Path,
     monkeypatch: Any,
@@ -815,7 +955,7 @@ def test_qa_verify_blocks_without_task_contract(monkeypatch: Any) -> None:
         {
             "id": "verify-task-1",
             "workflow_id": "feature-1",
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "payload": {},
         }
     )
@@ -839,7 +979,7 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
     }
     task_contract = _task_contract().model_copy(
         update={
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "dependencies": ["qa-author-task-1"],
             "expected_outputs": ["QAResultContract"],
             "verification_commands": [
@@ -898,7 +1038,7 @@ def test_qa_verify_runs_configured_commands(tmp_path: Path, monkeypatch: Any) ->
         {
             "id": "verify-task-1",
             "workflow_id": "feature-1",
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "payload": {},
         }
     )
@@ -921,7 +1061,7 @@ def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> No
     plan = _plan()
     task_contract = _task_contract().model_copy(
         update={
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "expected_outputs": ["QAResultContract"],
             "verification_commands": [
                 [
@@ -989,12 +1129,372 @@ def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> No
         {
             "id": "verify-task-1",
             "workflow_id": "feature-1",
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "payload": {},
         }
     )
 
     assert result.status == "done"
+
+
+def test_qa_usertest_uses_model_driven_user_flow(tmp_path: Path, monkeypatch: Any) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify.usertest",
+            "expected_outputs": ["QAResultContract"],
+            "inputs": {"task_id": "verify-task-1", "task_slice_id": "qa-usertest"},
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+            qa_validation_profile="qa-validation",
+            qa_validation_command=["fake-qa-validation", "{worktree}"],
+            qa_validation_codex_model="gpt-5.4",
+            qa_validation_codex_reasoning="medium",
+            qa_validation_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [
+            {"contract": {"qa_author_contract": {"worktree_path": str(authored_worktree)}}}
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            name="demo",
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.build_role_context",
+        lambda **kwargs: SimpleNamespace(
+            prompt_payload=lambda: {
+                "contract": "engineering.role_context.v1",
+                "role": "qa.usertest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.record_role_context_usage",
+        lambda *args, **kwargs: 88,
+    )
+
+    result = QAHandler(provider=UserTestProvider()).handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify.usertest",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+    contract = QAResultContract.model_validate(result.result["qa_result_contract"])
+    assert contract.validator_type == "usertest"
+    assert contract.validation_evidence[0]["metadata"]["surface"] == "library"
+    assert result.result["token_savior_usage_ids"] == [88]
+
+
+def test_qa_usertest_accepts_shell_string_commands(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify.usertest",
+            "expected_outputs": ["QAResultContract"],
+            "inputs": {"task_id": "verify-task-1", "task_slice_id": "qa-usertest"},
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+            qa_validation_profile="qa-validation",
+            qa_validation_command=["fake-qa-validation", "{worktree}"],
+            qa_validation_codex_model="gpt-5.4",
+            qa_validation_codex_reasoning="medium",
+            qa_validation_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [
+            {"contract": {"qa_author_contract": {"worktree_path": str(authored_worktree)}}}
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            name="demo",
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.build_role_context",
+        lambda **kwargs: SimpleNamespace(
+            prompt_payload=lambda: {
+                "contract": "engineering.role_context.v1",
+                "role": "qa.usertest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.record_role_context_usage",
+        lambda *args, **kwargs: 88,
+    )
+
+    result = QAHandler(provider=UserTestProvider(shell_string_commands=True)).handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify.usertest",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+    contract = QAResultContract.model_validate(result.result["qa_result_contract"])
+    assert contract.commands == [["python", "-c", "consumer flow"]]
+    assert contract.commands_run[0]["cmd"] == ["python", "-c", "consumer flow"]
+
+
+def test_qa_usertest_normalizes_structured_procedure_attestation() -> None:
+    normalized = normalize_qa_result_payload(
+        {
+            "QAResultContract": {
+                "feature_id": "feature-1",
+                "task_id": "verify-task-1",
+                "verdict": "pass",
+                "validator_type": "usertest",
+                "procedures_attestation": {
+                    "record-replay-evidence": {
+                        "status": "completed",
+                        "notes": "captured command artifacts",
+                    }
+                },
+            }
+        }
+    )
+
+    contract = QAResultContract.model_validate(normalized)
+    assert (
+        contract.procedures_attestation["record-replay-evidence"]
+        == "completed - captured command artifacts"
+    )
+
+
+def test_qa_usertest_blocks_broad_project_test_command(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify.usertest",
+            "expected_outputs": ["QAResultContract"],
+            "inputs": {"task_id": "verify-task-1", "task_slice_id": "qa-usertest"},
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+            qa_validation_profile="qa-validation",
+            qa_validation_command=["fake-qa-validation", "{worktree}"],
+            qa_validation_codex_model="gpt-5.4",
+            qa_validation_codex_reasoning="medium",
+            qa_validation_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [
+            {"contract": {"qa_author_contract": {"worktree_path": str(authored_worktree)}}}
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            name="demo",
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.build_role_context",
+        lambda **kwargs: SimpleNamespace(
+            prompt_payload=lambda: {
+                "contract": "engineering.role_context.v1",
+                "role": "qa.usertest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.record_role_context_usage",
+        lambda *args, **kwargs: 88,
+    )
+
+    result = QAHandler(
+        provider=UserTestProvider(command=["./gradlew", "--no-daemon", "test"])
+    ).handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify.usertest",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_usertest_failed"
+    assert "must not substitute broad project test/check commands" in str(
+        result.blocker_reason
+    )
+
+
+def test_qa_usertest_fail_verdict_blocks_as_validation_failure(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo = _git_repo(tmp_path)
+    authored_worktree = tmp_path / "authored-worktree"
+    authored_worktree.mkdir()
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify.usertest",
+            "expected_outputs": ["QAResultContract"],
+            "inputs": {"task_id": "verify-task-1", "task_slice_id": "qa-usertest"},
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+            qa_validation_profile="qa-validation",
+            qa_validation_command=["fake-qa-validation", "{worktree}"],
+            qa_validation_codex_model="gpt-5.4",
+            qa_validation_codex_reasoning="medium",
+            qa_validation_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [
+            {"contract": {"qa_author_contract": {"worktree_path": str(authored_worktree)}}}
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            name="demo",
+            root=repo,
+            base_branch="main",
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.build_role_context",
+        lambda **kwargs: SimpleNamespace(
+            prompt_payload=lambda: {
+                "contract": "engineering.role_context.v1",
+                "role": "qa.usertest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.record_role_context_usage",
+        lambda *args, **kwargs: 88,
+    )
+
+    result = QAHandler(provider=UserTestProvider(verdict="fail")).handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify.usertest",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.qa_usertest_failed"
+    contract = QAResultContract.model_validate(result.result["qa_result_contract"])
+    assert contract.verdict == "fail"
+    assert "consumer flow failed" in contract.findings[0]
 
 
 def test_qa_verify_finds_feature_qa_author_worktree_after_reviewer_dependency(
@@ -1007,7 +1507,7 @@ def test_qa_verify_finds_feature_qa_author_worktree_after_reviewer_dependency(
     plan = _plan()
     task_contract = _task_contract().model_copy(
         update={
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "dependencies": ["review-task-1"],
             "expected_outputs": ["QAResultContract"],
             "verification_commands": [
@@ -1064,7 +1564,7 @@ def test_qa_verify_finds_feature_qa_author_worktree_after_reviewer_dependency(
         {
             "id": "verify-task-1",
             "workflow_id": "feature-1",
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "payload": {},
         }
     )
@@ -1091,7 +1591,7 @@ def test_qa_verify_blocks_without_authored_worktree(tmp_path: Path, monkeypatch:
     plan = _plan()
     task_contract = _task_contract().model_copy(
         update={
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "expected_outputs": ["QAResultContract"],
             "verification_commands": [[sys.executable, "-c", "print('verify ok')"]],
         }
@@ -1133,7 +1633,7 @@ def test_qa_verify_blocks_without_authored_worktree(tmp_path: Path, monkeypatch:
         {
             "id": "verify-task-1",
             "workflow_id": "feature-1",
-            "task_type": "engineering.qa.verify",
+            "task_type": "engineering.qa.verify.scrutiny",
             "payload": {},
         }
     )
@@ -1316,6 +1816,19 @@ def test_qa_author_repairs_semantic_quality_findings(
     assert result.status == "done"
     assert provider.calls == 2
     assert result.result["quality_repair_attempts"] == 1
+
+
+def test_qa_quality_repairable_accepts_reflective_jmh_finding() -> None:
+    assert qa_quality_repairable(
+        {
+            "blocking_findings": [
+                {
+                    "code": "qa_semantic_jmh_reflective_invocation",
+                    "file": "benchmarks/src/jmh/java/com/example/RangeBenchmark.java",
+                }
+            ]
+        }
+    )
 
 
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:

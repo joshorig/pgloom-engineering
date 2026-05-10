@@ -7,9 +7,12 @@ from pgloom.db.postgres import connect
 
 from pgloom_engineering.contract_store import (
     list_handoffs,
+    list_operator_interventions,
     list_plan_contracts,
     list_recovery_actions,
     list_task_contracts,
+    list_worker_runs,
+    summarize_worker_runs,
 )
 from pgloom_engineering.projects import default_agent_topology
 from pgloom_engineering.token_savior import list_token_savior_usage, summarize_token_savior_usage
@@ -216,6 +219,9 @@ def get_feature_aggregate(
     task_contracts = list_task_contracts(feature_id, database_url=database_url)
     handoffs = list_handoffs(feature_id, database_url=database_url)
     recovery_actions = list_recovery_actions(feature_id, database_url=database_url)
+    operator_interventions = list_operator_interventions(feature_id, database_url=database_url)
+    worker_runs = list_worker_runs(feature_id, database_url=database_url)
+    worker_run_summary = summarize_worker_runs(feature_id, database_url=database_url)
     feature_dict = dict(feature)
     raw_metadata = feature_dict.get("metadata")
     metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
@@ -233,6 +239,9 @@ def get_feature_aggregate(
         "task_contracts": task_contracts,
         "handoffs": handoffs,
         "recovery_actions": recovery_actions,
+        "operator_interventions": operator_interventions,
+        "worker_runs": worker_runs,
+        "worker_run_summary": worker_run_summary,
         "model_usage": model_usage,
         "token_savior": {
             "summary": token_savior_summary,
@@ -261,7 +270,17 @@ def _model_usage(conn: Any, feature_id: str, task_ids: list[str]) -> dict[str, A
             select profile_name,
                    coalesce(sum(input_tokens), 0) as input_tokens,
                    coalesce(sum(output_tokens), 0) as output_tokens,
-                   coalesce(sum(cost_usd), 0) as cost_usd
+                   coalesce(sum(cost_usd), 0) as cost_usd,
+                   coalesce(sum((metadata->>'cached_input_tokens')::bigint), 0)
+                     + coalesce(sum((metadata->>'cache_read_input_tokens')::bigint), 0)
+                     as cached_input_tokens,
+                   coalesce(sum((metadata->>'cache_creation_input_tokens')::bigint), 0)
+                     as cache_creation_tokens,
+                   coalesce(sum((metadata->>'reasoning_tokens')::bigint), 0)
+                     + coalesce(sum((metadata->>'reasoning_output_tokens')::bigint), 0)
+                     as reasoning_tokens,
+                   coalesce(sum((metadata->>'prompt_estimated_tokens')::bigint), 0)
+                     as prompt_estimated_tokens
             from model_usage
             where workflow_id = %s or task_id = any(%s)
             group by profile_name
@@ -275,7 +294,17 @@ def _model_usage(conn: Any, feature_id: str, task_ids: list[str]) -> dict[str, A
             select profile_name,
                    coalesce(sum(input_tokens), 0) as input_tokens,
                    coalesce(sum(output_tokens), 0) as output_tokens,
-                   coalesce(sum(cost_usd), 0) as cost_usd
+                   coalesce(sum(cost_usd), 0) as cost_usd,
+                   coalesce(sum((metadata->>'cached_input_tokens')::bigint), 0)
+                     + coalesce(sum((metadata->>'cache_read_input_tokens')::bigint), 0)
+                     as cached_input_tokens,
+                   coalesce(sum((metadata->>'cache_creation_input_tokens')::bigint), 0)
+                     as cache_creation_tokens,
+                   coalesce(sum((metadata->>'reasoning_tokens')::bigint), 0)
+                     + coalesce(sum((metadata->>'reasoning_output_tokens')::bigint), 0)
+                     as reasoning_tokens,
+                   coalesce(sum((metadata->>'prompt_estimated_tokens')::bigint), 0)
+                     as prompt_estimated_tokens
             from model_usage
             where workflow_id = %s
             group by profile_name
@@ -289,6 +318,16 @@ def _model_usage(conn: Any, feature_id: str, task_ids: list[str]) -> dict[str, A
             "input_tokens": sum(int(row["input_tokens"]) for row in by_profile),
             "output_tokens": sum(int(row["output_tokens"]) for row in by_profile),
             "cost_usd": sum(float(row["cost_usd"]) for row in by_profile),
+            "cached_input_tokens": sum(
+                int(row["cached_input_tokens"]) for row in by_profile
+            ),
+            "cache_creation_tokens": sum(
+                int(row["cache_creation_tokens"]) for row in by_profile
+            ),
+            "reasoning_tokens": sum(int(row["reasoning_tokens"]) for row in by_profile),
+            "prompt_estimated_tokens": sum(
+                int(row["prompt_estimated_tokens"]) for row in by_profile
+            ),
         },
         "by_profile": by_profile,
     }

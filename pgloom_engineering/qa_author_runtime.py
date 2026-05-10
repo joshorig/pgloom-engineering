@@ -19,6 +19,7 @@ from pgloom_engineering.qa_runtime import (
     validate_required_qa_gates,
 )
 from pgloom_engineering.qa_semantic_review import review_semantic_quality
+from pgloom_engineering.role_payloads import compact_plan_payload
 
 MAX_REPAIR_FILE_CHARS = 12000
 MAX_REPAIR_TOTAL_FILE_CHARS = 36000
@@ -206,6 +207,20 @@ def build_qa_author_prompt(
                 "benchmark methods must allocate no garbage after setup."
             ),
             (
+                "Do not use reflection proxies, InvocationHandler, boxed callbacks, or "
+                "other allocating indirection inside measured benchmark operations."
+            ),
+            (
+                "When a new benchmark is required by an allocation gate, update only "
+                "authorized test support files from project_qa_metadata so the benchmark "
+                "is actually executed by the smoke/regression gate."
+            ),
+            (
+                "For prefix, filter, route, or query behavior, write behavior tests with "
+                "matching and non-matching cases; overload or route inventory checks alone "
+                "do not satisfy acceptance."
+            ),
+            (
                 "Before final submission, run the narrowest compile/test command for every "
                 "authored test file when the tool environment permits it. Returned tests must "
                 "compile cleanly; red proof must be a product behavior failure, not syntax, "
@@ -245,7 +260,7 @@ def build_qa_author_prompt(
             qa_metadata=qa_metadata,
             plan=plan,
         ),
-        "plan": plan.model_dump(mode="json"),
+        "plan": compact_plan_payload(plan),
         "task_contract": task_contract.model_dump(mode="json"),
         "required_schema": {
             "feature_id": task_contract.feature_id,
@@ -697,6 +712,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_brittle_payload_assertions",
         "qa_semantic_journal_cursor_mismatch",
         "qa_semantic_jmh_exhaustible_target_pool",
+        "qa_semantic_jmh_reflective_invocation",
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_build_file_string_assertion",
@@ -756,6 +772,13 @@ def build_qa_quality_repair_prompt(
                     "assertions for payload contracts, and use a non-allocating cold benchmark "
                     "strategy that cannot exhaust a finite one-shot target pool during JMH "
                     "measurement."
+                ),
+                (
+                    "For JMH reflective invocation findings, remove reflection, Proxy, "
+                    "MethodHandle adapter, and LambdaMetafactory invocation paths from the "
+                    "benchmark harness. Import the typed feature API directly and call it "
+                    "from the @Benchmark method or a typed setup-created helper so JMH "
+                    "executes the feature and not an adapter."
                 ),
                 (
                     "For build/script string assertion findings, remove the generated test "
@@ -927,8 +950,9 @@ def path_violations(
 ) -> list[dict[str, str]]:
     metadata = project_qa_metadata(project_metadata or {})
     qa_write_paths = _metadata_qa_write_paths(metadata)
-    allowed_paths = [*task_contract.allowed_paths, *_metadata_test_support_paths(metadata)]
-    test_support_paths = _metadata_test_support_paths(metadata)
+    extra_paths = _metadata_authorized_extra_paths(metadata, task_contract)
+    allowed_paths = [*task_contract.allowed_paths, *extra_paths]
+    test_support_paths = extra_paths
     violations: list[dict[str, str]] = []
     for path in paths:
         support_path = any(path_matches(path, root) for root in test_support_paths)
@@ -971,6 +995,25 @@ def _metadata_test_support_paths(qa_metadata: dict[str, Any]) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [item for item in raw if isinstance(item, str) and item.strip()]
+
+
+def _metadata_authorized_extra_paths(
+    qa_metadata: dict[str, Any],
+    task_contract: TaskContract,
+) -> list[str]:
+    paths = list(_metadata_test_support_paths(qa_metadata))
+    task_text = " ".join(
+        [
+            task_contract.objective,
+            " ".join(task_contract.expected_outputs),
+            " ".join(" ".join(command) for command in task_contract.verification_commands),
+        ]
+    ).lower()
+    if any(token in task_text for token in ("benchmark", "jmh", "allocation")):
+        raw = qa_metadata.get("benchmark_roots")
+        if isinstance(raw, list):
+            paths.extend(item for item in raw if isinstance(item, str) and item.strip())
+    return _dedupe_paths(paths)
 
 
 def path_matches(path: str, root: str) -> bool:

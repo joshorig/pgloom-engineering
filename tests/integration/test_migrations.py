@@ -12,10 +12,15 @@ from typer.testing import CliRunner
 from pgloom_engineering.cli import app
 from pgloom_engineering.contract_store import (
     create_plan_contract,
+    finish_worker_run,
     list_handoffs,
     list_plan_contracts,
+    list_qa_signoffs,
     list_recovery_actions,
     list_task_contracts,
+    list_worker_runs,
+    record_qa_signoff,
+    start_worker_run,
     upsert_task_contract,
 )
 from pgloom_engineering.contracts import (
@@ -95,12 +100,27 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
         model_usage = conn.execute(
             """
             insert into model_usage(
-              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd
+              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
+              metadata
             )
-            values (%s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, jsonb(%s))
             returning id
             """,
-            (workflow["id"], implementer["id"], "codex", 4300, 300, 0.02),
+            (
+                workflow["id"],
+                implementer["id"],
+                "codex",
+                4300,
+                300,
+                0.02,
+                json.dumps(
+                    {
+                        "cached_input_tokens": 900,
+                        "reasoning_output_tokens": 70,
+                        "prompt_estimated_tokens": 800,
+                    }
+                ),
+            ),
         ).fetchone()
     assert model_usage is not None
     record_token_savior_usage(
@@ -148,6 +168,52 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
     assert aggregate["model_usage"]["summary"]["input_tokens"] == 4300
     assert aggregate["token_savior"]["summary"]["tokens_saved"] == 7700
     assert aggregate["agent_topology"]["planning"] == "multi_agent"
+
+    worker_run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=implementer["id"],
+        role="implementer",
+        phase="implement",
+        database_url=database_url,
+    )
+    finished_run = finish_worker_run(
+        int(worker_run["id"]),
+        status="done",
+        commands_run=[{"cmd": ["pytest", "-q"], "exit_code": 0, "duration_s": 1.2}],
+        evidence_ids=["evidence-1"],
+        artifact_ids=["artifact-1"],
+        database_url=database_url,
+    )
+    assert finished_run["input_tokens"] == 4300
+    assert finished_run["cached_input_tokens"] == 900
+    assert finished_run["reasoning_tokens"] == 70
+    assert finished_run["token_savior_saved_tokens"] == 7700
+    assert finished_run["metadata"]["model_usage"][0]["prompt_estimated_tokens"] == 800
+    assert list_worker_runs(feature["id"], database_url=database_url)[0]["status"] == "done"
+
+    aggregate = get_feature_aggregate(feature["id"], database_url=database_url)
+    assert aggregate is not None
+    assert aggregate["worker_run_summary"]["runs"] == 1
+    assert aggregate["worker_run_summary"]["cached_input_tokens"] == 900
+    assert aggregate["model_usage"]["summary"]["prompt_estimated_tokens"] == 800
+    assert aggregate["worker_runs"][0]["commands_run"][0]["cmd"] == ["pytest", "-q"]
+
+    signoff = record_qa_signoff(
+        feature_id=feature["id"],
+        task_id=implementer["id"],
+        plan_contract_id=None,
+        milestone_id="m1",
+        validator_type="scrutiny",
+        verdict="pass",
+        qa_result_contract={"verdict": "pass", "validator_type": "scrutiny"},
+        evidence=[{"kind": "test_run", "verdict": "pass"}],
+        artifact_ids=["artifact-1"],
+        database_url=database_url,
+    )
+    assert signoff["validator_type"] == "scrutiny"
+    assert list_qa_signoffs(
+        feature["id"], milestone_id="m1", database_url=database_url
+    )[0]["verdict"] == "pass"
 
     json_result = CliRunner().invoke(
         app,
@@ -549,7 +615,7 @@ def _plan_contract(feature_id: str) -> PlanContract:
             TaskSliceContract(
                 slice_id="slice-2",
                 role="qa",
-                task_type="engineering.qa.verify",
+                task_type="engineering.qa.verify.scrutiny",
                 objective="Verify the contracted feature.",
                 allowed_paths=["tests"],
                 forbidden_paths=["pgloom"],

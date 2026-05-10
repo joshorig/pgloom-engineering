@@ -450,7 +450,9 @@ def test_generated_tool_artifacts_are_excluded_from_changed_files() -> None:
 
     assert is_generated_tool_artifact("test-results/.last-run.json")
     assert is_generated_tool_artifact("ui/playwright-report/index.html")
+    assert is_generated_tool_artifact(".codex-tmp/InvokeTestMethod.java")
     assert is_generated_tool_artifact(".gradle/file-system.probe")
+    assert is_generated_tool_artifact(".gradle-local/caches/modules-2/files-2.1/probe")
     assert is_generated_tool_artifact(".gradle-home/wrapper/dists/gradle.zip.part")
     assert is_generated_tool_artifact(".gradle-user-home/wrapper/dists/gradle.zip.part")
     assert not is_generated_tool_artifact("ui/tests/e2e/domain-switch.spec.ts")

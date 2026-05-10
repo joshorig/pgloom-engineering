@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pgloom.states import TaskState
 from pgloom.tasks import enqueue_task, transition_task
@@ -19,9 +19,12 @@ HUMAN_GATE_STATES = {"awaiting_approval"}
 BLOCKED_STATES = {"blocked"}
 PREFERRED_SLOT_ORDER = [
     "planner",
+    "designer",
     "qa-engineer",
     "implementer",
     "reviewer",
+    "qa-scrutiny",
+    "qa-usertest",
     "historian",
 ]
 
@@ -56,6 +59,7 @@ def run_workflow(
                 worker_id=f"pgloom-engineering-workflow-{slot}",
                 lease_seconds=lease_seconds,
                 database_url=database_url,
+                feature_id=feature_id,
             )
             steps.append({"slot": slot, **result})
             if result.get("claimed"):
@@ -192,11 +196,12 @@ def _maybe_replan_blocked_feature(
         exclude_task_ids={str(planner["id"])},
         database_url=database_url,
     )
+    recovery_action: Literal["corrective_slice"] = "corrective_slice"
     decision = RecoveryDecisionContract(
         feature_id=feature_id,
         task_id=str(candidate["id"]),
         blocker_code=str(candidate.get("blocker_code") or "engineering.blocked"),
-        action="replan",
+        action=recovery_action,
         rationale=str(payload["replan_context"]["summary"]),
         attempt=int(candidate.get("attempt") or 1),
         max_attempts=int(settings.workflow_replan_after_blocked_attempts),
@@ -204,13 +209,13 @@ def _maybe_replan_blocked_feature(
     record_recovery_action(
         decision,
         status="completed",
-        outcome=f"enqueued planner replan task {planner['id']}",
+        outcome=f"enqueued corrective-slice planner task {planner['id']}",
         database_url=database_url,
     )
     return {
         "slot": "planner",
         "claimed": True,
-        "status": "replan",
+        "status": recovery_action,
         "task_id": str(planner["id"]),
         "replanned_from_task_id": str(candidate["id"]),
     }
@@ -220,7 +225,7 @@ def _active_planner_exists(aggregate: dict[str, Any]) -> bool:
     for task in aggregate.get("tasks") or []:
         if str(task.get("task_type")) != "engineering.plan":
             continue
-        if str(task.get("state")) in TERMINAL_STATES:
+        if str(task.get("state")) in TERMINAL_STATES | BLOCKED_STATES:
             continue
         return True
     return False
@@ -231,12 +236,15 @@ def _recoverable_blocked_task(
     settings: Any,
 ) -> dict[str, Any] | None:
     recoverable_codes = set(settings.workflow_replan_blocker_codes)
+    immediate_codes = set(getattr(settings, "workflow_replan_immediate_blocker_codes", []))
     total_input_tokens = _total_model_input_tokens(aggregate)
     for task in aggregate.get("tasks") or []:
         state = str(task.get("state"))
         blocker_code = str(task.get("blocker_code") or "")
         if state != "blocked" or blocker_code not in recoverable_codes:
             continue
+        if blocker_code in immediate_codes:
+            return dict(task)
         attempt = int(task.get("attempt") or 1)
         if attempt >= int(settings.workflow_replan_after_blocked_attempts):
             return dict(task)
@@ -270,7 +278,12 @@ def _replan_payload(
     if not isinstance(raw_goal, dict):
         return None
     goal = FeatureGoalContract.model_validate(raw_goal)
-    summary = _replan_summary(blocked_task)
+    repeat_count = _completed_recovery_count(
+        aggregate,
+        str(blocked_task.get("blocker_code") or ""),
+    )
+    summary = _replan_summary(blocked_task, repeat_count=repeat_count)
+    failure_context = _failure_context(blocked_task)
     revised_goal = goal.model_copy(
         update={
             "requirements": _append_unique(goal.requirements, summary),
@@ -292,19 +305,64 @@ def _replan_payload(
         "requires_multi_agent_council": True,
         "replan_context": {
             "source": "workflow_driver",
+            "mode": "corrective_slice",
+            "max_new_slices": 3,
             "blocked_task_id": str(blocked_task["id"]),
+            "active_plan_contract_id": _active_plan_contract_id(aggregate),
             "blocker_code": str(blocked_task.get("blocker_code") or ""),
             "blocker_reason": str(blocked_task.get("blocker_reason") or ""),
+            "failure_context": failure_context,
             "attempt": int(blocked_task.get("attempt") or 1),
+            "same_blocker_recovery_count": repeat_count,
             "summary": summary,
         },
     }
 
 
-def _replan_summary(blocked_task: dict[str, Any]) -> str:
+def _active_plan_contract_id(aggregate: dict[str, Any]) -> str | None:
+    active = aggregate.get("active_plan_contract")
+    if isinstance(active, dict) and active.get("id"):
+        return str(active["id"])
+    for row in aggregate.get("plan_contracts") or []:
+        if isinstance(row, dict) and row.get("active") and row.get("id"):
+            return str(row["id"])
+    return None
+
+
+def _completed_recovery_count(aggregate: dict[str, Any], blocker_code: str) -> int:
+    if not blocker_code:
+        return 0
+    count = 0
+    for action in aggregate.get("recovery_actions") or []:
+        if not isinstance(action, dict):
+            continue
+        if str(action.get("blocker_code") or "") != blocker_code:
+            continue
+        if str(action.get("action") or "") != "corrective_slice":
+            continue
+        if str(action.get("status") or "") != "completed":
+            continue
+        count += 1
+    return count
+
+
+def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> str:
     blocker_code = str(blocked_task.get("blocker_code") or "engineering.blocked")
     blocker_reason = str(blocked_task.get("blocker_reason") or "No blocker reason recorded.")
+    failure_context = _failure_context(blocked_task)
+    detail = f" Failure evidence: {failure_context}" if failure_context else ""
     if blocker_code == "engineering.qa_semantic_quality_failed":
+        if repeat_count >= 2:
+            return (
+                "Repeated QA semantic quality failures indicate the prior corrective "
+                "plans are regenerating the same invalid QA-author shape. Replan must "
+                "not emit another broad QA-author slice. Instead, preserve the exact "
+                "semantic finding, emit a narrow QA harness repair slice that directly "
+                "removes the rejected pattern, require typed project APIs rather than "
+                "reflection/proxy/adapter shortcuts for benchmark harnesses, and rerun "
+                "QA semantic review before implementation proceeds. Preserve these "
+                f"failure details: {blocker_reason}{detail}"
+            )
         return (
             "Previous QA author output failed semantic quality review. Replan with smaller QA "
             "author slices when endpoint coverage is broad, require project-approved HTTP "
@@ -323,11 +381,145 @@ def _replan_summary(blocked_task: dict[str, Any]) -> str:
             "module-local focused red-proof commands and repair authored tests before broad "
             f"gates: {blocker_reason}"
         )
+    if blocker_code == "engineering.qa_path_violation":
+        return (
+            "Previous QA author output touched paths outside its task contract. Replan must "
+            "repair the TaskContract path boundary so every expected QA output is explicitly "
+            "allowed when project metadata authorizes it, or remove that output from the QA "
+            f"slice. Preserve these path failure details: {blocker_reason}"
+        )
+    if blocker_code == "engineering.implementer_contract_invalid":
+        return (
+            "Previous implementer output was not a valid TaskResultContract after handler "
+            "normalization. Replan must preserve the raw contract-validation details as "
+            "repair input, emit the smallest corrective implementation or reporting slice "
+            "needed, and require valid structured checks/commands_run before review: "
+            f"{blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.implementation_reported_blockers":
+        return (
+            "Previous implementation reported blockers instead of completing the slice. "
+            "Replan must preserve the blocker text as repair input, emit the smallest "
+            "corrective implementation slice that resolves or narrows the blocker, and "
+            f"then rerun review and validators: {blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.implementation_path_violation":
+        return (
+            "Previous implementation touched paths outside its TaskContract. Replan must "
+            "preserve the exact changed files and path-policy violations as repair input. "
+            "If the violated paths are QA-owned tests, benchmarks, fixtures, or harness "
+            "wiring, emit a QA-author repair slice with project-metadata-approved paths "
+            "before any implementation slice; otherwise emit the narrowest production-code "
+            f"repair slice with explicit allowed_paths. Details: {blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.review_rejected":
+        return (
+            "Previous reviewer verdict required coder repair. Replan must emit a narrow "
+            "corrective implementation slice followed by review and validation, preserving "
+            f"these reviewer findings: {blocker_reason}"
+        )
+    if blocker_code == "engineering.qa_verify_failed":
+        return (
+            "Previous QA scrutiny failed feature verification. Replan must emit targeted "
+            "corrective implementation or QA-test repair slices, keep feature verification "
+            "focused on lint/build, feature-specific tests, and benchmark smoke, then rerun "
+            f"review and split validators. Preserve these QA findings: {blocker_reason}"
+        )
+    if blocker_code == "engineering.qa_usertest_failed":
+        return (
+            "Previous model-driven QA user-test found a product behavior failure. Replan "
+            "must emit a targeted corrective implementation slice, preserve the user-test "
+            "journey and evidence, then rerun review, QA scrutiny, and user-test: "
+            f"{blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.qa_usertest_contract_invalid":
+        return (
+            "Previous model-driven QA user-test output was not a valid QAResultContract "
+            "after handler normalization. Replan must preserve the raw user-test output "
+            "and schema error as repair input, keep the user-test model-driven rather than "
+            "a deterministic command run, and require valid normalized validation evidence: "
+            f"{blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.implementation_verification_failed":
+        return (
+            "Previous implementer verification failed. Replan must inspect whether the "
+            "failure is production-code behavior or QA-owned test/benchmark harness "
+            "invalidity; emit only the narrow corrective slice needed, then rerun review "
+            f"and split validators. Preserve these verification details: {blocker_reason}"
+            f"{detail}"
+        )
+    if blocker_code == "engineering.planner_council_exhausted":
+        return (
+            "Previous planner council exhausted before producing an accepted plan. Replan "
+            "must use the prior critic findings and invalid proposals as inputs, reduce "
+            "the feature into smaller milestone/slice contracts, avoid adding stricter "
+            f"rubric requirements, and preserve these planner details: {blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.plan_contract_invalid":
+        return (
+            "Previous planner output failed PlanContract validation. Replan must preserve "
+            "the schema and validation errors as inputs, repair only the invalid contract "
+            f"shape, and keep the feature scope stable: {blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.qa_handoff_missing":
+        return (
+            "Previous implementer task had no QA author handoff. Replan must restore the "
+            "planner DAG dependency from QA author to implementer or emit a QA-author repair "
+            "slice before any implementer slice, then rerun review and validation: "
+            f"{blocker_reason}{detail}"
+        )
+    if blocker_code == "engineering.invalid_handler_output":
+        return (
+            "Previous handler result could not be persisted as the expected output contract. "
+            "Replan must preserve the persistence/schema error and raw handler result as "
+            "repair input, then emit the smallest corrective slice that produces a valid "
+            f"normalized contract before downstream validation: {blocker_reason}{detail}"
+        )
     return (
         "Previous autonomous workflow attempt blocked and needs a planner replan carrying "
         f"failure knowledge into implementer-ready QA and implementation slices. "
-        f"{blocker_code}: {blocker_reason}"
+        f"{blocker_code}: {blocker_reason}{detail}"
     )
+
+
+def _failure_context(blocked_task: dict[str, Any]) -> str:
+    result = blocked_task.get("result")
+    if not isinstance(result, dict):
+        return ""
+    excerpts: list[str] = []
+    for key in ("stderr_excerpt", "stdout_excerpt", "failure_excerpt"):
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            excerpts.append(" ".join(value.split()))
+    for command in result.get("commands") or []:
+        if isinstance(command, list):
+            rendered = " ".join(str(part) for part in command)
+            if rendered:
+                excerpts.append(f"command={rendered}")
+    changed_files = result.get("changed_files")
+    if isinstance(changed_files, list):
+        rendered_files = [
+            str(path)
+            for path in changed_files[:20]
+            if isinstance(path, str) and path.strip()
+        ]
+        if rendered_files:
+            excerpts.append(f"changed_files={', '.join(rendered_files)}")
+    violations = result.get("violations")
+    if isinstance(violations, list):
+        rendered_violations: list[str] = []
+        for violation in violations[:20]:
+            if not isinstance(violation, dict):
+                continue
+            path = violation.get("path")
+            reason = violation.get("reason")
+            if isinstance(path, str) and path.strip():
+                rendered_violations.append(
+                    f"{path}:{reason}" if isinstance(reason, str) else path
+                )
+        if rendered_violations:
+            excerpts.append(f"path_violations={', '.join(rendered_violations)}")
+    return " | ".join(excerpts)[:3000]
 
 
 def _append_unique(values: list[str], value: str) -> list[str]:

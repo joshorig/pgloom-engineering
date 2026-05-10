@@ -1,0 +1,218 @@
+/* ──────────────────────────────────────────────────────────
+   Command Center · Design Tokens
+   Engineering-instrument aesthetic. Dark by default; dim and
+   light variants flip surfaces but keep status hues identical.
+   ────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="dark"] {
+  /* surfaces */
+  --bg:        #0a0c0e;
+  --bg-grid:   #0c1014;
+  --panel:     #11151a;
+  --panel-2:   #161b21;
+  --panel-3:   #1c222a;
+  --over:      #1f262f;
+  --inset:     #07090b;
+
+  /* lines */
+  --line:      rgba(255,255,255,0.06);
+  --line-2:    rgba(255,255,255,0.10);
+  --line-3:    rgba(255,255,255,0.16);
+  --line-keep: rgba(255,255,255,0.04);
+
+  /* text */
+  --t1:        #e6ebf2;
+  --t2:        #aab2bc;
+  --t3:        #6e7782;
+  --t4:        #495159;
+
+  /* accents — same lightness/chroma, hue swappable via tweak */
+  --accent:        oklch(0.82 0.13 196);   /* cyan */
+  --accent-soft:   oklch(0.82 0.13 196 / 0.18);
+  --accent-line:   oklch(0.82 0.13 196 / 0.42);
+  --accent-ink:    #07090b;
+
+  /* status (constant across themes) */
+  --st-run:      oklch(0.82 0.13 196);   /* cyan       running   */
+  --st-pass:     oklch(0.80 0.16 152);   /* emerald    passed    */
+  --st-fail:     oklch(0.74 0.18 22);    /* rose       failed    */
+  --st-block:    oklch(0.82 0.13 70);    /* amber      blocked   */
+  --st-pause:    oklch(0.78 0.14 45);    /* orange     paused    */
+  --st-queue:    oklch(0.65 0.01 250);   /* neutral    queued    */
+  --st-super:    oklch(0.62 0.06 305);   /* muted purp superseded*/
+
+  --st-run-soft:    oklch(0.82 0.13 196 / 0.14);
+  --st-pass-soft:   oklch(0.80 0.16 152 / 0.14);
+  --st-fail-soft:   oklch(0.74 0.18 22  / 0.14);
+  --st-block-soft:  oklch(0.82 0.13 70  / 0.14);
+  --st-pause-soft:  oklch(0.78 0.14 45  / 0.14);
+  --st-queue-soft:  oklch(0.65 0.01 250 / 0.14);
+  --st-super-soft:  oklch(0.62 0.06 305 / 0.14);
+
+  /* role hues — used in DAG node rings, role badges */
+  --r-planner:     oklch(0.78 0.10 280);
+  --r-impl:        oklch(0.82 0.13 196);
+  --r-review:      oklch(0.78 0.14 320);
+  --r-qa-author:   oklch(0.80 0.16 152);
+  --r-qa-scrut:    oklch(0.82 0.13 70);
+  --r-qa-test:     oklch(0.78 0.14 45);
+  --r-recovery:    oklch(0.74 0.18 22);
+
+  /* type */
+  --f-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --f-sans:    "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* sizes (comfortable density) */
+  --s-9:  9px;
+  --s-10: 10px;
+  --s-11: 11px;
+  --s-12: 12px;
+  --s-13: 13px;
+  --s-14: 14px;
+  --s-16: 16px;
+  --s-20: 20px;
+  --s-24: 24px;
+  --s-32: 32px;
+
+  /* spacing */
+  --x-2:  2px;
+  --x-4:  4px;
+  --x-6:  6px;
+  --x-8:  8px;
+  --x-10: 10px;
+  --x-12: 12px;
+  --x-14: 14px;
+  --x-16: 16px;
+  --x-20: 20px;
+  --x-24: 24px;
+  --x-32: 32px;
+  --x-40: 40px;
+  --x-48: 48px;
+
+  /* row heights */
+  --h-bar:    44px;     /* top bar */
+  --h-tabs:   38px;     /* tab strip */
+  --h-row:    32px;     /* table rows */
+  --h-input:  28px;
+  --h-pill:   18px;
+  --h-chip:   22px;
+
+  --radius-card:  4px;
+  --radius-pill:  999px;
+  --radius-chip:  3px;
+
+  /* shadows — used sparingly; chrome is mostly hairlines */
+  --shadow-card: 0 1px 0 rgba(255,255,255,0.02) inset, 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-pop:  0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px var(--line-2);
+}
+
+[data-theme="dim"] {
+  --bg:        #131720;
+  --bg-grid:   #161b25;
+  --panel:     #1a1f2a;
+  --panel-2:   #1f2531;
+  --panel-3:   #252c3a;
+  --over:      #2a3142;
+  --inset:     #0d1119;
+  --line:      rgba(255,255,255,0.07);
+  --line-2:    rgba(255,255,255,0.12);
+  --line-3:    rgba(255,255,255,0.18);
+}
+
+[data-theme="light"] {
+  --bg:        #f4f3ee;
+  --bg-grid:   #ecebe5;
+  --panel:     #fbfaf5;
+  --panel-2:   #f0eee8;
+  --panel-3:   #e7e4dc;
+  --over:      #ffffff;
+  --inset:     #e9e7df;
+  --line:      rgba(20,20,22,0.08);
+  --line-2:    rgba(20,20,22,0.14);
+  --line-3:    rgba(20,20,22,0.24);
+  --line-keep: rgba(20,20,22,0.05);
+  --t1:        #1a1d22;
+  --t2:        #545961;
+  --t3:        #7d838c;
+  --t4:        #a8aeb6;
+  --accent-ink:#fbfaf5;
+
+  /* lighter status fills read on light bg */
+  --st-run-soft:    oklch(0.82 0.13 196 / 0.18);
+  --st-pass-soft:   oklch(0.80 0.16 152 / 0.18);
+  --st-fail-soft:   oklch(0.74 0.18 22  / 0.20);
+  --st-block-soft:  oklch(0.82 0.13 70  / 0.20);
+  --st-pause-soft:  oklch(0.78 0.14 45  / 0.20);
+  --st-queue-soft:  oklch(0.65 0.01 250 / 0.16);
+  --st-super-soft:  oklch(0.62 0.06 305 / 0.16);
+}
+
+/* compact density override */
+[data-density="compact"] {
+  --s-13: 12px;
+  --s-12: 11px;
+  --s-11: 10px;
+  --s-10: 9px;
+  --h-bar:   40px;
+  --h-tabs:  34px;
+  --h-row:   26px;
+  --h-input: 24px;
+  --x-16: 12px;
+  --x-12: 10px;
+  --x-10: 8px;
+  --x-20: 14px;
+  --x-24: 18px;
+}
+
+/* accent hue swap */
+[data-accent="amber"]  { --accent: oklch(0.82 0.13 70);  --accent-soft: oklch(0.82 0.13 70  / 0.18); --accent-line: oklch(0.82 0.13 70  / 0.42); }
+[data-accent="emerald"]{ --accent: oklch(0.80 0.16 152); --accent-soft: oklch(0.80 0.16 152 / 0.18); --accent-line: oklch(0.80 0.16 152 / 0.42); }
+[data-accent="violet"] { --accent: oklch(0.78 0.10 280); --accent-soft: oklch(0.78 0.10 280 / 0.18); --accent-line: oklch(0.78 0.10 280 / 0.42); }
+
+/* type pairing alternates */
+[data-type="plex"]  { --f-mono: "IBM Plex Mono", ui-monospace, monospace; --f-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; }
+[data-type="berkeley"] { --f-mono: "Berkeley Mono", "JetBrains Mono", ui-monospace, monospace; --f-sans: "Söhne", "Inter Tight", ui-sans-serif, system-ui, sans-serif; }
+[data-type="mono"]  { --f-sans: var(--f-mono); }
+
+/* ───────── base resets within an artboard ───────── */
+.cc {
+  font-family: var(--f-sans);
+  font-size: var(--s-13);
+  line-height: 1.4;
+  color: var(--t1);
+  background: var(--bg);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+.cc, .cc * { box-sizing: border-box; }
+.cc .mono { font-family: var(--f-mono); font-feature-settings: "zero", "ss01"; letter-spacing: -0.005em; }
+.cc .num  { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.cc button { font: inherit; color: inherit; }
+
+/* hairline grid helpers */
+.cc-grid-bg {
+  background-image:
+    linear-gradient(var(--line-keep) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-keep) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* live-pulse dot */
+@keyframes cc-pulse {
+  0%,100% { opacity: 1; }
+  50%     { opacity: 0.35; }
+}
+.cc-pulse { animation: cc-pulse 1.6s ease-in-out infinite; }
+[data-pulse="off"] .cc-pulse { animation: none; }
+
+/* row striping */
+.cc-zebra > *:nth-child(odd) { background: rgba(255,255,255,0.012); }
+[data-theme="light"] .cc-zebra > *:nth-child(odd) { background: rgba(0,0,0,0.018); }
+
+/* scroll fades */
+.cc-scroll { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.cc-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.cc-scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+.cc-scroll::-webkit-scrollbar-track { background: transparent; }

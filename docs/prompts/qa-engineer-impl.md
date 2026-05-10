@@ -1,10 +1,12 @@
-# Implementor brief — QA Engineer (test author + verify + sign-off)
+# Implementor brief — QA Engineer (test author + scrutiny/user-test validators + sign-off)
 
 > **Status: QA AUTHOR LIVE; QA VERIFY PENDING.** The `engineering.qa.author`
 > path now runs in isolated worktrees, writes tests, validates required project
 > gates, runs deterministic semantic quality checks, and emits a
-> `QAAuthorContract`. The remaining work in this brief is `engineering.qa.verify`
-> sign-off, full-app/resource-lock execution, and finalization gating.
+> `QAAuthorContract`. The remaining work in this brief is to split
+> `engineering.qa.verify` into `engineering.qa.verify.scrutiny` and
+> `engineering.qa.verify.usertest`, add typed validation evidence and handoffs,
+> and wire sign-off/finalization gating.
 
 ---
 
@@ -13,9 +15,15 @@
 Legacy QA was a `subprocess.run` wrapper around `qa/smoke.sh` and `qa/regression.sh` that captured logs and graded pass/fail. The new QA is a **code‑producing engineer agent** whose responsibilities span:
 
 1. Writing failing tests *before* the Implementer (test‑first, against `acceptance_test_matrix`).
-2. Running the full test suite + the full app under per‑project resource lock *after* the Reviewer.
-3. Identifying residual coverage gaps and closing them with additional tests (still under the same add‑or‑strengthen constraint).
-4. Issuing a structured **sign‑off verdict** that gates the future `engineering.feature_finalize` task. No PR finalizes without an `approved` row in `engineering_qa_signoffs`.
+2. Running scrutiny validation *after* Reviewer: lint, type checks, deterministic
+   gates, full suites, and fresh-context code-review agents.
+3. Running user-test validation *after* scrutiny: live app/service launch plus
+   browser/computer-use/Playwright/CLI replay evidence.
+4. Identifying residual coverage gaps and closing them with additional tests
+   (still under the same add‑or‑strengthen constraint).
+5. Issuing a structured **sign‑off verdict** that gates the future
+   `engineering.feature_finalize` task. No PR finalizes unless scrutiny and
+   user-test both approve, except metadata-authorized pure-library skips.
 
 This is a meaningful authority shift. QA is no longer advisory; it is the merge gate.
 
@@ -23,23 +31,40 @@ This is a meaningful authority shift. QA is no longer advisory; it is the merge 
 
 ## 2. Architecture (locked decisions)
 
-### 2.1 Two task types, one handler
+### 2.1 Three task types, one handler
 
 | Task type | When | Reads | Writes |
 |---|---|---|---|
 | `engineering.qa.author` | After Planner, before Implementer | `PlanContract.acceptance_test_matrix` | One failing test per matrix row (or per logical group with declared coverage map) |
-| `engineering.qa.verify` | After Reviewer | Upstream `task_result` + `review_verdict` + `qa_author_contract` handoffs | Full‑suite + full‑app evidence; additional gap‑closing tests; sign‑off verdict |
+| `engineering.qa.verify.scrutiny` | After Reviewer | Upstream `task_result` + `review_verdict` + `qa_author_contract` handoffs, validation contract | Lint/type/test evidence, deterministic gate output, fresh-context code-review findings |
+| `engineering.qa.verify.usertest` | After scrutiny | Scrutiny result, validation contract, `usertest_harness` project metadata | Live app/service exercise evidence, screenshots/traces/logs, user-test verdict |
 
-Both task types route to a single handler module `pgloom_engineering/roles/qa_engineer.py` with two entry methods (`handle_author` / `handle_verify`) selected by `task["task_type"]`.
+All QA task types route to a single handler module
+`pgloom_engineering/roles/qa_engineer.py` with entry methods
+`handle_author`, `handle_scrutiny`, and `handle_usertest` selected by
+`task["task_type"]`.
 
 ### 2.2 Slot routing
 
-- New row in pgloom `slots` table: `slot_name='qa-engineer'`, `concurrency=1`.
-- Both QA task types declare `slot='qa-engineer'`.
-- Initially the worker process for that slot is colocated with other engineering workers on the same host (`pgloom-engineering worker --slot qa-engineer` runs alongside the planner / implementer / reviewer worker processes).
-- When the dedicated Mac mini is provisioned, the operator stops the colocated `--slot qa-engineer` worker and starts an equivalent process on the Mac mini. **No schema change. No code change.** Just process placement.
+- New row in pgloom `slots` table: `slot_name='qa-scrutiny'`,
+  `concurrency=1`.
+- New row in pgloom `slots` table: `slot_name='qa-usertest'`,
+  `concurrency=1`.
+- `engineering.qa.author` and `engineering.qa.verify.scrutiny` declare
+  `slot='qa-scrutiny'`.
+- `engineering.qa.verify.usertest` declares `slot='qa-usertest'`.
+- Initially both worker processes can be colocated with other engineering
+  workers (`pgloom-engineering worker --slot qa-scrutiny` and
+  `pgloom-engineering worker --slot qa-usertest`).
+- When dedicated hardware is provisioned, operators can move either slot by
+  stopping the colocated worker and starting an equivalent process elsewhere.
+  **No schema change. No code change.** Just process placement.
 - **SPOF accepted by design.** If the worker host is offline, QA queues and feature finalization waits. This is the hardware‑reliability forcing function discussed in the Autonomy Contract decision.
-- Per‑project resource lock via `pgloom.resource_locks` keyed `(project, "full_app_run")` so two features against the same project do not race the full‑app teardown. Acquired by `qa.verify` for the duration of the full‑app run.
+- Per‑project resource lock via `pgloom.resource_locks` keyed
+  `(project, "full_app_run")` so two features against the same project do not
+  race the full‑app teardown. Acquired by `qa.verify.usertest` for the duration
+  of the full‑app run. User tests for different projects must be able to run in
+  parallel.
 
 ### 2.3 Add‑or‑strengthen post‑gate
 
@@ -73,9 +98,10 @@ The QA author path has two deterministic gates after model generation and
 before the task can report success:
 
 1. `validate_required_qa_gates(worktree, project_metadata)` checks that every
-   project-declared required QA gate has a concrete script or command in the
-   worktree. Runtime, smoke, regression, UI, and benchmark commands must come
-   from project metadata, not model inference.
+   project-declared feature QA gate has a concrete script or command in the
+   worktree. Runtime, smoke, UI, and benchmark-smoke commands must come from
+   project metadata, not model inference. Full regression gates are periodic
+   project validation, not per-feature QA-author or QA-scrutiny blockers.
 2. `review_semantic_quality(changed_files, project_metadata)` blocks weak tests
    that only inspect scripts/build files, call Spring controllers directly when
    HTTP routing is the contract, use brittle raw JSON/stringification checks,
@@ -84,7 +110,8 @@ before the task can report success:
 
 Project metadata is the source of truth for generic conventions. Examples:
 
-- `required_gates` names smoke/regression/full-app commands that must exist.
+- `required_gates` names per-feature smoke/benchmark-smoke/full-app commands
+  that must exist; `periodic_gates` names full regression sweeps.
 - `qa_metadata.test_roots`, `source_roots`, and `explicit_test_examples` bound
   discovery without asking the model to guess.
 - `semantic_conventions.build_hook_tests.deterministic_gate_validation_required`
@@ -145,18 +172,46 @@ class QAAuthorContract(BaseModel):
     red_proof: list[dict[str, Any]]             # [{test: str, command: list[str], exit_code: int, output_excerpt: str}]
     paths_touched: list[str]                    # for diff-policy validation
 
+class ValidationEvidence(BaseModel):
+    evidence_id: str
+    kind: Literal[
+        "test_run",
+        "code_review",
+        "ui_exercise",
+        "integration_check",
+        "lint_type_check",
+        "benchmark",
+        "screenshot",
+        "network_trace",
+        "command_log",
+    ]
+    summary: str
+    verdict: Literal["pass", "fail", "inconclusive"]
+    artifact_ids: list[str] = []
+    metadata: dict[str, Any] = {}
+
+class CommandRun(BaseModel):
+    cmd: list[str]
+    exit_code: int | None
+    duration_s: float
+    artifact_ids: list[str] = []
+
 class QAResultContract(BaseModel):              # extend existing
     contract_version: str = CONTRACT_VERSION
     feature_id: str
     task_id: str
     verdict: Literal["pass", "fail", "inconclusive"]
-    commands: list[list[str]]                   # full set of commands run (smoke, regression, full-app, etc.)
-    evidence: list[str]                         # artifact ids of logs / coverage reports
+    commands_run: list[CommandRun]              # commands with exit codes/durations/artifacts
+    evidence: list[ValidationEvidence]          # typed evidence, not only artifact ids
     findings: list[dict[str, Any]]              # structured failures (file, line, message, severity)
+    procedures_attestation: dict[str, bool | str]
     tests_added: list[str] = []                 # NEW — gap-closing tests added during verify
     tests_strengthened: list[str] = []          # NEW — assertions tightened during verify
     deletions: list[dict[str, Any]] = []        # NEW — documented removals (intent, surviving_coverage)
     full_app_run: dict[str, Any] | None = None  # NEW — {duration_s, exit_code, log_artifact_id, project_lock_id}
+    scrutiny_verdict: Literal["approved", "rejected", "inconclusive"] | None = None
+    usertest_verdict: Literal["approved", "rejected", "skipped", "inconclusive"] | None = None
+    usertest_skip_reason: str | None = None
     signoff_verdict: Literal[
         "approved", "rejected", "needs_implementer_fix", "needs_planner_replan"
     ]                                            # NEW — drives the engineering_qa_signoffs row
@@ -176,17 +231,40 @@ class QAEngineerHandler:
         ttype = task["task_type"]
         if ttype == "engineering.qa.author":
             return self.handle_author(task)
-        if ttype == "engineering.qa.verify":
-            return self.handle_verify(task)
+        if ttype == "engineering.qa.verify.scrutiny":
+            return self.handle_scrutiny(task)
+        if ttype == "engineering.qa.verify.usertest":
+            return self.handle_usertest(task)
         return HandlerResult(status="blocked",
                              blocker_code="engineering.qa_unknown_task_type",
                              blocker_reason=f"unsupported task_type: {ttype}")
 
     def handle_author(self, task: dict[str, Any]) -> HandlerResult: ...
-    def handle_verify(self, task: dict[str, Any]) -> HandlerResult: ...
+    def handle_scrutiny(self, task: dict[str, Any]) -> HandlerResult: ...
+    def handle_usertest(self, task: dict[str, Any]) -> HandlerResult: ...
 ```
 
 Both methods use a worktree (Track D — must be done before this brief), `CLIModelProvider` invocations to author tests, `run_bounded` for executing tests, and `pgloom.artifacts.register_artifact` for log capture.
+
+### 2.7 Project metadata for user-test
+
+Project metadata must declare `usertest_harness`:
+
+```yaml
+usertest_harness:
+  kind: playwright | browser | computer_use | cli_replay | none
+  launch_command: ["./qa/full-app.sh"]
+  health_check: "http://127.0.0.1:8080/health"
+  flows:
+    - id: create-and-edit-record
+      entrypoint: "http://127.0.0.1:8080/"
+      assertions:
+        - "form accepts valid input"
+        - "saved item appears after reload"
+```
+
+`kind = "none"` is only valid for pure-library projects. The user-test result
+must record the metadata path that authorized the skip.
 
 ---
 
@@ -196,15 +274,18 @@ Both methods use a worktree (Track D — must be done before this brief), `CLIMo
 remaining handler work is unsafe to start until all of these are true:
 
 1. The planner brief at `docs/prompts/planner-impl-and-review.md` remains the
-   source of valid `qa.author` and `qa.verify` slices. The live QA eval suite now
+   source of valid `qa.author`, `qa.verify.scrutiny`, and `qa.verify.usertest`
+   slices. The live QA eval suite now
    covers LVC R-003, LVC R-002 JMH, TRP R-003, and DAG R-003 from real planner
    outputs/fixtures.
 2. Track D worktree support is partially landed for local eval and QA author.
    The next production step is branch commit/push/PR wiring for worker-created
    worktrees.
-3. The shared rubric layer is still desirable for `qa.verify`, but QA author v1
-   uses deterministic semantic checks plus targeted repair instead of a full
-   model rubric loop.
+3. The shared rubric layer is still desirable for scrutiny and user-test, but
+   QA author v1 uses deterministic semantic checks plus targeted repair instead
+   of a full model rubric loop.
+4. Task contracts include `required_procedures`, and worker result contracts
+   include `procedures_attestation` and `commands_run`.
 4. `engineering.feature_finalize` task type spec exists (even as a stub) so the
    sign-off pre-gate has a concrete consumer.
 
@@ -224,12 +305,16 @@ If any prerequisite is missing, write the missing piece first and come back.
 
 ### Integration tests (Postgres‑gated)
 - `tests/integration/test_qa_author_lvc_r002.py` — given a persisted `PlanContract` for R‑002 (snapshot/restore), `engineering.qa.author` writes ≥ 1 test per acceptance criterion, proves each red on the as‑read worktree, persists `QAAuthorContract`, records `qa_author` handoff to each downstream implementer task.
-- `tests/integration/test_qa_verify_signs_off.py` — given a feature past Reviewer, `engineering.qa.verify` runs full suite, persists extended `QAResultContract`, writes `engineering_qa_signoffs` row with `verdict='approved'`, finalize pre‑gate now passes (when finalize ships).
+- `tests/integration/test_qa_scrutiny_signs_off.py` — given a feature past Reviewer, `engineering.qa.verify.scrutiny` runs lint/type/full suite, persists typed evidence, and records fresh-context code-review findings.
+- `tests/integration/test_qa_usertest_signs_off.py` — after scrutiny approval, `engineering.qa.verify.usertest` launches the app/service or CLI harness, records UI/CLI replay evidence, writes `engineering_qa_signoffs` only when both validators approve.
 - `tests/integration/test_qa_verify_blocks_finalization.py` — same setup but verify returns `verdict='needs_implementer_fix'`; assert no approved row exists, finalize pre‑gate would refuse, a new `engineering.implement` slice is enqueued with the QA findings in its TaskContract.
 - `tests/integration/test_qa_diff_policy_blocks_weakening.py` — feed a deliberately weakening fixture diff (e.g. `< 10ms` → `< 100ms`); assert post‑gate refuses with `engineering.qa_test_weakening` recovery row.
 
 ### CLI smoke
-- `pgloom-engineering qa author --feature <id>` and `pgloom-engineering qa verify --feature <id>` — mirror the planner `plan dry-run` pattern.
+- `pgloom-engineering qa author --feature <id>`,
+  `pgloom-engineering qa scrutiny --feature <id>`, and
+  `pgloom-engineering qa usertest --feature <id>` — mirror the planner
+  `plan dry-run` pattern.
 
 ### Live eval
 
@@ -261,10 +346,10 @@ real endpoint/UI coverage cost:
 1. `ruff check` + `mypy` clean across new modules.
 2. All new unit + integration tests green; existing test suite unaffected.
 3. Migration `007_qa_signoffs.sql` applied idempotently; unique partial index enforced (concurrent insert of two `approved` rows for the same feature fails the second).
-4. End‑to‑end happy path on `lvc-standard` R‑002: planner produces plan with both QA phases → qa.author writes stateful acceptance tests and cold/zero-garbage JMH coverage for snapshot/restore → implementer (mocked or real) turns them green → reviewer approves → qa.verify runs full app under resource lock → signoff row with `approved` verdict → finalize pre‑gate accepts.
+4. End‑to‑end happy path on `lvc-standard` R‑002: planner produces plan with QA author, scrutiny, and user-test phases → qa.author writes stateful acceptance tests and cold/zero-garbage JMH coverage for snapshot/restore → implementer turns them green → reviewer approves → scrutiny approves → user-test approves or records metadata-authorized skip → signoff row with `approved` verdict → finalize pre‑gate accepts.
 5. Add‑or‑strengthen enforcement: a parallel test feeds a weakening diff and asserts the gate refuses with a structured violation list.
-6. Slot routing: a worker registered with `--slot qa-engineer` claims both `qa.author` and `qa.verify` tasks; a worker registered with any other slot does not claim them.
-7. Resource lock: two concurrent `qa.verify` tasks for the same project serialize on the project lock; for different projects they run in parallel.
+6. Slot routing: `qa-scrutiny` claims `qa.author` and `qa.verify.scrutiny`; `qa-usertest` claims `qa.verify.usertest`.
+7. Resource lock: two concurrent `qa.verify.usertest` tasks for the same project serialize on the project lock; for different projects they run in parallel.
 8. No edits to `pgloom` itself, no edits to the planner critic, no edits to the worker pre/post gates beyond what is required to teach the verify pre‑gate to require the upstream `qa_author_contract` handoff.
 
 ---
@@ -275,7 +360,7 @@ real endpoint/UI coverage cost:
 |---|---|
 | Master plan §Track B (QA split) | `/Volumes/devssd/repos/oss/pgloom/docs/plans/engineering-orchestrator-port.md` |
 | Autonomy Contract rule 9 (QA gates merge, add‑or‑strengthen) | same file, § Autonomy Contract |
-| Planner brief (defines `qa.author` + `qa.verify` slice contracts via critic checks 7b/7c/7d) | `/Volumes/devssd/repos/oss/pgloom-engineering/docs/prompts/planner-impl-and-review.md` |
+| Planner brief (defines `qa.author` + split verify slice contracts via critic checks 7b/7c/7d) | `/Volumes/devssd/repos/oss/pgloom-engineering/docs/prompts/planner-impl-and-review.md` |
 | Existing QA stub (the file this brief replaces) | `/Volumes/devssd/repos/oss/pgloom-engineering/pgloom_engineering/roles/qa.py` |
 | Contract definitions (extension target) | `/Volumes/devssd/repos/oss/pgloom-engineering/pgloom_engineering/contracts.py` |
 | Contract store CRUD | `/Volumes/devssd/repos/oss/pgloom-engineering/pgloom_engineering/contract_store.py` |
@@ -306,4 +391,5 @@ green.
 4. Build an implementer eval suite using the same cases as QA author: LVC R-003,
    DAG R-003, TRP R-003, then LVC R-002 JMH.
 5. Only after Implementer can reliably turn QA author red tests green should
-   `engineering.qa.verify` and finalization sign-off become the main focus.
+   split `engineering.qa.verify.scrutiny` / `engineering.qa.verify.usertest`
+   and finalization sign-off become the main focus.

@@ -24,6 +24,7 @@ from pgloom_engineering.qa_author_runtime import (
 )
 from pgloom_engineering.qa_runtime import command_with_env, qa_env
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
+from pgloom_engineering.role_payloads import compact_plan_payload, compact_task_result_payload
 
 
 class ReviewerHandler:
@@ -34,7 +35,9 @@ class ReviewerHandler:
         payload = task.get("payload") or {}
         raw_verdict = payload.get("review_verdict_contract")
         if raw_verdict is not None:
-            verdict = ReviewVerdictContract.model_validate(raw_verdict)
+            verdict = ReviewVerdictContract.model_validate(
+                normalize_review_payload(raw_verdict)
+            )
             return _done(task, verdict)
 
         database_url = payload.get("database_url")
@@ -83,6 +86,11 @@ class ReviewerHandler:
                     context_root=getattr(settings, "role_model_context_root", Path(".")),
                     enabled=bool(
                         getattr(settings, "role_model_context_isolation_enabled", False)
+                        or getattr(
+                            settings,
+                            "reviewer_model_context_isolation_enabled",
+                            False,
+                        )
                     )
                     and bool(worktree),
                 ),
@@ -164,15 +172,37 @@ def build_reviewer_prompt(
                     "changed files, checks, and blockers."
                 ),
                 (
+                    "Do not run verification commands, Gradle test suites, JMH, "
+                    "or other long commands; QA scrutiny owns command execution. "
+                    "Use the provided command evidence and targeted source/diff "
+                    "inspection only."
+                ),
+                (
+                    "Keep source inspection narrow: use rg for symbol discovery "
+                    "and read only the smallest relevant ranges."
+                ),
+                (
                     "Approve only when the implementation is scoped, verified, "
                     "and ready for QA verification."
                 ),
+                (
+                    "Do not block solely because QA-owned commands such as "
+                    "qa/smoke.sh, browser replay, or benchmark-smoke gates have "
+                    "not run yet when the plan includes downstream QA scrutiny or "
+                    "user-test slices that will execute them. Treat missing "
+                    "downstream validation evidence as advisory unless source "
+                    "inspection shows the implementation or gate wiring is wrong."
+                ),
+                (
+                    "Use verdict=coder_repair for implementation defects; do not "
+                    "return reject because it is not a valid contract value."
+                ),
                 "Return only a ReviewVerdictContract JSON object.",
             ],
-            "plan_contract": plan.model_dump(mode="json"),
+            "plan_contract": compact_plan_payload(plan),
             "role_context": role_context or {},
             "task_contract": task_contract.model_dump(mode="json"),
-            "task_result_contract": task_result,
+            "task_result_contract": compact_task_result_payload(task_result),
             "required_response": {
                 "contract_version": "engineering.contracts.v1",
                 "feature_id": plan.feature_id,
@@ -190,10 +220,25 @@ def build_reviewer_prompt(
 
 def normalize_review_payload(payload: object) -> object:
     if isinstance(payload, dict) and isinstance(payload.get("ReviewVerdictContract"), dict):
-        return payload["ReviewVerdictContract"]
+        return _normalize_review_fields(payload["ReviewVerdictContract"])
     if isinstance(payload, dict) and isinstance(payload.get("review_verdict_contract"), dict):
-        return payload["review_verdict_contract"]
-    return payload
+        return _normalize_review_fields(payload["review_verdict_contract"])
+    return _normalize_review_fields(payload)
+
+
+def _normalize_review_fields(payload: object) -> object:
+    if not isinstance(payload, dict):
+        return payload
+    normalized = dict(payload)
+    if normalized.get("verdict") in {"revise", "reject", "rejected", "fail", "failed"}:
+        normalized["verdict"] = "coder_repair"
+    findings = normalized.get("findings")
+    if isinstance(findings, list):
+        normalized["findings"] = [
+            json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
+            for item in findings
+        ]
+    return normalized
 
 
 def _dependency_task_result(

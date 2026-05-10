@@ -8,7 +8,12 @@ from typing import Any, Literal, Protocol
 from pgloom.models.cli import CLIModelProfile
 from pydantic import BaseModel, Field
 
-from pgloom_engineering.contracts import ImplementationTopology, PlanContract
+from pgloom_engineering.contracts import (
+    ImplementationTopology,
+    PlanContract,
+    TaskSliceContract,
+    canonical_acceptance_assertion_id,
+)
 from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.planner.plan_summary import candidate_summary
@@ -120,9 +125,10 @@ RUBRIC_CHECKS: list[CheckDefinition] = [
     ),
     CheckDefinition(
         "check_qa_verify_present",
-        "QA verify slice presence",
+        "QA scrutiny + user-test slice presence",
         "blocking",
-        "Plans must include an engineering.qa.verify slice after reviewers.",
+        "Plans must include engineering.qa.verify.scrutiny after reviewers and "
+        "engineering.qa.verify.usertest after scrutiny unless metadata authorizes a skip.",
     ),
     CheckDefinition(
         "check_qa_paths_disjoint",
@@ -132,6 +138,18 @@ RUBRIC_CHECKS: list[CheckDefinition] = [
             "QA author/verify slices must write only tests or fixtures and stay "
             "disjoint from implementers."
         ),
+    ),
+    CheckDefinition(
+        "check_acceptance_assertion_coverage",
+        "Acceptance assertion coverage",
+        "blocking",
+        "Every assertion is claimed by a slice and every slice claims an assertion.",
+    ),
+    CheckDefinition(
+        "check_milestones_present",
+        "Milestone contracts present",
+        "blocking",
+        "Plans must include milestone contracts with validation contracts.",
     ),
     CheckDefinition(
         "check_orphan_slices",
@@ -173,6 +191,15 @@ RUBRIC_CHECKS: list[CheckDefinition] = [
         (
             "Plans must not schedule work that violates stated zero-allocation or hot-path "
             "constraints."
+        ),
+    ),
+    CheckDefinition(
+        "check_behavioral_coverage_not_inventory_only",
+        "Behavioral coverage not inventory-only",
+        "blocking",
+        (
+            "Endpoint, route, prefix, filter, query, and benchmark acceptance must be "
+            "proven by behavior cases, not only method, route, or build-file inventory."
         ),
     ),
     CheckDefinition(
@@ -236,7 +263,12 @@ class CriticRunner:
                 raise ValueError("critic response must be a JSON object")
         except Exception as exc:
             payload = {"rationale": f"critic response invalid: {exc}", "per_check_results": []}
-        deterministic_results = deterministic_check_results(plan, validator_errors)
+        qa_write_paths = _context_qa_write_paths(project_context)
+        deterministic_results = deterministic_check_results(
+            plan,
+            validator_errors,
+            qa_write_paths=qa_write_paths,
+        )
         results = normalize_check_results(payload.get("per_check_results"))
         results = reconcile_model_results_with_deterministic_checks(
             model_results=results,
@@ -456,10 +488,17 @@ def build_plan_quality_report(
 def deterministic_check_results(
     plan: PlanContract,
     validator_errors: list[dict[str, Any]],
+    *,
+    qa_write_paths: list[str] | None = None,
 ) -> list[CriticCheckResult]:
     checks: list[CriticCheckResult] = []
     for definition in RUBRIC_CHECKS:
-        findings = _run_deterministic_check(definition, plan, validator_errors)
+        findings = _run_deterministic_check(
+            definition,
+            plan,
+            validator_errors,
+            qa_write_paths=qa_write_paths,
+        )
         checks.append(
             CriticCheckResult(
                 check_id=definition.check_id,
@@ -478,8 +517,13 @@ def deterministic_accept_verdict(
     validator_errors: list[dict[str, Any]],
     rationale: str,
     preempted: bool = False,
+    qa_write_paths: list[str] | None = None,
 ) -> CriticVerdict:
-    deterministic_results = deterministic_check_results(plan, validator_errors)
+    deterministic_results = deterministic_check_results(
+        plan,
+        validator_errors,
+        qa_write_paths=qa_write_paths,
+    )
     verdict = compute_verdict(deterministic_results, validator_errors)
     quality_report = build_plan_quality_report(
         verdict=verdict,
@@ -546,6 +590,8 @@ def _run_deterministic_check(
     definition: CheckDefinition,
     plan: PlanContract,
     validator_errors: list[dict[str, Any]],
+    *,
+    qa_write_paths: list[str] | None = None,
 ) -> list[CriticFinding]:
     check_id = definition.check_id
     if check_id == "check_design_contract_completeness":
@@ -598,11 +644,15 @@ def _run_deterministic_check(
                 _finding(definition, "reviewer_slice_missing", "Missing reviewer slice.")
             ]
     if check_id == "check_qa_author_present":
-        return _qa_author_findings(definition, plan)
+        return _qa_author_findings(definition, plan, qa_write_paths=qa_write_paths)
     if check_id == "check_qa_verify_present":
-        return _qa_verify_findings(definition, plan)
+        return _qa_verify_findings(definition, plan, qa_write_paths=qa_write_paths)
     if check_id == "check_qa_paths_disjoint":
-        return _qa_paths_disjoint_findings(definition, plan)
+        return _qa_paths_disjoint_findings(definition, plan, qa_write_paths=qa_write_paths)
+    if check_id == "check_acceptance_assertion_coverage":
+        return _acceptance_assertion_findings(definition, plan)
+    if check_id == "check_milestones_present":
+        return _milestone_findings(definition, plan)
     if check_id == "check_finalization_policy":
         if plan.finalization_policy != "open_final_feature_pr_for_human_merge":
             return [
@@ -625,6 +675,8 @@ def _run_deterministic_check(
         return _roadmap_dependency_findings(definition, plan)
     if check_id == "check_hot_path_invariants":
         return _hot_path_findings(definition, plan)
+    if check_id == "check_behavioral_coverage_not_inventory_only":
+        return _inventory_only_findings(definition, plan)
     if check_id == "check_small_feature_compactness":
         return _compactness_findings(definition, plan)
     return []
@@ -664,6 +716,13 @@ def _dump_context(project_context: Any) -> dict[str, Any]:
         if isinstance(dumped, dict):
             return dumped
     return {}
+
+
+def _context_qa_write_paths(project_context: Any) -> list[str] | None:
+    paths = getattr(project_context, "qa_write_paths", None)
+    if isinstance(paths, list):
+        return [str(path) for path in paths]
+    return None
 
 
 def _plan_text(plan: PlanContract) -> str:
@@ -707,6 +766,14 @@ def _hot_path_findings(
     plan: PlanContract,
 ) -> list[CriticFinding]:
     text = _plan_text(plan).lower()
+    if "proxy.newproxyinstance" in text or "invocationhandler" in text:
+        return [
+            _finding(
+                definition,
+                "benchmark_allocating_indirection",
+                "Benchmark plan uses reflection proxy/InvocationHandler in a hot measured path.",
+            )
+        ]
     if "compression" not in text and "lz4" not in text:
         return []
     hot_path_violation_terms = [
@@ -728,9 +795,48 @@ def _hot_path_findings(
     ]
 
 
+def _inventory_only_findings(
+    definition: CheckDefinition,
+    plan: PlanContract,
+) -> list[CriticFinding]:
+    findings: list[CriticFinding] = []
+    inventory_terms = [
+        "overload present",
+        "overload presence",
+        "method present",
+        "method exists",
+        "route list",
+        "build file string",
+        "string-checking",
+    ]
+    behavior_domains = ["prefix", "filter", "query", "route", "endpoint"]
+    for task_slice in plan.task_slices:
+        text = json.dumps(task_slice.model_dump(mode="json"), sort_keys=True).lower()
+        if not any(domain in text for domain in behavior_domains):
+            continue
+        if not any(term in text for term in inventory_terms):
+            continue
+        if "matching" in text and "non-matching" in text:
+            continue
+        findings.append(
+            _finding(
+                definition,
+                "inventory_only_behavior_coverage",
+                (
+                    "Behavior acceptance relies on inventory/presence checks "
+                    "without matching and non-matching cases."
+                ),
+                task_slice.slice_id,
+            )
+        )
+    return findings
+
+
 def _qa_author_findings(
     definition: CheckDefinition,
     plan: PlanContract,
+    *,
+    qa_write_paths: list[str] | None = None,
 ) -> list[CriticFinding]:
     authors = _task_type_slices(plan, "engineering.qa.author")
     if not authors:
@@ -745,13 +851,25 @@ def _qa_author_findings(
     implementers = [item for item in plan.task_slices if item.role == "implementer"]
     author_ids = {item.slice_id for item in authors}
     for author in authors:
-        bad_paths = [path for path in author.allowed_paths if not is_qa_write_path(path)]
+        bad_paths = [
+            path for path in author.allowed_paths if not is_qa_write_path(path, qa_write_paths)
+        ]
         if bad_paths:
             findings.append(
                 _finding(
                     definition,
                     "qa_author_paths_not_restricted",
                     "QA author allowed_paths must be restricted to registered QA/test roots.",
+                    author.slice_id,
+                )
+            )
+        if _qa_author_needs_benchmark_root(author):
+            findings.append(
+                _finding(
+                    definition,
+                    "qa_benchmark_output_path_not_allowed",
+                    "QA author expected benchmark/JMH artifacts but allowed_paths omit a "
+                    "benchmark QA root.",
                     author.slice_id,
                 )
             )
@@ -769,6 +887,46 @@ def _qa_author_findings(
                 )
             )
     return findings
+
+
+def _qa_author_needs_benchmark_root(author: TaskSliceContract) -> bool:
+    text_parts: list[str] = []
+    for attr in [
+        "objective",
+        "expected_outputs",
+        "verification_commands",
+        "grading_criteria",
+        "required_procedures",
+    ]:
+        value = getattr(author, attr, None)
+        if isinstance(value, str):
+            text_parts.append(value)
+        elif isinstance(value, list):
+            text_parts.extend(str(item) for item in value)
+        elif value is not None:
+            text_parts.append(str(value))
+    text = " ".join(text_parts).lower()
+    if not any(
+        token in text
+        for token in [
+            "src/jmh",
+            "benchmark file",
+            "benchmark class",
+            "benchmark stub",
+            "benchmark source",
+            "jmh file",
+            "jmh class",
+            "jmh stub",
+            "jmh source",
+        ]
+    ):
+        return False
+    return not any(_looks_like_benchmark_root(path) for path in author.allowed_paths)
+
+
+def _looks_like_benchmark_root(path: str) -> bool:
+    lowered = path.lower()
+    return "benchmark" in lowered or "src/jmh" in lowered or "/jmh/" in lowered
 
 
 def _forbidden_path_overlap_findings(
@@ -792,44 +950,92 @@ def _forbidden_path_overlap_findings(
 def _qa_verify_findings(
     definition: CheckDefinition,
     plan: PlanContract,
+    *,
+    qa_write_paths: list[str] | None = None,
 ) -> list[CriticFinding]:
-    verifies = _task_type_slices(plan, "engineering.qa.verify")
-    if not verifies:
+    scrutinies = _task_type_slices(plan, "engineering.qa.verify.scrutiny")
+    usertests = _task_type_slices(plan, "engineering.qa.verify.usertest")
+    if not scrutinies:
         return [
             _finding(
                 definition,
-                "qa_verify_missing",
-                "Missing engineering.qa.verify slice.",
+                "qa_scrutiny_missing",
+                "Missing engineering.qa.verify.scrutiny slice.",
             )
         ]
     findings: list[CriticFinding] = []
     reviewers = [item for item in plan.task_slices if item.role == "reviewer"]
     reviewer_ids = {item.slice_id for item in reviewers}
-    for verify in verifies:
-        bad_paths = [path for path in verify.allowed_paths if not is_qa_write_path(path)]
+    for verify in [*scrutinies, *usertests]:
+        bad_paths = [
+            path for path in verify.allowed_paths if not is_qa_write_path(path, qa_write_paths)
+        ]
         if bad_paths:
             findings.append(
                 _finding(
                     definition,
                     "qa_verify_paths_not_restricted",
-                    "QA verify allowed_paths must be restricted to registered QA/test roots.",
+                    "QA validator allowed_paths must be restricted to registered QA/test roots.",
                     verify.slice_id,
                 )
             )
+    for verify in scrutinies:
         commands = {_command_text(command) for command in verify.verification_commands}
         has_smoke = any("qa/smoke.sh" in command for command in commands)
-        has_full = any(
+        has_periodic_regression = any(
             "qa/regression.sh" in command
-            or "gradlew test" in command
-            or "./gradlew test" in command
+            or command.endswith(":benchmarks:jmh")
+            or ":benchmarks:jmh " in command
             for command in commands
         )
-        if not has_smoke or not has_full:
+        has_bare_project_gate = any(
+            _is_bare_gradle_project_gate(command) for command in commands
+        )
+        has_feature_specific = any(
+            "gradlew" in command
+            and (
+                ":test" in command
+                or " test" in command
+                or ":check" in command
+                or ":compile" in command
+                or ":benchmarks:jmhSmokeCheck" in command
+            )
+            for command in commands
+        )
+        if has_periodic_regression:
             findings.append(
                 _finding(
                     definition,
-                    "qa_verify_missing_full_suite",
-                    "QA verify must include smoke and full-suite/regression commands.",
+                    "qa_verify_uses_periodic_regression_gate",
+                    (
+                        "Feature QA scrutiny must not run full regression/JMH sweeps; "
+                        "reserve qa/regression.sh for project-scheduled periodic validation."
+                    ),
+                    verify.slice_id,
+                )
+            )
+        if has_bare_project_gate:
+            findings.append(
+                _finding(
+                    definition,
+                    "qa_verify_uses_broad_project_check",
+                    (
+                        "Feature QA scrutiny must not run bare ./gradlew test/check; "
+                        "use scoped compile/lint/build commands plus feature-specific "
+                        "tests and benchmark smoke."
+                    ),
+                    verify.slice_id,
+                )
+            )
+        if not has_smoke or not has_feature_specific:
+            findings.append(
+                _finding(
+                    definition,
+                    "qa_verify_missing_feature_validation",
+                    (
+                        "QA scrutiny must include smoke/benchmark-smoke plus "
+                        "feature-specific lint/build/test commands."
+                    ),
                     verify.slice_id,
                 )
             )
@@ -839,26 +1045,68 @@ def _qa_verify_findings(
                     _finding(
                         definition,
                         "qa_verify_not_after_reviewer",
-                        "QA verify must depend on every reviewer slice.",
+                        "QA scrutiny must depend on every reviewer slice.",
                         verify.slice_id,
+                    )
+                )
+    if not usertests:
+        findings.append(
+            _finding(
+                definition,
+                "qa_usertest_missing",
+                "Missing engineering.qa.verify.usertest slice after scrutiny.",
+            )
+        )
+    for usertest in usertests:
+        for scrutiny in scrutinies:
+            if not _depends_on_transitively(plan, usertest.slice_id, scrutiny.slice_id):
+                findings.append(
+                    _finding(
+                        definition,
+                        "qa_usertest_not_after_scrutiny",
+                        "QA user-test must depend on QA scrutiny.",
+                        usertest.slice_id,
                     )
                 )
     return findings
 
 
+def _is_bare_gradle_project_gate(command: str) -> bool:
+    parts = command.split()
+    if not parts:
+        return False
+    if parts[0] not in {"./gradlew", "gradlew"}:
+        return False
+    meaningful = [
+        part
+        for part in parts[1:]
+        if part not in {"--no-daemon", "--console=plain", "--console", "plain"}
+    ]
+    return meaningful in (["check"], ["test"])
+
+
 def _qa_paths_disjoint_findings(
     definition: CheckDefinition,
     plan: PlanContract,
+    *,
+    qa_write_paths: list[str] | None = None,
 ) -> list[CriticFinding]:
     findings: list[CriticFinding] = []
     qa_slices = [
         item
         for item in plan.task_slices
-        if item.task_type in {"engineering.qa.author", "engineering.qa.verify"}
+        if item.task_type
+        in {
+            "engineering.qa.author",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
     ]
     implementers = [item for item in plan.task_slices if item.role == "implementer"]
     for implementer in implementers:
-        bad_paths = [path for path in implementer.allowed_paths if is_qa_write_path(path)]
+        bad_paths = [
+            path for path in implementer.allowed_paths if is_qa_write_path(path, qa_write_paths)
+        ]
         if bad_paths:
             findings.append(
                 _finding(
@@ -877,8 +1125,130 @@ def _qa_paths_disjoint_findings(
                         "qa_paths_overlap_implementer",
                         "QA write paths overlap implementer source paths.",
                         qa_slice.slice_id,
-                    )
                 )
+            )
+    return findings
+
+
+def _acceptance_assertion_findings(
+    definition: CheckDefinition,
+    plan: PlanContract,
+) -> list[CriticFinding]:
+    assertion_labels = {
+        canonical_acceptance_assertion_id(assertion): assertion
+        for assertion in plan.acceptance_assertions
+    }
+    for milestone in plan.milestones:
+        assertion_labels.update(
+            {
+                canonical_acceptance_assertion_id(assertion): assertion
+                for assertion in milestone.acceptance_assertions
+            }
+        )
+    findings: list[CriticFinding] = []
+    if not assertion_labels:
+        return [
+            _finding(
+                definition,
+                "acceptance_assertions_missing",
+                "Plan must define acceptance assertions.",
+            )
+        ]
+    claimed: set[str] = set()
+    for task_slice in plan.task_slices:
+        if not task_slice.acceptance_assertion_ids:
+            findings.append(
+                _finding(
+                    definition,
+                    "slice_missing_acceptance_assertion",
+                    "Task slice must claim at least one acceptance assertion.",
+                    task_slice.slice_id,
+                )
+            )
+        claimed.update(
+            canonical_acceptance_assertion_id(assertion)
+            for assertion in task_slice.acceptance_assertion_ids
+        )
+    for assertion in sorted(assertion_labels.keys() - claimed):
+        findings.append(
+            _finding(
+                definition,
+                "acceptance_assertion_unclaimed",
+                "Acceptance assertion is not claimed by any slice: "
+                f"{assertion_labels[assertion]}",
+            )
+        )
+    return findings
+
+
+def _milestone_findings(
+    definition: CheckDefinition,
+    plan: PlanContract,
+) -> list[CriticFinding]:
+    if not plan.milestones:
+        return [
+            _finding(
+                definition,
+                "milestones_missing",
+                "Plan must define milestone contracts.",
+            )
+        ]
+    slice_ids = {task_slice.slice_id for task_slice in plan.task_slices}
+    slice_type_by_id = {
+        task_slice.slice_id: task_slice.task_type for task_slice in plan.task_slices
+    }
+    findings: list[CriticFinding] = []
+    for milestone in plan.milestones:
+        if not milestone.validation_contract:
+            findings.append(
+                _finding(
+                    definition,
+                    "milestone_validation_contract_missing",
+                    "Milestone must carry a validation contract.",
+                    milestone.milestone_id,
+                )
+            )
+        slice_types = {slice_type_by_id.get(slice_id) for slice_id in milestone.slice_ids}
+        if (
+            milestone.signoff_policy == "scrutiny_and_usertest"
+            and (
+                "engineering.qa.verify.scrutiny" not in slice_types
+                or "engineering.qa.verify.usertest" not in slice_types
+            )
+        ):
+            findings.append(
+                _finding(
+                    definition,
+                    "milestone_validator_signoff_unachievable",
+                    (
+                        "Milestone requires scrutiny/usertest signoff but does not "
+                        "contain both validator slices."
+                    ),
+                    milestone.milestone_id,
+                )
+            )
+        if (
+            milestone.signoff_policy == "scrutiny_only"
+            and "engineering.qa.verify.scrutiny" not in slice_types
+        ):
+            findings.append(
+                _finding(
+                    definition,
+                    "milestone_validator_signoff_unachievable",
+                    "Milestone requires scrutiny signoff but contains no scrutiny validator.",
+                    milestone.milestone_id,
+                )
+            )
+        missing = [slice_id for slice_id in milestone.slice_ids if slice_id not in slice_ids]
+        if missing:
+            findings.append(
+                _finding(
+                    definition,
+                    "milestone_unknown_slice",
+                    "Milestone references unknown slices: " + ", ".join(missing),
+                    milestone.milestone_id,
+                )
+            )
     return findings
 
 
@@ -889,12 +1259,12 @@ def _compactness_findings(
     if not _is_small_feature(plan):
         return []
     findings: list[CriticFinding] = []
-    if len(plan.task_slices) > 6:
+    if len(plan.task_slices) > 7:
         findings.append(
             _finding(
                 definition,
                 "small_feature_too_many_slices",
-                "Small roadmap item should usually fit in 4-6 slices.",
+                "Small roadmap item should usually fit in 5-7 slices.",
             )
         )
     role_counts = {
@@ -909,7 +1279,7 @@ def _compactness_findings(
                 "Small roadmap item should use one reviewer slice.",
             )
         )
-    if role_counts["qa"] > 2:
+    if role_counts["qa"] > 3:
         findings.append(
             _finding(
                 definition,

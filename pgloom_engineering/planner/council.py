@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from pgloom_engineering.contracts import FeatureGoalContract, PlanContract, validate_plan_contract
+from pgloom_engineering.contracts import (
+    FeatureGoalContract,
+    MilestoneContract,
+    PlanContract,
+    validate_plan_contract,
+)
 from pgloom_engineering.planner.consolidator import Consolidator
 from pgloom_engineering.planner.context_lens import apply_context_lens, lens_for_panelist
 from pgloom_engineering.planner.critic import (
@@ -91,6 +97,13 @@ class CouncilIteration(BaseModel):
     substance: PlannerSubstanceReport | None = None
 
 
+class InvalidCouncilProposal(BaseModel):
+    panelist_id: str
+    raw_response: str
+    parse_error: str
+    model_usage_id: int | None = None
+
+
 class CouncilOutcome(BaseModel):
     final: PlanContract
     iterations: list[CouncilIteration]
@@ -118,6 +131,7 @@ class PlannerCouncil:
         task_id: str | None = None,
     ) -> CouncilOutcome:
         iterations: list[CouncilIteration] = []
+        invalid_proposals: list[InvalidCouncilProposal] = []
         prior: CouncilIteration | None = None
         for index in range(1, self._config.max_iterations + 1):
             skeleton = build_deterministic_plan_skeleton(
@@ -125,7 +139,7 @@ class PlannerCouncil:
                 relevant_paths=project_context.relevant_paths,
                 qa_write_paths=project_context.qa_write_paths,
             )
-            proposals = self._collect_proposals(
+            proposals, invalid = self._collect_proposals(
                 index=index,
                 feature_goal=feature_goal,
                 project_context=project_context,
@@ -134,8 +148,9 @@ class PlannerCouncil:
                 workflow_id=workflow_id,
                 task_id=task_id,
             )
+            invalid_proposals.extend(invalid)
             if not proposals:
-                raise PlannerCouncilExhausted(iterations)
+                raise PlannerCouncilExhausted(iterations, invalid_proposals)
             consolidated = Consolidator(
                 provider=self._provider,
                 profile_name=self._config.consolidator_profile,
@@ -152,10 +167,15 @@ class PlannerCouncil:
                 workflow_id=workflow_id,
                 task_id=task_id,
             )
-            validator_errors = validate_plan_contract(consolidated)
+            consolidated = _repair_unachievable_milestones(consolidated)
+            validator_errors = validate_plan_contract(
+                consolidated,
+                qa_write_paths=project_context.qa_write_paths,
+            )
             production_grade = evaluate_production_grade(
                 consolidated,
                 project_root=project_context.project_root,
+                qa_write_paths=project_context.qa_write_paths,
             )
             substance = evaluate_planner_substance(
                 consolidated,
@@ -177,6 +197,7 @@ class PlannerCouncil:
                     validator_errors=validator_errors,
                     rationale="production_grade accepted cleanly; model critic preempted",
                     preempted=True,
+                    qa_write_paths=project_context.qa_write_paths,
                 )
             else:
                 critic = CriticRunner(
@@ -211,7 +232,7 @@ class PlannerCouncil:
                     accepted_at_iteration=index,
                 )
             prior = iteration
-        raise PlannerCouncilExhausted(iterations)
+        raise PlannerCouncilExhausted(iterations, invalid_proposals)
 
     def _collect_proposals(
         self,
@@ -223,38 +244,93 @@ class PlannerCouncil:
         prior_iteration: CouncilIteration | None,
         workflow_id: str | None,
         task_id: str | None,
-    ) -> list[CouncilProposal]:
-        proposals: list[CouncilProposal] = []
+    ) -> tuple[list[CouncilProposal], list[InvalidCouncilProposal]]:
         panelist_count = self._config.panelist_count_for_iteration(index)
-        for panelist_index in range(panelist_count):
-            runner = PanelistRunner(
-                provider=self._provider,
-                profile_name=self._config.panelist_profile,
-                panelist_id=f"panelist-{panelist_index}",
-                timeout_seconds=self._config.timeout_seconds_per_invocation,
-                command=self._config.command_for(self._config.panelist_profile),
+        if panelist_count <= 1:
+            proposal, invalid = self._collect_panelist_proposal(
+                panelist_index=0,
+                iteration=index,
+                feature_goal=feature_goal,
+                project_context=project_context,
+                plan_skeleton=plan_skeleton,
+                prior_iteration=prior_iteration,
+                workflow_id=workflow_id,
+                task_id=task_id,
             )
-            try:
-                lens = lens_for_panelist(panelist_index if index <= 1 else 0)
-                candidate, raw, usage_id = runner.propose(
+            return ([proposal] if proposal is not None else [], [invalid] if invalid else [])
+        proposals_by_index: dict[int, CouncilProposal] = {}
+        invalid_by_index: dict[int, InvalidCouncilProposal] = {}
+        with ThreadPoolExecutor(max_workers=panelist_count) as executor:
+            futures = {
+                executor.submit(
+                    self._collect_panelist_proposal,
+                    panelist_index=panelist_index,
+                    iteration=index,
                     feature_goal=feature_goal,
-                    project_context=apply_context_lens(project_context, lens),
+                    project_context=project_context,
                     plan_skeleton=plan_skeleton,
                     prior_iteration=prior_iteration,
                     workflow_id=workflow_id,
                     task_id=task_id,
-                )
-            except CandidateInvalid:
-                continue
-            proposals.append(
-                CouncilProposal(
-                    panelist_id=f"panelist-{panelist_index}",
-                    candidate=candidate,
-                    raw_response=_truncate_raw(raw),
-                    model_usage_id=usage_id,
-                )
+                ): panelist_index
+                for panelist_index in range(panelist_count)
+            }
+            for future in as_completed(futures):
+                proposal, invalid = future.result()
+                if proposal is not None:
+                    proposals_by_index[futures[future]] = proposal
+                if invalid is not None:
+                    invalid_by_index[futures[future]] = invalid
+        return (
+            [proposals_by_index[index] for index in sorted(proposals_by_index)],
+            [invalid_by_index[index] for index in sorted(invalid_by_index)],
+        )
+
+    def _collect_panelist_proposal(
+        self,
+        *,
+        panelist_index: int,
+        iteration: int,
+        feature_goal: FeatureGoalContract,
+        project_context: ProjectContext,
+        plan_skeleton: Any,
+        prior_iteration: CouncilIteration | None,
+        workflow_id: str | None,
+        task_id: str | None,
+    ) -> tuple[CouncilProposal | None, InvalidCouncilProposal | None]:
+        runner = PanelistRunner(
+            provider=self._provider,
+            profile_name=self._config.panelist_profile,
+            panelist_id=f"panelist-{panelist_index}",
+            timeout_seconds=self._config.timeout_seconds_per_invocation,
+            command=self._config.command_for(self._config.panelist_profile),
+        )
+        usage_id: int | None = None
+        try:
+            lens = lens_for_panelist(panelist_index if iteration <= 1 else 0)
+            candidate, raw, usage_id = runner.propose(
+                feature_goal=feature_goal,
+                project_context=apply_context_lens(project_context, lens),
+                plan_skeleton=plan_skeleton,
+                prior_iteration=prior_iteration,
+                workflow_id=workflow_id,
+                task_id=task_id,
             )
-        return proposals
+        except CandidateInvalid as exc:
+            panelist_id = f"panelist-{panelist_index}"
+            return None, InvalidCouncilProposal(
+                panelist_id=panelist_id,
+                raw_response=_truncate_raw(exc.raw_response),
+                parse_error=exc.parse_error,
+                model_usage_id=getattr(exc, "model_usage_id", None),
+            )
+        panelist_id = f"panelist-{panelist_index}"
+        return CouncilProposal(
+            panelist_id=panelist_id,
+            candidate=candidate,
+            raw_response=_truncate_raw(raw),
+            model_usage_id=usage_id,
+        ), None
 
 
 def run_council(
@@ -299,6 +375,61 @@ def _council_reports(iterations: list[CouncilIteration]) -> list[dict[str, Any]]
             }
         )
     return reports
+
+
+def _repair_unachievable_milestones(plan: PlanContract) -> PlanContract:
+    """Collapse impossible validator-gated milestones into one executable gate."""
+    task_type_by_id = {task_slice.slice_id: task_slice.task_type for task_slice in plan.task_slices}
+    if not plan.milestones or not _has_unachievable_milestone(plan, task_type_by_id):
+        return plan
+    slice_ids = [task_slice.slice_id for task_slice in plan.task_slices]
+    slice_types = set(task_type_by_id.values())
+    if "engineering.qa.verify.scrutiny" not in slice_types:
+        return plan
+    if "engineering.qa.verify.usertest" not in slice_types:
+        return plan
+    return plan.model_copy(
+        update={
+            "milestones": [
+                MilestoneContract(
+                    milestone_id="m1",
+                    name="Feature validation",
+                    slice_ids=slice_ids,
+                    acceptance_assertions=list(plan.acceptance_assertions),
+                    validation_contract={"scrutiny": True, "usertest": True},
+                    signoff_policy="scrutiny_and_usertest",
+                )
+            ]
+        }
+    )
+
+
+def _has_unachievable_milestone(
+    plan: PlanContract,
+    task_type_by_id: dict[str, str],
+) -> bool:
+    for milestone in plan.milestones:
+        slice_types = {task_type_by_id.get(slice_id) for slice_id in milestone.slice_ids}
+        if (
+            milestone.signoff_policy == "scrutiny_and_usertest"
+            and "engineering.qa.verify.scrutiny" not in slice_types
+            and "engineering.qa.verify.usertest" not in slice_types
+        ):
+            return True
+        if (
+            milestone.signoff_policy == "scrutiny_and_usertest"
+            and (
+                "engineering.qa.verify.scrutiny" not in slice_types
+                or "engineering.qa.verify.usertest" not in slice_types
+            )
+        ):
+            return True
+        if (
+            milestone.signoff_policy == "scrutiny_only"
+            and "engineering.qa.verify.scrutiny" not in slice_types
+        ):
+            return True
+    return False
 
 
 def _truncate_raw(value: str) -> str:

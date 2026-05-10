@@ -10,6 +10,8 @@ Deterministic validator and critic checks are authoritative. In particular:
 - QA verify must run after every reviewer.
 - Do not add finalization, merge, PR approval, or human-gate task slices; use
   only finalization_policy for the human merge gate.
-- Small or single-surface items should stay at 4-6 slices unless there is a
-  clear multi-surface risk.
+- Small or single-surface items should stay at 5-7 slices unless there is a
+  clear multi-surface risk. If a code-heavy hot-path feature was collapsed into
+  one broad implementer slice, split it into 2-4 smaller implementer slices by
+  API/core and backend/variant surfaces instead of preserving the broad slice.
 - Remove wildcard paths and same-slice allowed/forbidden overlap.

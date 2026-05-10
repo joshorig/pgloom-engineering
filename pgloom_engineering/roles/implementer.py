@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from pgloom_engineering.config import get_settings
 from pgloom_engineering.contract_store import (
     get_active_plan_contract,
     get_task_contract,
+    list_task_contracts,
     list_task_handoffs,
 )
 from pgloom_engineering.contracts import (
@@ -37,6 +39,7 @@ from pgloom_engineering.qa_runtime import (
     run_qa_verification,
 )
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
+from pgloom_engineering.role_payloads import compact_plan_payload, compact_qa_author_payload
 
 
 class ImplementerHandler:
@@ -102,6 +105,11 @@ class ImplementerHandler:
                     context_root=getattr(settings, "role_model_context_root", Path(".")),
                     enabled=bool(
                         getattr(settings, "role_model_context_isolation_enabled", False)
+                        or getattr(
+                            settings,
+                            "implementer_model_context_isolation_enabled",
+                            False,
+                        )
                     ),
                 ),
                 qa_env(project.metadata, project_root=project.root),
@@ -183,8 +191,9 @@ class ImplementerHandler:
                 output = None
                 contract_error = str(exc)
 
+            reported_blockers = output.blockers if output is not None else []
             if (
-                (contract_error or violations or failed_verifications)
+                (contract_error or violations or failed_verifications or reported_blockers)
                 and repair_attempts < max_repair_attempts
             ):
                 repair_attempts += 1
@@ -198,7 +207,8 @@ class ImplementerHandler:
                         changed_files=touched,
                         path_violations=violations,
                         failed_verifications=failed_verifications,
-                        contract_error=contract_error,
+                        contract_error=contract_error
+                        or _reported_blockers_error(reported_blockers),
                         raw_response=response.text,
                         role_context=role_context.prompt_payload(),
                     ),
@@ -240,10 +250,11 @@ class ImplementerHandler:
                 )
             if failed_verifications:
                 first = failed_verifications[0]
+                blocker_reason = _verification_blocker_reason(first)
                 return HandlerResult(
                     status="blocked",
                     blocker_code="engineering.implementation_verification_failed",
-                    blocker_reason="implementer verification commands failed",
+                    blocker_reason=blocker_reason,
                     result={
                         "commands": [item.original.argv for item in verification_results],
                         "stdout_excerpt": first.stdout_excerpt,
@@ -254,12 +265,23 @@ class ImplementerHandler:
                 )
             if output is None:
                 raise AssertionError("TaskResultContract unexpectedly missing after validation")
+            commands_run = _commands_run_from_verification_results(verification_results)
+            reported_blockers = list(output.blockers)
             output = output.model_copy(
                 update={
                     "feature_id": task_contract.feature_id,
                     "task_id": task_id,
                     "changed_files": sorted(set([*output.changed_files, *touched])),
                     "branch": output.branch or qa_contract.branch,
+                    "worktree_path": str(worktree),
+                    "blockers": [],
+                    "deviations": [
+                        *output.deviations,
+                        *[
+                            f"reported_blocker_cleared_by_orchestrator_verification: {item}"
+                            for item in reported_blockers
+                        ],
+                    ],
                     "model_usage_ids": [*output.model_usage_ids, *model_usage_ids],
                     "checks": [
                         *output.checks,
@@ -271,6 +293,10 @@ class ImplementerHandler:
                             }
                             for result in verification_results
                         ],
+                    ],
+                    "commands_run": [
+                        *output.commands_run,
+                        *commands_run,
                     ],
                     "token_savior_usage_ids": [
                         *output.token_savior_usage_ids,
@@ -305,14 +331,33 @@ def build_implementer_prompt(
                 "Implement the production code required to make the QA-authored tests pass.",
                 "Work in the provided worktree and preserve QA-authored test files unchanged.",
                 "Only edit paths allowed by the TaskContract; never edit forbidden paths.",
-                "Run the focused verification commands before returning.",
+                (
+                    "Keep source inspection targeted: use rg for symbol discovery and read "
+                    "only the smallest relevant file ranges before editing."
+                ),
+                (
+                    "Do not paste full file contents, full diffs, or full command logs into "
+                    "the response; summarize and reference paths/commands instead."
+                ),
+                (
+                    "Run exactly the TaskContract verification_commands before returning. "
+                    "Do not add or substitute broad project gates such as ./gradlew test, "
+                    "./gradlew check, ./qa/smoke.sh, ./qa/regression.sh, or full JMH sweeps "
+                    "unless that exact command is listed in the TaskContract."
+                ),
                 "Return only a TaskResultContract JSON object.",
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
-            "plan_contract": plan.model_dump(mode="json"),
+            "implementer_context_capsule": build_implementer_context_capsule(
+                plan=plan,
+                task_contract=task_contract,
+                qa_contract=qa_contract,
+                role_context=role_context,
+            ),
+            "plan_contract": compact_plan_payload(plan),
             "task_contract": task_contract.model_dump(mode="json"),
-            "qa_author_contract": qa_contract.model_dump(mode="json"),
+            "qa_author_contract": compact_qa_author_payload(qa_contract),
             "project_metadata": _safe_project_metadata(project_metadata),
             "required_response": {
                 "contract_version": "engineering.contracts.v1",
@@ -351,13 +396,34 @@ def build_implementer_repair_prompt(
                     "revert any forbidden-path edits."
                 ),
                 "Fix compile/runtime/test failures by changing production code only.",
+                (
+                    "If earlier blockers were caused by stale sandbox or command "
+                    "errors that now pass, return blockers=[] and include the "
+                    "successful commands in commands_run."
+                ),
+                (
+                    "Use the previous_response_summary for orientation only; do not "
+                    "re-read broad source surfaces unless the failing evidence points there."
+                ),
+                (
+                    "Rerun only the TaskContract verification_commands. Do not add broad "
+                    "project gates such as ./gradlew test, ./gradlew check, ./qa/smoke.sh, "
+                    "./qa/regression.sh, or full JMH sweeps unless that exact command is "
+                    "listed in the TaskContract."
+                ),
                 "Return only a valid TaskResultContract JSON object.",
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
-            "plan_contract": plan.model_dump(mode="json"),
+            "implementer_context_capsule": build_implementer_context_capsule(
+                plan=plan,
+                task_contract=task_contract,
+                qa_contract=qa_contract,
+                role_context=role_context,
+            ),
+            "plan_contract": compact_plan_payload(plan),
             "task_contract": task_contract.model_dump(mode="json"),
-            "qa_author_contract": qa_contract.model_dump(mode="json"),
+            "qa_author_contract": compact_qa_author_payload(qa_contract),
             "changed_files": changed_files,
             "path_violations": path_violations,
             "contract_error": contract_error,
@@ -370,19 +436,227 @@ def build_implementer_repair_prompt(
                 }
                 for item in failed_verifications
             ],
-            "previous_response": raw_response,
+            "previous_response_summary": _compact_previous_response(raw_response),
         },
         indent=2,
         sort_keys=True,
     )
 
 
+def build_implementer_context_capsule(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    qa_contract: QAAuthorContract,
+    role_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    context = role_context or {}
+    qa_tests = _string_list(qa_contract.tests_added)
+    qa_paths = _string_list(qa_contract.paths_touched)
+    acceptance = _string_list(task_contract.inputs.get("acceptance_assertion_ids"))
+    return {
+        "contract": "engineering.implementer_context_capsule.v1",
+        "purpose": (
+            "Use this compact capsule as the first recall surface before broad "
+            "source reads. If more code context is needed, query by symbol/path and "
+            "read only the smallest relevant ranges."
+        ),
+        "slice": {
+            "task_type": task_contract.task_type,
+            "objective": task_contract.objective,
+            "allowed_paths": _string_list(task_contract.allowed_paths),
+            "forbidden_paths": _string_list(task_contract.forbidden_paths),
+            "acceptance_assertion_ids": acceptance,
+            "verification_commands": task_contract.verification_commands,
+            "required_procedures": _string_list(task_contract.required_procedures),
+        },
+        "design_constraints": {
+            "public_api": plan.design_contract.public_api,
+            "hard_constraints": _string_list(plan.design_contract.hard_constraints),
+            "forbidden_alternatives": _string_list(plan.design_contract.forbidden_alternatives),
+            "acceptance_tests": _string_list(plan.design_contract.acceptance_tests),
+        },
+        "qa_handoff": {
+            "tests_added": qa_tests,
+            "paths_touched": qa_paths,
+            "matrix_coverage": qa_contract.matrix_coverage,
+            "red_proof_commands": [
+                item.get("command")
+                for item in qa_contract.red_proof
+                if isinstance(item, dict) and item.get("command")
+            ],
+        },
+        "recall": {
+            "relevant_paths": _string_list(context.get("relevant_paths")),
+            "qa_write_paths": _string_list(context.get("qa_write_paths")),
+            "memory_digest": _compact_text(context.get("memory_digest"), limit=1800),
+            "packed_context": _compact_text(context.get("packed_context"), limit=3200),
+            "token_savior": context.get("token_savior") or {},
+            "source_queries": _implementer_source_queries(
+                task_contract=task_contract,
+                qa_tests=[*qa_tests, *qa_paths],
+                relevant_paths=_string_list(context.get("relevant_paths")),
+            ),
+        },
+    }
+
+
 def normalize_task_result_payload(payload: object) -> object:
     if isinstance(payload, dict) and isinstance(payload.get("TaskResultContract"), dict):
-        return payload["TaskResultContract"]
+        return normalize_task_result_payload(payload["TaskResultContract"])
     if isinstance(payload, dict) and isinstance(payload.get("task_result_contract"), dict):
-        return payload["task_result_contract"]
+        return normalize_task_result_payload(payload["task_result_contract"])
+    if isinstance(payload, dict):
+        normalized = dict(payload)
+        normalized["checks"] = _normalize_check_items(normalized.get("checks"))
+        normalized["commands_run"] = _normalize_check_items(normalized.get("commands_run"))
+        return normalized
     return payload
+
+
+def _normalize_check_items(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized.append(item)
+        elif item is not None:
+            normalized.append({"name": str(item), "status": "reported"})
+    return normalized
+
+
+def _reported_blockers_error(blockers: list[str]) -> str | None:
+    if not blockers:
+        return None
+    return (
+        "TaskResultContract.blockers must be empty when orchestrator verification "
+        f"passes; reported blockers: {blockers}"
+    )
+
+
+def _verification_blocker_reason(item: Any) -> str:
+    original = getattr(item, "original", None)
+    command = " ".join(str(part) for part in getattr(original, "argv", []) or [])
+    excerpts = [
+        " ".join(str(value).split())
+        for value in (
+            getattr(item, "stderr_excerpt", ""),
+            getattr(item, "stdout_excerpt", ""),
+        )
+        if str(value).strip()
+    ]
+    details = " | ".join(excerpts)
+    reason = "implementer verification commands failed"
+    if command:
+        reason += f": {command}"
+    if details:
+        reason += f": {details}"
+    return reason[:1200]
+
+
+def _commands_run_from_verification_results(results: list[Any]) -> list[dict[str, Any]]:
+    commands: list[dict[str, Any]] = []
+    for item in results:
+        original = getattr(item, "original", None)
+        if original is None:
+            continue
+        commands.append(
+            {
+                "cmd": list(getattr(original, "argv", []) or []),
+                "exit_code": int(getattr(original, "exit_code", 0) or 0),
+                "duration_s": float(getattr(original, "duration_seconds", 0.0) or 0.0),
+            }
+        )
+    return commands
+
+
+def _compact_previous_response(raw_response: str, *, limit: int = 4000) -> dict[str, Any]:
+    parsed: object | None = None
+    try:
+        parsed = normalize_task_result_payload(extract_json(raw_response))
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        return {
+            "changed_files": _string_list(parsed.get("changed_files"))[:80],
+            "checks": _compact_checks(parsed.get("checks")),
+            "commands_run": _compact_checks(parsed.get("commands_run")),
+            "blockers": _string_list(parsed.get("blockers"))[:20],
+            "deviations": _string_list(parsed.get("deviations"))[:20],
+        }
+    text = raw_response.strip()
+    if len(text) > limit:
+        text = text[:limit] + "\n...[truncated]"
+    return {"raw_excerpt": text}
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None]
+
+
+def _compact_text(value: object, *, limit: int) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    if len(value) <= limit:
+        return value
+    return value[:limit] + "\n...[truncated for implementer capsule]"
+
+
+def _implementer_source_queries(
+    *,
+    task_contract: TaskContract,
+    qa_tests: list[str],
+    relevant_paths: list[str],
+) -> list[str]:
+    terms = [
+        task_contract.objective,
+        " ".join(task_contract.expected_outputs),
+        " ".join(_string_list(task_contract.inputs.get("acceptance_assertion_ids"))),
+        " ".join(qa_tests),
+        " ".join(relevant_paths),
+    ]
+    words = [
+        word.lower()
+        for word in re.findall(r"[A-Za-z][A-Za-z0-9_]{3,}", " ".join(terms))
+        if word.lower()
+        not in {
+            "engineering",
+            "implement",
+            "implementation",
+            "feature",
+            "contract",
+            "expected",
+            "outputs",
+            "tests",
+            "test",
+        }
+    ]
+    unique = list(dict.fromkeys(words))
+    queries = [" ".join(unique[:8])] if unique else []
+    for path in [*task_contract.allowed_paths, *relevant_paths, *qa_tests]:
+        if isinstance(path, str) and path:
+            queries.append(path)
+    return list(dict.fromkeys(query for query in queries if query))[:12]
+
+
+def _compact_checks(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    checks: list[dict[str, Any]] = []
+    for item in value[:40]:
+        if not isinstance(item, dict):
+            continue
+        checks.append(
+            {
+                key: item.get(key)
+                for key in ("cmd", "command", "exit_code", "status", "duration_s")
+                if key in item
+            }
+        )
+    return checks
 
 
 def implementation_path_violations(
@@ -418,6 +692,12 @@ def _dependency_qa_contract(
         list_task_handoffs(input_task_id, database_url=database_url)
     ):
         contract = _qa_contract_from_payload(handoff.get("contract"))
+        if contract is not None:
+            return contract
+    for row in reversed(
+        list_task_contracts(task_contract.feature_id, database_url=database_url)
+    ):
+        contract = _qa_contract_from_payload(row.get("output_contract"))
         if contract is not None:
             return contract
     return None

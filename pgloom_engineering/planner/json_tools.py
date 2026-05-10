@@ -4,13 +4,21 @@ import json
 
 
 def extract_json(text: str) -> object:
+    stripped = text.strip()
+    if stripped:
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
     fenced = _extract_fenced_json(text)
     if fenced is not None:
         return json.loads(fenced)
-    span = _last_balanced_json_span(text)
-    if span is None:
-        raise ValueError("no JSON object found in model response")
-    return json.loads(span)
+    for span in reversed(_balanced_json_spans(text)):
+        try:
+            return json.loads(span)
+        except json.JSONDecodeError:
+            continue
+    raise ValueError("no JSON object found in model response")
 
 
 def _extract_fenced_json(text: str) -> str | None:
@@ -27,14 +35,18 @@ def _extract_fenced_json(text: str) -> str | None:
     return text[body_start + 1 : end].strip()
 
 
-def _last_balanced_json_span(text: str) -> str | None:
-    end = text.rfind("}")
-    if end < 0:
-        return None
+def _balanced_json_spans(text: str) -> list[str]:
+    spans: list[str] = []
+    start: int | None = None
     depth = 0
     in_string = False
     escaped = False
-    for index in range(end, -1, -1):
+    for index, char in enumerate(text):
+        if start is None:
+            if char == "{":
+                start = index
+                depth = 1
+            continue
         char = text[index]
         if escaped:
             escaped = False
@@ -47,10 +59,11 @@ def _last_balanced_json_span(text: str) -> str | None:
             continue
         if in_string:
             continue
-        if char == "}":
+        if char == "{":
             depth += 1
-        elif char == "{":
+        elif char == "}":
             depth -= 1
             if depth == 0:
-                return text[index : end + 1]
-    return None
+                spans.append(text[start : index + 1])
+                start = None
+    return spans

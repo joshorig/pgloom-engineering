@@ -1,0 +1,68 @@
+/* extras-3.css — slot occupancy + lock visualizer */
+
+.cc-slots {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 12px;
+}
+.cc-slot {
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--inset);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px;
+}
+.cc-slot.is-idle { opacity: 0.7; border-style: dashed; }
+.cc-slot.is-leased { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-soft) inset; }
+.cc-slot-hd { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; border-bottom: 1px dashed var(--line); }
+.cc-slot-num { font-size: 11px; color: var(--t3); letter-spacing: 0.04em; }
+.cc-slot-state { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; padding: 1px 6px; border-radius: 3px; }
+.cc-slot-state.st-run  { color: var(--st-run);  background: var(--st-run-soft); }
+.cc-slot-state.st-idle { color: var(--t3);      background: var(--panel-3); }
+.cc-slot-state i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: inline-block; }
+.cc-slot-row { display: grid; grid-template-columns: 56px 1fr; gap: 6px; align-items: baseline; font-size: 11.5px; }
+.cc-slot-row .cc-dim { font-size: 10.5px; }
+.cc-slot-foot { display: flex; justify-content: space-between; padding-top: 6px; margin-top: 2px; border-top: 1px dashed var(--line); font-size: 11.5px; }
+.cc-slot-empty { font-size: 11px; color: var(--t3); padding: 14px 0 4px; text-align: center; }
+
+/* per-project locks */
+.cc-lock-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.cc-lock {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--inset);
+  padding: 10px 12px;
+}
+.cc-lock.is-free { opacity: 0.7; border-style: dashed; }
+.cc-lock.is-held { border-color: var(--line-2); }
+.cc-lock-hd { display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px dashed var(--line); margin-bottom: 6px; }
+.cc-lock-key { display: flex; gap: 8px; align-items: center; }
+.cc-lock-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.cc-lock-dot.is-free { background: transparent; border: 1px dashed var(--t3); }
+.cc-lock-proj { font-size: 12px; color: var(--t1); letter-spacing: 0.02em; }
+.cc-lock-state { font-size: 10px; letter-spacing: 0.08em; }
+
+.cc-lock-body { display: flex; flex-direction: column; gap: 8px; }
+.cc-lock-line { display: flex; gap: 8px; align-items: baseline; font-size: 12px; flex-wrap: wrap; }
+.cc-lock-queue { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.cc-lock-q {
+  display: grid; grid-template-columns: 18px auto auto auto 1fr;
+  gap: 6px; align-items: baseline; font-size: 11.5px;
+}
+.cc-lock-wait { color: var(--st-block); font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: var(--st-block-soft); justify-self: end; }
+.cc-lock-empty { font-size: 11px; color: var(--t3); padding: 4px 0; }
+
+/* contention sparkline */
+.cc-contention { padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.cc-contention-row {
+  display: grid; grid-template-columns: 36px 1fr 30px;
+  gap: 10px; align-items: end;
+}
+.cc-contention-key { font-size: 11px; color: var(--t2); letter-spacing: 0.04em; align-self: center; }
+.cc-contention-bars { display: flex; gap: 2px; align-items: flex-end; height: 32px; }
+.cc-contention-bar { display: block; flex: 1 1 auto; min-width: 4px; background: var(--accent); border-radius: 1px; }
+.cc-contention-now { font-size: 10.5px; align-self: center; text-align: right; }
+.cc-contention-axis { display: flex; justify-content: space-between; padding: 6px 0 0; border-top: 1px dashed var(--line); margin-top: 4px; font-size: 10px; }
+
+/* stat with metric value coloring */
+.cc-pulse { animation: cc-pulse-anim 1.6s ease-in-out infinite; }

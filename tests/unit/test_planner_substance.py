@@ -99,6 +99,8 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
                 "avoid_patterns": ["avoid"],
                 "required_gates": [{"id": "smoke"}],
                 "benchmark_variants": ["single"],
+                "test_roots": ["core/src/test/java"],
+                "benchmark_roots": ["benchmarks/src/jmh/java"],
                 "semantic_conventions": {
                     "endpoint_acceptance": {"require_http_harness": True},
                     "payload_assertions": {"prefer_structured_json_paths": True},
@@ -110,6 +112,8 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
     assert summary["endpoint_acceptance"]["require_http_harness"] is True
     assert summary["payload_assertions"]["prefer_structured_json_paths"] is True
     assert summary["benchmark_variants"] == ["single"]
+    assert summary["test_roots"] == ["core/src/test/java"]
+    assert summary["benchmark_roots"] == ["benchmarks/src/jmh/java"]
 
 
 def test_repair_brief_includes_substance_findings() -> None:

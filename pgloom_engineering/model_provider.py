@@ -59,7 +59,13 @@ class EngineeringCLIModelProvider:
             "timed_out": completed.timed_out,
             "killed": completed.killed,
             "stderr": completed.stderr,
+            "duration_seconds": completed.duration_seconds,
+            "prompt_estimated_tokens": _approx_tokens(prompt),
+            "prompt_bytes": len(prompt.encode("utf-8")),
+            "stdout_bytes": len(completed.stdout.encode("utf-8")),
+            "stderr_bytes": len(completed.stderr.encode("utf-8")),
             "token_count_source": usage.source,
+            **_command_route_metadata(profile.command),
             **usage.metadata,
         }
         result = EngineeringModelInvocationResult(
@@ -122,18 +128,27 @@ class _Usage(BaseModel):
 
 
 def _parse_model_output(stdout: str, parse_response: str) -> tuple[Any, str, _Usage]:
+    parsed_json = _json_object(stdout)
     if parse_response == "json" and stdout.strip():
-        try:
-            parsed = json.loads(stdout)
-        except json.JSONDecodeError:
+        if parsed_json is None:
             return None, stdout, _parse_codex_text_usage(stdout)
-        if isinstance(parsed, dict):
-            return parsed, _json_result_text(parsed, stdout), _parse_json_usage(parsed)
-        return parsed, stdout, _Usage()
+        return parsed_json, _json_result_text(parsed_json, stdout), _parse_json_usage(parsed_json)
+    if parsed_json is not None:
+        return None, _json_result_text(parsed_json, stdout), _parse_json_usage(parsed_json)
     codex_text = _codex_result_text(stdout)
     if codex_text is not None:
         return None, codex_text, _parse_codex_jsonl_usage(stdout)
     return None, stdout, _parse_codex_text_usage(stdout)
+
+
+def _json_object(stdout: str) -> dict[str, Any] | None:
+    if not stdout.strip():
+        return None
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _json_result_text(parsed: dict[str, Any], fallback: str) -> str:
@@ -199,6 +214,35 @@ def _parse_codex_jsonl_usage(stdout: str) -> _Usage:
             "reasoning_output_tokens": _int_or_none(usage.get("reasoning_output_tokens")),
         },
     )
+
+
+def _command_route_metadata(command: list[str]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    executable = command[0] if command else ""
+    if "codex" in executable or any(part == "codex" for part in command):
+        metadata["provider"] = "codex"
+    elif "claude" in executable or any(part == "claude" for part in command):
+        metadata["provider"] = "claude"
+    model = _command_value(command, "-m") or _command_value(command, "--model")
+    if model:
+        metadata["model"] = model
+    for index, part in enumerate(command):
+        if part.startswith("model_reasoning_effort="):
+            metadata["reasoning_level"] = part.split("=", 1)[1].strip('"')
+        elif part == "-c" and index + 1 < len(command):
+            config = command[index + 1]
+            if config.startswith("model_reasoning_effort="):
+                metadata["reasoning_level"] = config.split("=", 1)[1].strip('"')
+    return metadata
+
+
+def _command_value(command: list[str], flag: str) -> str | None:
+    if flag not in command:
+        return None
+    index = command.index(flag)
+    if index + 1 >= len(command):
+        return None
+    return command[index + 1]
 
 
 def _parse_codex_text_usage(stdout: str) -> _Usage:

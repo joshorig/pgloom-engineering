@@ -18,6 +18,7 @@ def build_registry() -> HandlerRegistry:
     registry.register("engineering.implement", ImplementerHandler())
     registry.register("engineering.review", ReviewerHandler())
     registry.register("engineering.qa.author", QAHandler())
-    registry.register("engineering.qa.verify", QAHandler())
+    registry.register("engineering.qa.verify.scrutiny", QAHandler())
+    registry.register("engineering.qa.verify.usertest", QAHandler())
     registry.register("engineering.historian", HistorianHandler())
     return registry

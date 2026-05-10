@@ -44,7 +44,11 @@ The bring‑up test case is `lvc-standard` R‑002 (§ 5). It is deliberately st
   force expensive repair loops downstream.
 - The next consumer is `engineering.implement`: plans should preserve a clean
   handoff from QA author red tests to implementer allowed source paths and then
-  reviewer/QA verify.
+  reviewer, QA scrutiny, and QA user-test validators.
+- Target plans now carry milestone contracts, validation contracts, grading
+  criteria, required procedures, context budgets, model route hints, and
+  bidirectional assertion coverage. This is a typed-contract architecture, not a
+  prompt-only orchestrator.
 
 ---
 
@@ -264,15 +268,44 @@ The check IDs are the contract — they must remain stable across implementation
 | 6 | `check_topology_consistency` | Implementation topology consistency | blocking | `implementation_topology == SINGLE` is incompatible with `> 1` slice having `role == "implementer"`. |
 | 7a | `check_reviewer_present` | Reviewer slice presence | blocking | At least one slice with `role == "reviewer"` must exist. (Multi‑agent review enforcement happens later, at Reviewer dispatch.) |
 | 7b | `check_qa_author_present` | QA author slice present (test‑first) | blocking | At least one slice with `task_type == "engineering.qa.author"` must exist, scheduled **before** every implementer slice in the `depends_on` DAG. Its `allowed_paths` must be restricted to `tests/**` and/or `qa/fixtures/**` and must not overlap any implementer slice's `allowed_paths`. |
-| 7c | `check_qa_verify_present` | QA verify + sign‑off slice present | blocking | At least one slice with `task_type == "engineering.qa.verify"` must exist, scheduled **after** every reviewer slice. Its `allowed_paths` is restricted to `tests/**` and `qa/fixtures/**`. Its `verification_commands` must include a full‑suite invocation (e.g. `["./qa/regression.sh"]` or equivalent) AND the project's smoke command. |
-| 7d | `check_qa_paths_disjoint` | QA paths disjoint from source | blocking | No QA slice (`qa.author` or `qa.verify`) may have an `allowed_paths` entry that overlaps any implementer slice's `allowed_paths`. Conversely, no implementer slice may include a `tests/**` or `qa/fixtures/**` entry in its `allowed_paths` (Implementer is free to read tests but not to write them). |
+| 7c | `check_qa_verify_present` | QA scrutiny + user-test sign-off slices present | blocking | At least one slice with `task_type == "engineering.qa.verify.scrutiny"` must exist, scheduled **after** every reviewer slice, and must include lint/build, feature-specific tests, and benchmark smoke commands. It must not schedule `qa/regression.sh` or full `:benchmarks:jmh` sweeps as per-feature blockers; those are periodic project gates. At least one slice with `task_type == "engineering.qa.verify.usertest"` must exist after scrutiny unless project metadata declares `usertest_harness.kind = "none"`. Scrutiny and user-test validators must use fresh context and both must approve milestone/final signoff. |
+| 7d | `check_qa_paths_disjoint` | QA paths disjoint from source | blocking | No QA slice (`qa.author`, `qa.verify.scrutiny`, or `qa.verify.usertest`) may have an `allowed_paths` entry that overlaps any implementer slice's `allowed_paths`. Conversely, no implementer slice may include a `tests/**` or `qa/fixtures/**` entry in its `allowed_paths` (Implementer is free to read tests but not to write them). |
 | 8 | `check_orphan_slices` | Orphan slice detection | advisory | A slice that no later slice depends on, and whose role is neither `reviewer` / `qa` / `historian` (terminal roles), is likely orphan work. Emit advisory findings; do not block. |
 | 9 | `check_finalization_policy` | Finalization policy locked to human merge | blocking | `finalization_policy == "open_final_feature_pr_for_human_merge"`. (Already enforced by `validate_plan_contract`; critic echoes it for audit symmetry.) |
 | 10 | `check_objective_specificity` | Objective specificity | advisory | Each slice's `objective` is at least one sentence and references at least one concrete artifact (a file path, a class name, a test name, a metric). Vague objectives ("implement the feature") are flagged advisory. |
 | 11 | `check_risk_register_present` | Risk register present | advisory | `PlanContract.risk_register` is non‑empty for any plan whose goal mentions `lifecycle / snapshot / restore / persistence / concurrency`. Empty registers on lifecycle work are flagged advisory. |
 | 12 | `check_roadmap_dependency_handling` | Roadmap dependency handling | blocking | Plans for dependency-gated roadmap items must block, narrow, or explicitly sequence prerequisites instead of silently planning against unavailable foundations. Current deterministic coverage includes R‑004/R‑006 requiring the R‑002 snapshot prerequisite to be acknowledged. |
 | 13 | `check_hot_path_invariants` | Hot-path invariant preservation | blocking | Plans must not schedule implementation work that violates explicit zero-allocation or hot-path constraints, such as putting LZ4 compression/allocation on the publish path. |
-| 14 | `check_small_feature_compactness` | Small-feature compactness | blocking | Small or single-surface roadmap items should use a compact handoff, typically design → qa.author → implementer → reviewer → qa.verify, with 4-6 slices unless the feature has clear multi-surface risk. |
+| 14 | `check_small_feature_compactness` | Small-feature compactness | blocking | Small or single-surface roadmap items should use a compact handoff, typically design → qa.author → implementer → reviewer → scrutiny → user-test, with 5-7 slices unless the feature has clear multi-surface risk. |
+| 15 | `check_acceptance_assertion_coverage` | Bidirectional assertion coverage | blocking | Every acceptance criterion/assertion must be claimed by at least one task slice, and every task slice must claim at least one acceptance criterion/assertion. Plans must fail if either side is unclaimed. |
+| 16 | `check_milestone_validation_contracts` | Milestone validation contracts | blocking | Every milestone must list its slice ids, acceptance assertions, validation contract, and signoff policy. Downstream milestone slices must depend on prior milestone signoff. |
+| 17 | `check_required_procedures_present` | Required worker procedures | blocking | Every task slice must include `required_procedures`; worker result contracts must later emit `procedures_attestation`. |
+
+### 4.1 Target contract additions
+
+Add these fields in the next schema wave:
+
+- `PlanContract.milestones: list[MilestoneContract]`
+- `TaskSliceContract.acceptance_assertions: list[str]`
+- `TaskSliceContract.grading_criteria: list[str]`
+- `TaskSliceContract.validation_strategy: dict[str, Any]`
+- `TaskSliceContract.required_procedures: list[str]`
+- `TaskSliceContract.context_budget: dict[str, Any]`
+- `TaskSliceContract.model_route_hint: dict[str, Any]`
+
+`MilestoneContract` groups slices and carries the validation contract for that
+checkpoint. Validation contracts are written during planning, before
+implementation, and become the source of truth for scrutiny/user-test workers.
+
+### 4.2 Corrective-slice recovery
+
+Extend `RecoveryDecisionContract.action` with `corrective_slice`. When a
+validator fails at a milestone boundary, invoke the planner in narrow mode with
+the prior `PlanContract`, signed-off milestone state, validator findings, failed
+commands, evidence ids, and artifact ids. The planner emits at most three new
+slices, appends them to the plan, and leaves unrelated slices intact. Use full
+replan only when the milestone contract itself is invalid or the corrective
+slice budget is exhausted.
 
 **Implementation note for the critic.** The current implementation is **a single CLI invocation** that emits one JSON document containing all `CriticCheckResult` rows listed in `RUBRIC_CHECKS`. The prompt template (`prompts/critic.md`) must instruct the agent to output the JSON with one entry per check by `check_id`. Missing `check_id`s in the response are treated as `passed=false, severity=blocking, findings=[{check_id, code="critic_did_not_evaluate_check", ...}]`. The `verdict` field on `CriticVerdict` is computed by the `CriticRunner` from the per‑check results, **not** asked of the model — the model is responsible for evidence per check, not for the final yes/no.
 
@@ -305,7 +338,7 @@ The R‑002 entry lives at `/Volumes/devssd/repos/ull/lvc-standard/repo-memory/R
 Additional context the implementor brief includes for the planner's prompt (the `_handle_council` path passes these as the `ProjectContext` strings):
 
 - **`publishChecked` semantics**, from `/Volumes/devssd/repos/ull/lvc-standard/repo-memory/DECISIONS.md` 2026‑04‑xx entry: `GuaranteedPublisher.publishChecked` stages store + journal writes atomically; on journal failure the store write is aborted. Restore must reconcile against the journal cursor so partial writes do not become visible.
-- **QA scripts**: `/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh` runs `./gradlew --no-daemon test` + `:benchmarks:jmhSmokeCheck` (the alloc gate; do not skip the `rm -rf benchmarks/build` step or `-Pjmh.smoke=true` becomes a no‑op). `qa/regression.sh` is the full JMH sweep.
+- **QA scripts**: `/Volumes/devssd/repos/ull/lvc-standard/qa/smoke.sh` runs `./gradlew --no-daemon test` + `:benchmarks:jmhSmokeCheck` (the alloc gate; do not skip the `rm -rf benchmarks/build` step or `-Pjmh.smoke=true` becomes a no-op). `qa/regression.sh` is the full JMH sweep and is a project-scheduled periodic gate, not a per-feature QA scrutiny blocker.
 - **Module layout** (from `ls /Volumes/devssd/repos/ull/lvc-standard`): `core/`, `store/`, `signal/`, `guaranteed-aeron/`, `guaranteed-inproc/`, `sbe-adapters/`, `benchmarks/`, `conformance-tests/`, `qa/`, `repo-memory/`, top‑level `build.gradle` + `gradle.properties`.
 
 The `FeatureGoalContract` the bring‑up test passes to the council:
@@ -369,9 +402,9 @@ This test must be Postgres‑gated (use the existing `database_url` fixture) and
 - `test_council_produces_clean_plan_contract_for_lvc_r002(database_url)` — load `tests/fixtures/r002_feature_goal.json`, build a `ProjectContext` from in‑memory strings (do not actually read `/Volumes/devssd/repos/ull/lvc-standard` in the test — keep it hermetic), wire a `FakeCLIModelProvider` whose responses come from `tests/fixtures/r002_council_responses/` (one JSON file per profile per iteration), invoke the council via `PlannerHandler`, then assert:
   - The resulting `PlanContract` row in `engineering_plan_contracts` has `status="valid"` and `validation_errors == []`.
   - `acceptance_test_matrix` mentions all three lifecycle categories: at least one entry contains a term from `{stale, invalid, precondition}`, at least one from `{invariant, corrupt, crc}`, at least one from `{failure, timeout, partial}`.
-  - `task_slices` includes (by `slice_id` substring or `objective` keyword): a design slice, a `qa.author` slice writing red tests scheduled before all implementer slices, a SINGLE‑store snapshot/restore implementer slice, a DOUBLE‑store snapshot/restore implementer slice, a journal‑cursor reconciliation slice, a reviewer slice, and a `qa.verify` slice running full‑suite + signoff. (Order: design → qa.author → impl(s) → reviewer → qa.verify.)
+  - `task_slices` includes (by `slice_id` substring or `objective` keyword): a design slice, a `qa.author` slice writing red tests scheduled before all implementer slices, a SINGLE‑store snapshot/restore implementer slice, a DOUBLE‑store snapshot/restore implementer slice, a journal‑cursor reconciliation slice, a reviewer slice, a `qa.verify.scrutiny` slice running lint/type/smoke/full‑suite checks, and a `qa.verify.usertest` slice launching the app/service or recording a metadata-authorized pure-library skip. (Order: design → qa.author → impl(s) → reviewer → scrutiny → usertest.)
   - `council_reports` contains at least one entry per panelist plus the critic verdict, hash‑linkable back via the iteration trace.
-  - **Role‑gating outcome:** child tasks enqueued in `tasks` table cover *only* the design + qa.author + reviewer + qa.verify + historian slices. Implementer slices are NOT in `tasks` (gated). For each implementer slice, an `engineering_recovery_actions` row exists with `blocker_code="engineering.role_gate_disabled"`, `action="block_execution"`, `status="deferred"`, and the slice id in the outcome JSON. Note: `qa.author` and `qa.verify` are gated by their distinct `task_type` strings — the `role_gates` lookup uses `role` ("qa"), so both QA phases share a single gate setting (treat `"qa"` as the role for both task types).
+  - **Role‑gating outcome:** child tasks enqueued in `tasks` table cover *only* the design + qa.author + reviewer + qa.verify.scrutiny + qa.verify.usertest + historian slices. Implementer slices are NOT in `tasks` (gated). For each implementer slice, an `engineering_recovery_actions` row exists with `blocker_code="engineering.role_gate_disabled"`, `action="block_execution"`, `status="deferred"`, and the slice id in the outcome JSON. Note: QA phases are gated by `role="qa"` even though task types are distinct.
   - For each *enqueued* child, a `TaskContract` row exists in `engineering_task_contracts` with the same `plan_contract_hash` as the parent plan.
   - `engineering_handoffs` contains a `plan_to_task` row per *enqueued* child task — none for the deferred implementer slices.
   - `HandlerResult.result["deferred_slices"]` lists the implementer slices with their reason.
@@ -419,7 +452,8 @@ Plus a tiny helper `tests/fixtures/fake_cli_provider.py` that subclasses or wrap
      - ≥ 1 × `implementer` whose `allowed_paths` includes paths under both SINGLE and DOUBLE store implementations (one slice or two — either is acceptable as long as both surfaces are covered)
      - ≥ 1 × `implementer` whose `objective` mentions journal cursor reconciliation
      - ≥ 1 × `qa.author` (`task_type == "engineering.qa.author"`) scheduled **before** every implementer slice; `allowed_paths` ⊆ `{"tests/**", "qa/fixtures/**"}`; `objective` references writing failing tests for the snapshot/restore acceptance criteria; implementer slices do not claim those write paths
-     - ≥ 1 × `qa.verify` (`task_type == "engineering.qa.verify"`) scheduled **after** every reviewer slice; `allowed_paths` ⊆ `{"tests/**", "qa/fixtures/**"}`; `verification_commands` includes both `["./qa/smoke.sh"]` and a full‑suite invocation (e.g. `["./qa/regression.sh"]` or equivalent)
+     - ≥ 1 × `qa.verify.scrutiny` (`task_type == "engineering.qa.verify.scrutiny"`) scheduled **after** every reviewer slice; `verification_commands` includes lint/type/smoke/full‑suite coverage
+     - ≥ 1 × `qa.verify.usertest` (`task_type == "engineering.qa.verify.usertest"`) scheduled after scrutiny unless `usertest_harness.kind = "none"`; validates live app/service or CLI replay evidence
      - ≥ 1 × `reviewer`
    - `acceptance_test_matrix` covers all three lifecycle categories per § 6.2.
    - `council_reports` is non‑empty and includes the critic's final `accept` verdict.

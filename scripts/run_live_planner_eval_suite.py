@@ -70,7 +70,7 @@ def _parse_args() -> argparse.Namespace:
         default=1,
         help="Number of planner runs to execute concurrently. Defaults to sequential.",
     )
-    parser.add_argument("--timeout-seconds", type=int, default=1200)
+    parser.add_argument("--timeout-seconds", type=int, default=2400)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be at least 1")

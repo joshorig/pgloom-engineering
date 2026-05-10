@@ -22,6 +22,8 @@ def database_url() -> Iterator[str]:
             """
             truncate table
               engineering_recovery_actions,
+              engineering_worker_runs,
+              engineering_operator_interventions,
               engineering_handoffs,
               engineering_task_contracts,
               engineering_plan_contracts,

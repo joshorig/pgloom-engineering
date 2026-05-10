@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pgloom_engineering.contracts import MilestoneContract
 from pgloom_engineering.planner.production_grade import evaluate_production_grade
 from tests.unit.test_planner_council import _plan_contract
 
@@ -37,4 +38,110 @@ def test_production_grade_accepts_project_module_test_roots(tmp_path: Path) -> N
         finding
         for finding in report.blocking_findings
         if finding.code == "qa_root_missing_for_verification"
+    ]
+
+
+def test_production_grade_rejects_unachievable_milestone_signoff() -> None:
+    plan = _plan_contract().model_copy(
+        update={
+            "milestones": [
+                MilestoneContract(
+                    milestone_id="m1",
+                    name="Design and QA",
+                    slice_ids=["design", "qa-author"],
+                    acceptance_assertions=["acceptance"],
+                    validation_contract={"scrutiny": True, "usertest": True},
+                    signoff_policy="scrutiny_and_usertest",
+                )
+            ]
+        }
+    )
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "milestone_signoff_unachievable"
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_rejects_benchmark_output_without_benchmark_root() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = "Write failing JMH benchmark coverage for range restore allocation."
+    qa_author.expected_outputs = [
+        "benchmarks/src/jmh/java/com/example/RestoreRangeBenchmark.java",
+    ]
+    qa_author.allowed_paths = ["tests/", "qa/fixtures/"]
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "qa_benchmark_output_path_not_allowed"
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_accepts_benchmark_output_with_benchmark_root() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = "Write failing JMH benchmark coverage for range restore allocation."
+    qa_author.expected_outputs = [
+        "benchmarks/src/jmh/java/com/example/RestoreRangeBenchmark.java",
+    ]
+    qa_author.allowed_paths = ["tests/", "qa/fixtures/", "benchmarks/src/jmh/java/"]
+
+    report = evaluate_production_grade(plan)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "qa_benchmark_output_path_not_allowed"
+    ]
+
+
+def test_production_grade_does_not_treat_no_boxing_tests_as_benchmarks() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = (
+        "Write failing JUnit range tests with structured int[] accumulator assertions "
+        "and no ArrayList<Integer> or boxing."
+    )
+    qa_author.expected_outputs = [
+        "core/src/test/java/com/example/LvcStoreRangeTest.java",
+        "conformance-tests/src/test/java/com/example/RangeConformanceSingleTest.java",
+    ]
+    qa_author.allowed_paths = ["tests/", "qa/fixtures/", "core/src/test/"]
+    qa_author.forbidden_paths = ["core/src/main/", "benchmarks/src/main/"]
+
+    report = evaluate_production_grade(plan)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "qa_benchmark_output_path_not_allowed"
+    ]
+
+
+def test_production_grade_allows_benchmark_variant_fixture_without_benchmark_root() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = (
+        "Write failing range tests and add qa/fixtures/r003-benchmark-variants.txt "
+        "listing required JMH benchmark variants."
+    )
+    qa_author.expected_outputs = [
+        "core/src/test/java/com/example/LvcStoreRangeTest.java",
+        "qa/fixtures/r003-benchmark-variants.txt listing required JMH variants",
+    ]
+    qa_author.allowed_paths = ["tests/", "qa/fixtures/", "core/src/test/"]
+
+    report = evaluate_production_grade(plan)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "qa_benchmark_output_path_not_allowed"
     ]

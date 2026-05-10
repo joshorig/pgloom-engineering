@@ -58,7 +58,7 @@ Every MCP tool invocation and every vector query records to `engineering_token_s
 
 - `metadata.method = "token_savior_mcp_tool"` or `"token_savior_vector_query"`
 - `metadata.tool = "<tool_name>"` (for MCP)
-- `metadata.role = "implementer" | "reviewer" | "qa.author" | "qa.verify"`
+- `metadata.role = "implementer" | "reviewer" | "qa.author" | "qa.verify.scrutiny" | "qa.verify.usertest"`
 - `tokens_before = "what this role would have sent if it had cat'd the file"` (estimated against the file size)
 - `tokens_after = "size of what Token Savior actually returned"`
 

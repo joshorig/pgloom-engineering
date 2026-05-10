@@ -552,3 +552,34 @@ def test_semantic_review_blocks_build_file_string_assertions_when_gate_required(
         "qa_semantic_build_file_string_assertion"
     ]
     assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_blocks_reflective_jmh_smoke_harness() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeBenchmark.java": """
+            import java.lang.invoke.LambdaMetafactory;
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            public class RangeBenchmark {
+                @Benchmark
+                public int rangeSmoke() throws Throwable {
+                    return createInvoker().invoke();
+                }
+
+                private RangeInvoker createInvoker() throws Throwable {
+                    return (RangeInvoker) LambdaMetafactory.metafactory(
+                        null, "invoke", null, null, null, null).getTarget().invokeExact();
+                }
+            }
+            """
+        },
+        plan_text="Range benchmark smoke must prove allocation behavior.",
+        task_text="Write JMH benchmark smoke.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_jmh_reflective_invocation"
+    ]
+    assert findings[0].severity == "blocking"

@@ -34,10 +34,23 @@ Plans must include at least one reviewer slice.
 Plans must include a test-first engineering.qa.author slice before implementers.
 
 ### check_qa_verify_present
-Plans must include an engineering.qa.verify slice after reviewers.
+Plans must include engineering.qa.verify.scrutiny after reviewers and
+engineering.qa.verify.usertest after scrutiny unless metadata authorizes
+user-test skip.
 
 ### check_qa_paths_disjoint
-QA author/verify slices must write only tests or fixtures and stay disjoint from implementers.
+QA author/scrutiny/user-test slices must write only tests or fixtures and stay disjoint from implementers.
+
+### check_acceptance_assertion_coverage
+Every acceptance assertion must be claimed by at least one task slice, and every
+task slice must claim at least one acceptance assertion.
+
+### check_milestones_present
+Plans must include milestone contracts with validation contracts and signoff policy.
+Milestone signoff is executable, not descriptive: downstream milestone slices are
+locked until prerequisite milestones are signed off. A milestone using
+`scrutiny_and_usertest` must include both split validator slices in that same
+milestone; otherwise the gate is impossible to satisfy.
 
 ### check_orphan_slices
 Non-terminal slices should feed a later reviewer, QA, or historian slice.
@@ -56,6 +69,16 @@ Dependency-gated roadmap items must block, narrow, or explicitly sequence prereq
 
 ### check_hot_path_invariants
 Plans must not schedule work that violates stated zero-allocation or hot-path constraints.
+For benchmark-backed allocation requirements, the benchmark must be runnable by
+the project's feature smoke gate and must avoid allocating benchmark fixtures,
+reflection proxies, boxed callbacks, or target reset work inside the measured
+operation. Full regression/JMH sweeps are periodic project gates, not
+per-feature QA scrutiny blockers.
+
+### check_behavioral_coverage_not_inventory_only
+Endpoint, route, prefix, filter, query, and benchmark acceptance must be proven
+through behavior cases. A plan that only checks method/route/build-file presence
+without exercising matching and non-matching behavior is insufficient.
 
 ### check_small_feature_compactness
 Small or single-surface roadmap items should use a compact handoff with limited slices.

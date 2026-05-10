@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal, Self
 
@@ -46,6 +48,18 @@ class DesignContract(BaseModel):
     acceptance_tests: list[str] = Field(default_factory=list)
 
 
+class MilestoneContract(BaseModel):
+    milestone_id: str
+    name: str
+    slice_ids: list[str]
+    acceptance_assertions: list[str] = Field(default_factory=list)
+    validation_contract: dict[str, Any] = Field(default_factory=dict)
+    depends_on: list[str] = Field(default_factory=list)
+    signoff_policy: Literal["scrutiny_and_usertest", "scrutiny_only"] = (
+        "scrutiny_and_usertest"
+    )
+
+
 class TaskSliceContract(BaseModel):
     slice_id: str
     role: str
@@ -56,6 +70,13 @@ class TaskSliceContract(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
     verification_commands: list[list[str]] = Field(default_factory=list)
+    acceptance_assertion_ids: list[str] = Field(default_factory=list)
+    grading_criteria: list[str] = Field(default_factory=list)
+    validation_strategy: dict[str, Any] = Field(default_factory=dict)
+    context_budget: int | None = None
+    model_route_hint: str | None = None
+    required_procedures: list[str] = Field(default_factory=list)
+    milestone_id: str | None = None
 
 
 class PlanContract(BaseModel):
@@ -69,6 +90,8 @@ class PlanContract(BaseModel):
     implementation_topology: ImplementationTopology = ImplementationTopology.COUNCIL_DECIDES
     task_slices: list[TaskSliceContract]
     acceptance_test_matrix: list[str]
+    acceptance_assertions: list[str] = Field(default_factory=list)
+    milestones: list[MilestoneContract] = Field(default_factory=list)
     risk_register: list[str] = Field(default_factory=list)
     self_heal_policy: str = "retry_repair_replan_then_escalate"
     finalization_policy: str = "open_final_feature_pr_for_human_merge"
@@ -87,8 +110,27 @@ class PlanContract(BaseModel):
                 joined = ", ".join(missing)
                 raise ValueError(
                     f"{task_slice.slice_id} depends on unknown or later slices: {joined}"
-                )
+            )
             seen.add(task_slice.slice_id)
+        if not self.acceptance_assertions:
+            self.acceptance_assertions = list(self.acceptance_test_matrix)
+        if self.acceptance_assertions:
+            for task_slice in self.task_slices:
+                if not task_slice.acceptance_assertion_ids:
+                    task_slice.acceptance_assertion_ids = list(self.acceptance_assertions)
+        if not self.milestones and self.task_slices:
+            self.milestones = [
+                MilestoneContract(
+                    milestone_id="m1",
+                    name="Milestone 1",
+                    slice_ids=[task_slice.slice_id for task_slice in self.task_slices],
+                    acceptance_assertions=list(self.acceptance_assertions),
+                    validation_contract={
+                        "scrutiny": True,
+                        "usertest": True,
+                    },
+                )
+            ]
         return self
 
 
@@ -106,6 +148,7 @@ class TaskContract(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
     verification_commands: list[list[str]] = Field(default_factory=list)
     handoff_requirements: list[str] = Field(default_factory=list)
+    required_procedures: list[str] = Field(default_factory=list)
 
 
 class TaskResultContract(BaseModel):
@@ -114,6 +157,7 @@ class TaskResultContract(BaseModel):
     task_id: str
     changed_files: list[str] = Field(default_factory=list)
     branch: str | None = None
+    worktree_path: str | None = None
     commits: list[str] = Field(default_factory=list)
     pr_url: str | None = None
     checks: list[dict[str, Any]] = Field(default_factory=list)
@@ -122,6 +166,9 @@ class TaskResultContract(BaseModel):
     blockers: list[str] = Field(default_factory=list)
     model_usage_ids: list[int] = Field(default_factory=list)
     token_savior_usage_ids: list[int] = Field(default_factory=list)
+    commands_run: list[dict[str, Any]] = Field(default_factory=list)
+    procedures_attestation: dict[str, bool | str] = Field(default_factory=dict)
+    handoff_id: str | None = None
 
 
 class QAAuthorContract(BaseModel):
@@ -154,7 +201,11 @@ class QAResultContract(BaseModel):
     verdict: Literal["pass", "fail", "inconclusive"]
     commands: list[list[str]] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
+    validation_evidence: list[dict[str, Any]] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
+    validator_type: Literal["scrutiny", "usertest"] | None = None
+    commands_run: list[dict[str, Any]] = Field(default_factory=list)
+    procedures_attestation: dict[str, bool | str] = Field(default_factory=dict)
 
 
 class RecoveryDecisionContract(BaseModel):
@@ -169,6 +220,8 @@ class RecoveryDecisionContract(BaseModel):
         "pr_feedback_task",
         "rerun_verifier",
         "retire_superseded",
+        "corrective_slice",
+        "milestone_replan",
         "block_execution",
         "record_invalid_output",
         "record_crash",
@@ -177,6 +230,70 @@ class RecoveryDecisionContract(BaseModel):
     rationale: str
     attempt: int = 1
     max_attempts: int = 3
+
+
+class CommandRun(BaseModel):
+    cmd: list[str]
+    exit_code: int | None
+    duration_s: float
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    artifact_ids: list[str] = Field(default_factory=list)
+
+
+class ValidationEvidence(BaseModel):
+    evidence_id: str
+    kind: Literal[
+        "test_run",
+        "code_review",
+        "ui_exercise",
+        "integration_check",
+        "lint_type_check",
+        "benchmark",
+        "screenshot",
+        "network_trace",
+        "command_log",
+    ]
+    summary: str
+    verdict: Literal["pass", "fail", "inconclusive"]
+    command_run_ids: list[str] = Field(default_factory=list)
+    artifact_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class HandoffEnvelope(BaseModel):
+    handoff_id: str
+    handoff_type: Literal[
+        "plan_to_task",
+        "worker_result",
+        "validation",
+        "recovery",
+        "final",
+        "task_result",
+        "qa_author_contract",
+    ]
+    feature_id: str
+    task_id: str | None = None
+    role: str
+    summary: str
+    completed: list[str] = Field(default_factory=list)
+    left_undone: list[str] = Field(default_factory=list)
+    commands_run: list[CommandRun] = Field(default_factory=list)
+    procedures_attestation: dict[str, bool | str] = Field(default_factory=dict)
+    issues_discovered: list[dict[str, Any]] = Field(default_factory=list)
+    next_worker_context: str = ""
+    reviewer_context: str = ""
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    telemetry_summary: dict[str, Any] = Field(default_factory=dict)
+    evidence: list[ValidationEvidence] = Field(default_factory=list)
+    artifact_ids: list[str] = Field(default_factory=list)
+    cumulative_cost_usd: Decimal = Decimal("0")
+    cumulative_wall_clock_seconds: float = 0
+    cumulative_input_tokens: int = 0
+    cumulative_output_tokens: int = 0
+    cumulative_tokens_saved: int = 0
+    cumulative_model_calls: int = 0
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class FinalizationEvidenceContract(BaseModel):
@@ -204,6 +321,7 @@ def validate_plan_contract(
     contract: PlanContract,
     *,
     origin_contract: dict[str, Any] | None = None,
+    qa_write_paths: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
     if not contract.acceptance_test_matrix:
@@ -212,6 +330,15 @@ def validate_plan_contract(
         errors.append(_error("missing_affected_surfaces", "Plan must define affected surfaces."))
     if not contract.task_slices:
         errors.append(_error("missing_task_slices", "Plan must emit at least one task slice."))
+    if not contract.acceptance_assertions:
+        errors.append(
+            _error(
+                "missing_acceptance_assertions",
+                "Plan must define acceptance assertions for bidirectional coverage.",
+            )
+        )
+    if not contract.milestones:
+        errors.append(_error("missing_milestones", "Plan must define milestone contracts."))
     if contract.finalization_policy != "open_final_feature_pr_for_human_merge":
         errors.append(
             _error("invalid_finalization_policy", "Final PR merge must remain human-gated.")
@@ -220,6 +347,8 @@ def validate_plan_contract(
         errors.append(_error("missing_acceptance_matrix", "Design acceptance tests need a matrix."))
     errors.extend(_validate_design_contract_drift(contract, origin_contract=origin_contract))
     errors.extend(_validate_lifecycle_acceptance(contract))
+    errors.extend(_validate_milestones(contract))
+    errors.extend(_validate_acceptance_assertion_coverage(contract))
     for task_slice in contract.task_slices:
         if task_slice.role not in {"designer", "implementer", "reviewer", "qa", "historian"}:
             errors.append(
@@ -229,7 +358,7 @@ def validate_plan_contract(
                 )
             )
         errors.extend(_validate_role_task_type(task_slice))
-        errors.extend(_validate_role_path_policy(task_slice))
+        errors.extend(_validate_role_path_policy(task_slice, qa_write_paths=qa_write_paths))
         if not task_slice.allowed_paths:
             errors.append(
                 _error("missing_allowed_paths", f"{task_slice.slice_id} must name allowed paths.")
@@ -260,7 +389,11 @@ def _validate_role_task_type(task_slice: TaskSliceContract) -> list[dict[str, st
         "designer": {"engineering.design", "engineering.designer"},
         "implementer": {"engineering.implement", "engineering.implementation"},
         "reviewer": {"engineering.review"},
-        "qa": {"engineering.qa.author", "engineering.qa.verify"},
+        "qa": {
+            "engineering.qa.author",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        },
         "historian": {"engineering.history", "engineering.historian"},
     }.get(task_slice.role)
     if allowed is None or task_slice.task_type in allowed:
@@ -276,10 +409,20 @@ def _validate_role_task_type(task_slice: TaskSliceContract) -> list[dict[str, st
     ]
 
 
-def _validate_role_path_policy(task_slice: TaskSliceContract) -> list[dict[str, str]]:
+def _validate_role_path_policy(
+    task_slice: TaskSliceContract,
+    *,
+    qa_write_paths: list[str] | None = None,
+) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
-    if task_slice.task_type in {"engineering.qa.author", "engineering.qa.verify"}:
-        bad_paths = [path for path in task_slice.allowed_paths if not is_qa_write_path(path)]
+    if task_slice.task_type in {
+        "engineering.qa.author",
+        "engineering.qa.verify.scrutiny",
+        "engineering.qa.verify.usertest",
+    }:
+        bad_paths = [
+            path for path in task_slice.allowed_paths if not is_qa_write_path(path, qa_write_paths)
+        ]
         if bad_paths:
             errors.append(
                 _error(
@@ -291,7 +434,9 @@ def _validate_role_path_policy(task_slice: TaskSliceContract) -> list[dict[str, 
                 )
             )
     if task_slice.role == "implementer":
-        bad_paths = [path for path in task_slice.allowed_paths if is_qa_write_path(path)]
+        bad_paths = [
+            path for path in task_slice.allowed_paths if is_qa_write_path(path, qa_write_paths)
+        ]
         if bad_paths:
             errors.append(
                 _error(
@@ -300,6 +445,98 @@ def _validate_role_path_policy(task_slice: TaskSliceContract) -> list[dict[str, 
                 )
             )
     return errors
+
+
+def _validate_milestones(contract: PlanContract) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    slice_ids = {item.slice_id for item in contract.task_slices}
+    seen: set[str] = set()
+    for milestone in contract.milestones:
+        if milestone.milestone_id in seen:
+            errors.append(
+                _error(
+                    "duplicate_milestone_id",
+                    f"duplicate milestone id: {milestone.milestone_id}",
+                )
+            )
+        seen.add(milestone.milestone_id)
+        missing = [slice_id for slice_id in milestone.slice_ids if slice_id not in slice_ids]
+        if missing:
+            errors.append(
+                _error(
+                    "milestone_unknown_slice",
+                    f"{milestone.milestone_id} references unknown slices: {', '.join(missing)}.",
+                )
+            )
+        unknown_deps = [dep for dep in milestone.depends_on if dep not in seen]
+        if unknown_deps:
+            errors.append(
+                _error(
+                    "milestone_unknown_dependency",
+                    f"{milestone.milestone_id} depends on unknown or later milestones: "
+                    f"{', '.join(unknown_deps)}.",
+                )
+            )
+    return errors
+
+
+def _validate_acceptance_assertion_coverage(contract: PlanContract) -> list[dict[str, str]]:
+    assertion_labels = {
+        canonical_acceptance_assertion_id(assertion): assertion
+        for assertion in contract.acceptance_assertions
+    }
+    for milestone in contract.milestones:
+        assertion_labels.update(
+            {
+                canonical_acceptance_assertion_id(assertion): assertion
+                for assertion in milestone.acceptance_assertions
+            }
+        )
+    if not assertion_labels:
+        return []
+    errors: list[dict[str, str]] = []
+    claimed_labels: dict[str, str] = {}
+    for task_slice in contract.task_slices:
+        if not task_slice.acceptance_assertion_ids:
+            errors.append(
+                _error(
+                    "slice_missing_acceptance_assertion",
+                    f"{task_slice.slice_id} must claim at least one acceptance assertion.",
+                )
+            )
+        claimed_labels.update(
+            {
+                canonical_acceptance_assertion_id(assertion): assertion
+                for assertion in task_slice.acceptance_assertion_ids
+            }
+        )
+    missing = sorted(
+        assertion_labels[assertion]
+        for assertion in assertion_labels.keys() - claimed_labels.keys()
+    )
+    unknown = sorted(
+        claimed_labels[assertion]
+        for assertion in claimed_labels.keys() - assertion_labels.keys()
+    )
+    if missing:
+        errors.append(
+            _error(
+                "acceptance_assertion_unclaimed",
+                f"Acceptance assertions have no claiming slice: {', '.join(missing)}.",
+            )
+        )
+    if unknown:
+        errors.append(
+            _error(
+                "acceptance_assertion_unknown",
+                f"Slices claim unknown acceptance assertions: {', '.join(unknown)}.",
+            )
+        )
+    return errors
+
+
+def canonical_acceptance_assertion_id(assertion: str) -> str:
+    return assertion.split(":", 1)[0].strip()
 
 
 def _error(code: str, message: str) -> dict[str, str]:

@@ -58,6 +58,41 @@ def test_engineering_provider_records_claude_json_usage(
     assert row["metadata"]["cache_read_input_tokens"] == 30
 
 
+def test_engineering_provider_unwraps_claude_json_for_text_profiles(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "claude_json_text.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "print(json.dumps({",
+                "  'result': '{\"contract_version\": \"engineering.contracts.v1\"}',",
+                "  'usage': {'input_tokens': 11, 'output_tokens': 22}",
+                "}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = EngineeringCLIModelProvider(database_url=database_url).invoke(
+        profile=CLIModelProfile(
+            name="planner-panelist",
+            command=[sys.executable, str(script)],
+            parse_response="text",
+        ),
+        prompt="hello",
+    )
+
+    assert result.text == '{"contract_version": "engineering.contracts.v1"}'
+    assert result.input_tokens == 11
+    assert result.output_tokens == 22
+    assert result.model_usage_id is not None
+    row = _usage_row(database_url, result.model_usage_id)
+    assert row["metadata"]["token_count_source"] == "json_usage"
+
+
 def test_engineering_provider_records_codex_jsonl_usage(
     database_url: str,
     tmp_path: Path,
@@ -108,6 +143,10 @@ def test_engineering_provider_records_codex_jsonl_usage(
     assert row["metadata"]["token_count_source"] == "codex_json_usage"
     assert row["metadata"]["cached_input_tokens"] == 90
     assert row["metadata"]["reasoning_output_tokens"] == 3
+    assert row["metadata"]["prompt_estimated_tokens"] > 0
+    assert row["metadata"]["prompt_bytes"] == len(b"hello")
+    assert row["metadata"]["stdout_bytes"] > 0
+    assert row["metadata"]["duration_seconds"] >= 0
 
 
 def _usage_row(database_url: str, usage_id: int) -> dict[str, object]:

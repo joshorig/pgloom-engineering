@@ -61,10 +61,11 @@ def test_planner_role_gate_defers_implementer_slices(database_url: str, tmp_path
     assert {row["role"] for row in contracts} == {"designer", "reviewer", "qa"}
     assert {_task_type(row) for row in contracts if row["role"] == "qa"} == {
         "engineering.qa.author",
-        "engineering.qa.verify",
+        "engineering.qa.verify.scrutiny",
+        "engineering.qa.verify.usertest",
     }
     handoffs = list_handoffs(workflow["id"], database_url=database_url)
-    assert len([row for row in handoffs if row["handoff_type"] == "plan_to_task"]) == 4
+    assert len([row for row in handoffs if row["handoff_type"] == "plan_to_task"]) == 5
     recoveries = list_recovery_actions(workflow["id"], database_url=database_url)
     assert recoveries[0]["blocker_code"] == "engineering.role_gate_disabled"
     assert recoveries[0]["status"] == "deferred"
@@ -86,12 +87,41 @@ def test_planner_enqueues_implementer_when_role_gate_enabled(
     assert {row["role"] for row in contracts} == {"designer", "implementer", "reviewer", "qa"}
     assert {_task_type(row) for row in contracts if row["role"] == "qa"} == {
         "engineering.qa.author",
-        "engineering.qa.verify",
+        "engineering.qa.verify.scrutiny",
+        "engineering.qa.verify.usertest",
     }
     recoveries = list_recovery_actions(workflow["id"], database_url=database_url)
     assert not [
         row for row in recoveries if row["blocker_code"] == "engineering.role_gate_disabled"
     ]
+
+
+def test_planner_persistence_uses_metadata_qa_write_paths(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    workflow, planner = _setup_planner_task(
+        database_url,
+        tmp_path,
+        implementer_gate="enabled",
+        project_metadata={"qa": {"test_support_paths": ["benchmarks/build.gradle"]}},
+    )
+    plan = _plan_contract(feature_id=workflow["id"])
+    for task_slice in plan.task_slices:
+        if task_slice.task_type in {
+            "engineering.qa.author",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }:
+            task_slice.allowed_paths = ["tests/", "benchmarks/build.gradle/"]
+    outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
+
+    result = PlannerHandler(council=FakeCouncil(outcome)).handle(planner)
+
+    assert result.status == "done"
+    plans = list_plan_contracts(workflow["id"], database_url=database_url)
+    assert plans[0]["status"] == "valid"
+    assert plans[0]["validation_errors"] == []
 
 
 def test_live_planner_records_model_usage_and_token_savior_rows(
@@ -245,7 +275,7 @@ def test_live_planner_records_model_usage_and_token_savior_rows(
         "project:lvc-standard",
         "project:lvc-standard:planning_guardrails",
     ) in memory_keys
-    assert any("./qa/regression.sh" in row["value"] for row in memory_rows)
+    assert any("./qa/smoke.sh" in row["value"] for row in memory_rows)
 
 
 def _setup_planner_task(
@@ -253,12 +283,17 @@ def _setup_planner_task(
     root: Path,
     *,
     implementer_gate: str,
+    project_metadata: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    metadata = {
+        "role_gates": {"planner": "enabled", "implementer": implementer_gate},
+        **(project_metadata or {}),
+    }
     project = register_project(
         ProjectConfig(
             name="lvc-standard",
             root=root,
-            metadata={"role_gates": {"planner": "enabled", "implementer": implementer_gate}},
+            metadata=metadata,
         ),
         database_url=database_url,
     )

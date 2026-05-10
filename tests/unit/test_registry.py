@@ -12,4 +12,5 @@ def test_registry_builds() -> None:
     with pytest.raises(KeyError):
         registry.get("engineering.qa")
     assert registry.get("engineering.qa.author") is not None
-    assert registry.get("engineering.qa.verify") is not None
+    assert registry.get("engineering.qa.verify.scrutiny") is not None
+    assert registry.get("engineering.qa.verify.usertest") is not None

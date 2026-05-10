@@ -14,7 +14,8 @@ Rules:
   `implementer`.
 - Use only canonical role/task_type pairs: designer/engineering.design,
   implementer/engineering.implement, reviewer/engineering.review,
-  qa/engineering.qa.author, qa/engineering.qa.verify, and
+  qa/engineering.qa.author, qa/engineering.qa.verify.scrutiny,
+  qa/engineering.qa.verify.usertest, and
   historian/engineering.history.
 - `affected_surfaces` must be non-empty and should include every repo area the
   final plan will touch.
@@ -22,19 +23,30 @@ Rules:
 - Prefer paths present in candidate context/summaries. Remove invented path
   prefixes when an equivalent existing path is available.
 - Ensure each slice's own allowed_paths and forbidden_paths do not overlap.
-- Preserve reviewer, `engineering.qa.author`, and `engineering.qa.verify`
-  slices. If candidates use generic QA slices, split them into test-first
-  authoring before implementers and verification after reviewers.
+- Preserve reviewer, `engineering.qa.author`, `engineering.qa.verify.scrutiny`,
+  and `engineering.qa.verify.usertest` slices. If candidates use generic QA
+  slices, split them into test-first authoring before implementers, scrutiny
+  after reviewers, and user-test after scrutiny unless metadata authorizes skip.
 - Preserve QA policy guidance from candidate contexts and summaries: endpoint
   harness requirements, structured payload assertions, benchmark variants,
   required gates, behavior coverage rules, and avoid patterns must survive in QA
   author objectives/outputs when relevant.
-- QA author/verify write paths must be restricted to the QA/test roots shown in
-  candidate project contexts. Implementer write paths must not include those
-  paths.
-- Apply compactness pressure for small/single-surface roadmap items: prefer 4-6
-  slices total: design, qa.author, 1-2 implementers, reviewer, qa.verify. Merge
-  redundant QA/review work.
+- When benchmark acceptance is tied to a smoke/benchmark-smoke gate, preserve
+  metadata-declared benchmark roots and test_support_paths needed to wire the new
+  benchmark into that gate. Do not accept a plan where benchmark evidence is added
+  but the required gate cannot execute it.
+- Preserve behavior coverage for filters, prefixes, routes, and queries as
+  matching/non-matching test cases; method or route inventory checks alone are not
+  valid acceptance coverage.
+- QA author/scrutiny/user-test write paths must be restricted to the QA/test
+  roots shown in candidate project contexts. Implementer write paths must not
+  include those paths.
+- Apply compactness pressure for small/single-surface roadmap items: prefer 6
+  slices total: design, qa.author, 1-2 implementers, reviewer, qa.scrutiny, and
+  qa.usertest. For code-heavy or hot-path features that span multiple source
+  backends/variants, prefer 2-4 smaller implementer slices over one broad
+  implementer slice; this preserves quality and avoids excessive model context
+  replay. Merge redundant QA/review work.
 - Preserve separate implementer slices for wide/system features that span
   independent ownership surfaces such as DSL/compiler, API/workflow, UI, and
   lifecycle/overflow/invariants.
@@ -46,10 +58,23 @@ Rules:
   acceptance entries for unrelated features.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
-- Prefer module-local commands for QA author and implementer slices. Broad
-  `qa/smoke.sh` and `qa/regression.sh` may remain as gates, but should not be
-  the only proof for module-specific work when a module-local command is
-  available.
+- Preserve or synthesize `acceptance_assertions`, per-slice
+  `acceptance_assertion_ids`, `required_procedures`, grading criteria,
+  validation strategy, and milestone contracts. Every assertion must be claimed
+  by at least one slice; every slice must claim at least one assertion.
+- Milestones must group slice ids, carry validation contracts, and use
+  `scrutiny_and_usertest` unless metadata authorizes scrutiny-only signoff.
+  Treat milestone signoff as an executable dependency gate: if a downstream
+  milestone depends on an earlier milestone, its slices cannot run until the
+  earlier milestone's validators have completed. A `scrutiny_and_usertest`
+  milestone must contain both validator slices in its own `slice_ids`; do not
+  make implementation depend on a design/QA-author-only milestone that requires
+  validator signoff.
+- Prefer module-local commands for QA author and implementer slices. Feature
+  QA scrutiny should use lint/build, feature-specific tests, and benchmark
+  smoke. Do not schedule `qa/regression.sh`, bare `./gradlew check`, or full
+  `:benchmarks:jmh` sweeps as per-feature blockers; those are project-scheduled
+  periodic or broad project gates.
 - Remove exploratory commands (`grep`, `cat`, `echo`), list-only commands, and
   dry-run-only commands when they are used as verification proof.
 - Dependency IDs must refer only to earlier slices.

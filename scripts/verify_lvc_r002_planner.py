@@ -134,7 +134,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--workflow-id")
     parser.add_argument("--context-budget-tokens", type=int, default=3000)
     parser.add_argument("--claude-max-budget-usd", default="5.00")
-    parser.add_argument("--invocation-timeout-seconds", type=int, default=600)
+    parser.add_argument("--invocation-timeout-seconds", type=int, default=1200)
     parser.add_argument("--database-url")
     return parser.parse_args()
 

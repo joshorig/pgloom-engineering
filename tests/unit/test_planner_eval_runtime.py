@@ -49,7 +49,7 @@ def test_planner_eval_provider_uses_configurable_cwd(tmp_path: Path) -> None:
     )
 
     assert provider.cwd == tmp_path
-    assert provider.timeout_seconds == 600
+    assert provider.timeout_seconds == 1200
 
 
 def test_planner_eval_provider_accepts_invocation_timeout(tmp_path: Path) -> None:

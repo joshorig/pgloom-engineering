@@ -2,11 +2,11 @@
 
 > **Audience.** A coding agent with full read/write on `/Volumes/devssd/repos/oss/pgloom-engineering`. Treat this brief as the complete spec.
 >
-> **Goal.** Cut subprocess output going into LLM context by 60–90% via Rust Token Killer, before the Implementer or QA verify roles ship and start producing the heavy gradle / JMH / test logs.
+> **Goal.** Cut subprocess output going into LLM context by 60–90% via Rust Token Killer, before the Implementer and split QA verification roles ship and start producing the heavy gradle / JMH / test logs.
 >
 > **Scope size.** Small. One day of work. The integration is one wrapper around the existing `SubprocessResult`; the regression test makes sure we're not stripping signal alongside the noise.
 >
-> **Why now (before the consumers ship).** Once Implementer and QA verify exist, every iteration burns subprocess‑output tokens. Landing the filter pre‑consumer means the cost never appears in the first place. After‑the‑fact integration always leaves a "we burned $X before we noticed" tail.
+> **Why now (before the consumers ship).** Once Implementer, QA scrutiny, and QA user-test exist, every iteration burns subprocess‑output tokens. Landing the filter pre‑consumer means the cost never appears in the first place. After‑the‑fact integration always leaves a "we burned $X before we noticed" tail.
 
 ---
 
@@ -15,7 +15,7 @@
 `pgloom.harness.subprocess.SubprocessResult.stdout` and `.stderr` flow into LLM context in two places (today projected, not yet in code):
 
 1. **Implementer post‑run summary**: after `verification_commands` run, the result becomes part of `TaskResultContract.checks[].output` for downstream consumption by Reviewer and QA.
-2. **QA verify full‑suite output**: gradle `:benchmarks:jmhSmokeCheck` alone can produce > 50 KB of log; full regression sweeps produce more. QA reads these to decide whether to add gap‑closing tests; Reviewer reads them when investigating failures.
+2. **QA scrutiny smoke output**: gradle `:benchmarks:jmhSmokeCheck` alone can produce > 50 KB of log. Full regression sweeps are periodic project gates, not per-feature QA scrutiny blockers. QA reads smoke/feature-test logs to decide whether to add gap-closing tests; Reviewer reads them when investigating failures.
 
 A 100 KB log, naively included, is roughly 25K tokens. Three role contexts touching it = 75K tokens of mostly Gradle progress noise. RTK (Rust Token Killer, https://github.com/rtk-ai/rtk) is purpose‑built for filtering build/test output: drops timestamps, reformats stack traces, collapses progress noise, preserves error and assertion lines. The tweet's 60–90% claim matches what other tools in this space (e.g. `prettier-eslint`, error‑only modes) achieve in practice.
 

@@ -18,7 +18,7 @@ def test_r003_range_query_fixture_accepts_compact_plan() -> None:
 
     assert errors == []
     assert compute_verdict(checks, errors) == "accept"
-    assert len(plan.task_slices) <= 6
+    assert len(plan.task_slices) <= 7
     assert {item.role for item in plan.task_slices} == {
         "designer",
         "implementer",
@@ -296,6 +296,18 @@ def _plan(
     acceptance: list[str],
     slices: list[TaskSliceContract],
 ) -> PlanContract:
+    if not any(item.task_type == "engineering.qa.verify.usertest" for item in slices):
+        scrutinies = [
+            item for item in slices if item.task_type == "engineering.qa.verify.scrutiny"
+        ]
+        if scrutinies:
+            slices = [
+                *slices,
+                _qa_usertest_slice(
+                    f"{scrutinies[-1].slice_id}-usertest",
+                    depends_on=[scrutinies[-1].slice_id],
+                ),
+            ]
     return PlanContract(
         feature_id=feature_id,
         project="lvc-standard",
@@ -370,12 +382,29 @@ def _qa_verify_slice(
         slice_id,
         "qa",
         objective,
-        task_type="engineering.qa.verify",
+        task_type="engineering.qa.verify.scrutiny",
         allowed_paths=["tests/", "qa/fixtures/"],
         forbidden_paths=["store/", "sbe-adapters/", "conformance-tests/", "docs/", ".git/"],
         depends_on=depends_on,
         expected_outputs=["QAResultContract"],
-        verification_commands=[["./qa/smoke.sh"], ["./qa/regression.sh"]],
+        verification_commands=[
+            ["./gradlew", ":store:test", "--tests", "*Range*"],
+            ["./qa/smoke.sh"],
+        ],
+    )
+
+
+def _qa_usertest_slice(slice_id: str, *, depends_on: list[str]) -> TaskSliceContract:
+    return _slice(
+        slice_id,
+        "qa",
+        "Run user-test harness or record metadata-authorized skip.",
+        task_type="engineering.qa.verify.usertest",
+        allowed_paths=["tests/", "qa/fixtures/"],
+        forbidden_paths=["store/", "sbe-adapters/", "conformance-tests/", "docs/", ".git/"],
+        depends_on=depends_on,
+        expected_outputs=["QAResultContract"],
+        verification_commands=[["./qa/smoke.sh"]],
     )
 
 

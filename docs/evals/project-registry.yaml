@@ -48,6 +48,8 @@ projects:
           - conformance-tests/src/test/java
         benchmark_roots:
           - benchmarks/src/jmh/java
+        test_support_paths:
+          - benchmarks/build.gradle
         benchmark_frameworks:
           - jmh
         benchmark_variants:
@@ -74,7 +76,36 @@ projects:
               - allocation
               - benchmark_smoke
               - unit_regression
+        feature_smoke_commands:
+          - id: range_scan_jmh_smoke
+            match_terms:
+              - range
+              - StoreVisitor
+              - ascendingRange
+              - descendingRange
+            replaces:
+              - ./qa/smoke.sh
+              - ./gradlew test
+              - gradlew test
+              - ./gradlew check
+              - gradlew check
+              - :benchmarks:jmhSmokeCheck
+            commands:
+              - - ./gradlew
+                - :core:compileJava
+                - :store:compileJava
+              - - ./gradlew
+                - --no-daemon
+                - --console=plain
+                - :benchmarks:jmhSmokeCheck
+                - -Pjmh.smoke=true
+                - -Pjmh.iterations=1
+                - -Pjmh.warmupIterations=1
+                - -Pjmh.forks=1
+                - -Pjmh.timeOnIteration=100ms
+        periodic_gates:
           - id: regression
+            cadence: weekly
             command:
               - ./qa/regression.sh
             must_cover:

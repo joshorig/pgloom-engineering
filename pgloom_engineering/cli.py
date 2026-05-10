@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from pgloom_engineering.config import get_settings
+from pgloom_engineering.contract_store import record_operator_intervention
 from pgloom_engineering.contracts import FeatureGoalContract
 from pgloom_engineering.db.migrations import check as check_engineering_schema
 from pgloom_engineering.db.migrations import migrate as migrate_engineering_schema
@@ -511,6 +512,174 @@ def feature_show(
     _print_feature_aggregate(aggregate)
 
 
+@feature_app.command("pause")
+def feature_pause(
+    feature_id: str,
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    note: Annotated[str | None, typer.Option("--note", help="Operator note.")] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="pause_feature",
+        payload={"note": note} if note else {},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Paused feature {feature_id}")
+
+
+@feature_app.command("resume")
+def feature_resume(
+    feature_id: str,
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    note: Annotated[str | None, typer.Option("--note", help="Operator note.")] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="resume_feature",
+        payload={"note": note} if note else {},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Resumed feature {feature_id}")
+
+
+@feature_app.command("note")
+def feature_note(
+    feature_id: str,
+    note: Annotated[str, typer.Option("--note", help="Operator note.")],
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="orchestrator_note",
+        payload={"note": note},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Recorded note for feature {feature_id}")
+
+
+@feature_app.command("skip-slice")
+def feature_skip_slice(
+    feature_id: str,
+    slice_id: Annotated[str, typer.Option("--slice-id", help="Plan slice id to skip.")],
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    reason: Annotated[str | None, typer.Option("--reason", help="Reason.")] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="skip_slice",
+        payload={"slice_id": slice_id, "reason": reason},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Recorded skip for slice {slice_id}")
+
+
+@feature_app.command("drop-slice")
+def feature_drop_slice(
+    feature_id: str,
+    slice_id: Annotated[str, typer.Option("--slice-id", help="Plan slice id to drop.")],
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    reason: Annotated[str | None, typer.Option("--reason", help="Reason.")] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="drop_slice",
+        payload={"slice_id": slice_id, "reason": reason},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Recorded drop for slice {slice_id}")
+
+
+@feature_app.command("replan-from-milestone")
+def feature_replan_from_milestone(
+    feature_id: str,
+    milestone_id: Annotated[
+        str,
+        typer.Option("--milestone-id", help="Milestone boundary for replan."),
+    ],
+    actor: Annotated[str, typer.Option("--actor", help="Operator actor id.")] = "operator",
+    reason: Annotated[str | None, typer.Option("--reason", help="Reason.")] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a sentence."),
+    ] = False,
+    database_url: Annotated[
+        str | None,
+        typer.Option("--database-url", help="Override PGLOOM_DATABASE_URL."),
+    ] = None,
+) -> None:
+    row = record_operator_intervention(
+        feature_id=feature_id,
+        actor=actor,
+        action_type="replan_from_milestone",
+        payload={"milestone_id": milestone_id, "reason": reason},
+        database_url=database_url,
+    )
+    if as_json:
+        console.print(_json(row))
+        return
+    console.print(f"Recorded replan request from milestone {milestone_id}")
+
+
 @plan_app.command("dry-run")
 def plan_dry_run(
     feature_goal: Annotated[
@@ -760,6 +929,47 @@ def _print_feature_aggregate(aggregate: dict[str, object]) -> None:
         console.print(token_table)
     else:
         console.print("Token Savior: no recorded usage")
+
+    worker_summary = aggregate.get("worker_run_summary")
+    if isinstance(worker_summary, dict) and int(worker_summary.get("runs") or 0):
+        console.print(
+            "Worker runs: "
+            f"{int(worker_summary['runs'])} runs, "
+            f"{float(worker_summary['running_seconds']):.1f}s running, "
+            f"${float(worker_summary['cost_usd']):.6f}, "
+            f"{int(worker_summary['tokens_saved']):,} tokens saved"
+        )
+        worker_rows = worker_summary.get("by_phase")
+        if isinstance(worker_rows, list):
+            worker_table = Table(title="Worker Runs")
+            for column in [
+                "Role",
+                "Phase",
+                "Validator",
+                "Status",
+                "Runs",
+                "Cost",
+                "Input",
+                "Output",
+                "Saved",
+                "Seconds",
+            ]:
+                worker_table.add_column(column)
+            for row in worker_rows:
+                assert isinstance(row, dict)
+                worker_table.add_row(
+                    str(row.get("role") or ""),
+                    str(row.get("phase") or ""),
+                    str(row.get("validator_type") or ""),
+                    str(row.get("status") or ""),
+                    str(row.get("runs") or 0),
+                    f"{float(row.get('cost_usd') or 0):.6f}",
+                    f"{int(row.get('input_tokens') or 0):,}",
+                    f"{int(row.get('output_tokens') or 0):,}",
+                    f"{int(row.get('tokens_saved') or 0):,}",
+                    f"{float(row.get('running_seconds') or 0):.1f}",
+                )
+            console.print(worker_table)
 
     recent_events = aggregate["recent_events"]
     assert isinstance(recent_events, list)

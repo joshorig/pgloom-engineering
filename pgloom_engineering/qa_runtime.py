@@ -17,6 +17,8 @@ class QAVerificationResult:
     stdout_excerpt: str
     stderr_excerpt: str
     infra_error: str | None
+    artifact_id_unfiltered_stdout: str | None = None
+    artifact_id_unfiltered_stderr: str | None = None
 
 
 def project_qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:
@@ -328,8 +330,10 @@ def is_generated_tool_artifact(path: str) -> bool:
         return True
     ignored_prefixes = (
         ".qa-tmp/",
+        ".codex-tmp/",
         ".pytest_cache/",
         ".gradle/",
+        ".gradle-local/",
         ".gradle-home/",
         ".gradle-user-home/",
         "build/",
@@ -389,6 +393,8 @@ def run_qa_verification(
         stdout_excerpt=stdout_excerpt,
         stderr_excerpt=stderr_excerpt,
         infra_error=verification_infra_error(result.stdout, result.stderr),
+        artifact_id_unfiltered_stdout=filtered.artifact_id_unfiltered_stdout,
+        artifact_id_unfiltered_stderr=filtered.artifact_id_unfiltered_stderr,
     )
 
 
