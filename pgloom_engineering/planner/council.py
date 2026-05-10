@@ -468,7 +468,7 @@ def _create_planner_council_run(
     purpose: str,
     database_url: str | None,
 ) -> str | None:
-    if not feature_id or database_url is None:
+    if not feature_id:
         return None
     row = create_council_run(
         feature_id=str(feature_id),
@@ -489,7 +489,7 @@ def _finish_planner_council_run(
     critic_verdict: str | None,
     database_url: str | None,
 ) -> None:
-    if council_id is None or database_url is None:
+    if council_id is None:
         return
     finish_council_run(
         council_id,
@@ -510,7 +510,7 @@ def _record_planner_council_panelist(
     vote: str | None = None,
     database_url: str | None,
 ) -> None:
-    if council_id is None or database_url is None:
+    if council_id is None:
         return
     record_council_panelist(
         council_id=council_id,

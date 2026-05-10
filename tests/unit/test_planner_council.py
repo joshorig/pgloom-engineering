@@ -18,6 +18,7 @@ from pgloom_engineering.contracts import (
     TaskSliceContract,
 )
 from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
+from pgloom_engineering.planner import council as council_module
 from pgloom_engineering.planner.council import _repair_unachievable_milestones
 from pgloom_engineering.planner.critic import (
     RUBRIC_CHECKS,
@@ -101,6 +102,33 @@ def test_panelist_propose_returns_pydantic_plan_contract() -> None:
     ).propose(feature_goal=_feature_goal(), project_context=_context())
     assert candidate == plan
     assert raw
+
+
+def test_planner_council_persistence_uses_environment_database_url_when_payload_url_is_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_create_council_run(**kwargs: Any) -> dict[str, str]:
+        calls.append(kwargs)
+        return {"id": "council-env"}
+
+    monkeypatch.setattr(
+        council_module,
+        "create_council_run",
+        fake_create_council_run,
+    )
+
+    council_id = council_module._create_planner_council_run(  # noqa: SLF001
+        feature_id="wf-env",
+        task_id="task-env",
+        config=CouncilConfig(panelist_count=2),
+        purpose="initial_plan",
+        database_url=None,
+    )
+
+    assert council_id == "council-env"
+    assert calls[0]["database_url"] is None
 
 
 def test_panelist_propose_raises_candidate_invalid_on_unparseable_output() -> None:
