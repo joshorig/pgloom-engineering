@@ -4,7 +4,7 @@ import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pgloom.models.cli import CLIModelProfile
@@ -910,7 +910,7 @@ def _accept_verdict() -> dict[str, object]:
 
 def _revise_verdict() -> dict[str, object]:
     payload = _accept_verdict()
-    results = list(payload["per_check_results"])
+    results = list(cast(list[dict[str, Any]], payload["per_check_results"]))
     assert isinstance(results[0], dict)
     results[0] = {
         **results[0],

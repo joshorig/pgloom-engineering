@@ -147,6 +147,28 @@ def test_production_grade_allows_benchmark_variant_fixture_without_benchmark_roo
     ]
 
 
+def test_production_grade_rejects_reflective_qa_api_tests() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = (
+        "Write failing public API tests for LvcStore range scans using public API "
+        "reflection/signature checks and behavior coverage."
+    )
+    qa_author.expected_outputs = [
+        "RangeScanApiTest with Class.forName and Method.invoke signature checks",
+        "Behavioral conformance tests",
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "qa_author_reflective_api_testing"
+        and finding.slice_id == qa_author.slice_id
+        for finding in report.blocking_findings
+    )
+
+
 def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() -> None:
     plan = _plan_contract()
     plan.task_slices = [

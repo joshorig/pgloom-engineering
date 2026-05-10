@@ -43,6 +43,7 @@ def evaluate_production_grade(
     findings.extend(_same_slice_overlap_findings(plan))
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
     findings.extend(_qa_benchmark_output_path_findings(plan))
+    findings.extend(_qa_reflective_authoring_findings(plan))
     findings.extend(_milestone_signoff_findings(plan))
     findings.extend(_variant_scope_verification_findings(plan))
     findings.extend(_small_feature_surface_findings(plan))
@@ -189,6 +190,32 @@ def _qa_benchmark_output_path_findings(plan: PlanContract) -> list[ProductionFin
                     ),
                 )
             )
+    return findings
+
+
+def _qa_reflective_authoring_findings(plan: PlanContract) -> list[ProductionFinding]:
+    findings: list[ProductionFinding] = []
+    for task_slice in plan.task_slices:
+        if task_slice.task_type != "engineering.qa.author":
+            continue
+        text = _authoring_text(task_slice)
+        if not _requires_public_api_behavior_tests(text):
+            continue
+        if not _mentions_reflective_api_testing(text):
+            continue
+        findings.append(
+            ProductionFinding(
+                severity="blocking",
+                code="qa_author_reflective_api_testing",
+                slice_id=task_slice.slice_id,
+                message=(
+                    "QA author guidance asks for reflective/proxy API tests. "
+                    "Range/API acceptance tests must compile against the public API "
+                    "and assert behavior directly instead of using Class.forName, "
+                    "Method.invoke, Proxy, or reflection-oriented signature checks."
+                ),
+            )
+        )
     return findings
 
 
@@ -466,6 +493,26 @@ def _requires_benchmark_source_root(text: str) -> bool:
             "jmh class",
             "jmh stub",
             "jmh source",
+        ]
+    )
+
+
+def _requires_public_api_behavior_tests(text: str) -> bool:
+    return any(token in text for token in ["public api", "api test", "api contract", "lvcstore"])
+
+
+def _mentions_reflective_api_testing(text: str) -> bool:
+    return any(
+        token in text
+        for token in [
+            "reflection",
+            "reflective",
+            "class.forname",
+            "getmethod",
+            "method.invoke",
+            "invocationhandler",
+            "proxy.newproxyinstance",
+            "reflection/signature",
         ]
     )
 
