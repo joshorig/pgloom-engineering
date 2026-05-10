@@ -413,18 +413,21 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             f"repair slice with explicit allowed_paths. Details: {blocker_reason}{detail}"
         )
     if blocker_code == "engineering.review_rejected":
-        if any(
-            signal in f"{blocker_reason}{detail}".lower()
-            for signal in [
-                "benchmarks/src/jmh",
-                "benchmarks/build.gradle",
-                "conformance-tests/src/test",
-                "core/src/test",
-                "store/src/test",
-                "benchmark-smoke",
-                "qa-authored",
-            ]
-        ):
+        review_context = f"{blocker_reason}{detail}"
+        qa_owned = _review_rejection_mentions_qa_owned_surface(review_context)
+        production_owned = _review_rejection_mentions_production_surface(review_context)
+        if qa_owned and production_owned:
+            return (
+                "Previous reviewer verdict found mixed production API/implementation "
+                "defects and QA-owned test or benchmark coverage gaps. Replan must "
+                "preserve the production-code finding as implementation repair input, "
+                "emit a narrow implementation repair slice, and include a QA-author "
+                "repair slice only for the named project-metadata-approved test or "
+                "benchmark paths. Do not treat public API or store implementation "
+                "defects as QA-only harness work. Preserve these reviewer findings: "
+                f"{blocker_reason}{detail}"
+            )
+        if qa_owned:
             return (
                 "Previous reviewer verdict rejected QA-owned benchmark/test harness "
                 "coverage. Replan must emit a narrow QA-author repair slice with "
@@ -499,6 +502,40 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
         "Previous autonomous workflow attempt blocked and needs a planner replan carrying "
         f"failure knowledge into implementer-ready QA and implementation slices. "
         f"{blocker_code}: {blocker_reason}{detail}"
+    )
+
+
+def _review_rejection_mentions_qa_owned_surface(context_text: str) -> bool:
+    lowered = context_text.lower()
+    return any(
+        signal in lowered
+        for signal in [
+            "benchmarks/src/jmh",
+            "benchmarks/build.gradle",
+            "conformance-tests/src/test",
+            "core/src/test",
+            "store/src/test",
+            "benchmark-smoke",
+            "qa-authored",
+        ]
+    )
+
+
+def _review_rejection_mentions_production_surface(context_text: str) -> bool:
+    lowered = context_text.lower()
+    return any(
+        signal in lowered
+        for signal in [
+            "core/src/main",
+            "store/src/main",
+            "public api",
+            "api shape",
+            "implementation",
+            "store implementation",
+            "store implementations",
+            "production code",
+            "production-code",
+        ]
     )
 
 
