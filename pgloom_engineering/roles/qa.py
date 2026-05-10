@@ -1109,8 +1109,7 @@ def _qa_verify_command_findings(verification_results: list[Any]) -> list[str]:
     for item in verification_results:
         if item.original.exit_code == 0:
             continue
-        excerpt = item.stderr_excerpt or item.stdout_excerpt or ""
-        excerpt = " ".join(str(excerpt).split())
+        excerpt = _qa_verify_failure_excerpt(item)
         command = " ".join(str(part) for part in item.original.argv)
         if excerpt:
             findings.append(
@@ -1122,6 +1121,36 @@ def _qa_verify_command_findings(verification_results: list[Any]) -> list[str]:
                 f"qa.verify command failed: {command} exited {item.original.exit_code}"
             )
     return findings
+
+
+def _qa_verify_failure_excerpt(item: Any) -> str:
+    parts = [
+        str(value).strip()
+        for value in [
+            getattr(item, "stdout_excerpt", ""),
+            getattr(item, "stderr_excerpt", ""),
+        ]
+        if str(value).strip()
+    ]
+    if not parts:
+        return ""
+    text = "\n".join(parts)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    diagnostic_markers = [
+        "failed",
+        "failure",
+        "error",
+        "exception",
+        "allocated",
+        "above threshold",
+        "missing",
+        "cannot find symbol",
+    ]
+    diagnostic_lines = [
+        line for line in lines if any(marker in line.lower() for marker in diagnostic_markers)
+    ]
+    selected = diagnostic_lines or lines
+    return " ".join(" ".join(selected).split())
 
 
 def build_qa_no_changes_repair_prompt(

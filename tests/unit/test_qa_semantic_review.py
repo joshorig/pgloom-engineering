@@ -646,6 +646,65 @@ def test_semantic_review_accepts_range_benchmark_that_calls_public_range_api() -
     ] == []
 
 
+def test_semantic_review_blocks_reflective_range_api_tests() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            import java.lang.reflect.InvocationHandler;
+            import java.lang.reflect.Method;
+            import java.lang.reflect.Proxy;
+
+            class RangeScanApiTest {
+                @Test
+                void rangeApiShape() throws Exception {
+                    Class<?> visitorType = Class.forName("com.example.StoreVisitor");
+                    Method ascending = LvcStore.class.getMethod(
+                        "ascendingRange", int.class, int.class, visitorType);
+                    Object visitor = Proxy.newProxyInstance(
+                        visitorType.getClassLoader(),
+                        new Class<?>[]{visitorType},
+                        (InvocationHandler) (proxy, method, args) -> null);
+                    ascending.invoke(store, 0, 31, visitor);
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_test_reflective_api"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_typed_range_api_tests() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                @Test
+                void rangeApiShape() {
+                    StoreVisitor visitor = slotId -> visited.add(slotId);
+                    store.ascendingRange(0, 31, visitor);
+                    assertEquals(List.of(1, 7, 11), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [
+        finding for finding in findings
+        if finding.code == "qa_semantic_range_test_reflective_api"
+    ] == []
+
+
 def test_semantic_review_blocks_missing_range_prefix_behavior() -> None:
     findings = review_semantic_quality(
         files={

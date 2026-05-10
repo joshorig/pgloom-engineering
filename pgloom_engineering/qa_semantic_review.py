@@ -50,6 +50,7 @@ def review_semantic_quality(
     findings.extend(_jmh_cold_restore_findings(files, context, conventions))
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
+    findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
@@ -439,6 +440,49 @@ def _range_benchmark_api_findings(
                     text,
                     ["readSlicePooled", "ReadOnlySlice"],
                 ),
+            )
+        )
+    return findings
+
+
+def _range_test_reflective_api_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_api_tests"))
+    if range_config.get("allow_reflective_api_discovery"):
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context and "storevisitor" not in normalized_context:
+        return []
+    reflective_markers = [
+        "Class.forName(",
+        ".getMethod(",
+        "Method.invoke(",
+        "InvocationHandler",
+        "Proxy.newProxyInstance(",
+    ]
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(".java") or "test" not in path.lower():
+            continue
+        lowered = text.lower()
+        if "range" not in lowered and "storevisitor" not in lowered:
+            continue
+        if not any(marker in text for marker in reflective_markers):
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_range_test_reflective_api",
+                severity="blocking",
+                message=(
+                    "Range-scan QA tests should compile against the typed public API "
+                    "directly; reflection, dynamic proxies, or Method.invoke hide API "
+                    "shape mistakes and are not production-grade acceptance coverage."
+                ),
+                file=path,
+                line=_first_line_containing_any(text, reflective_markers),
             )
         )
     return findings

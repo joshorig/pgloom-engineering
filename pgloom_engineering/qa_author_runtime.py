@@ -737,6 +737,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_reflective_invocation",
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
+        "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_build_file_string_assertion",
     }
@@ -794,7 +795,9 @@ def build_qa_quality_repair_prompt(
                     "assertArrayEquals for byte arrays, use structured JSON field/path "
                     "assertions for payload contracts, and use a non-allocating cold benchmark "
                     "strategy that cannot exhaust a finite one-shot target pool during JMH "
-                    "measurement."
+                    "measurement. For range-scan API tests, import and compile against "
+                    "the typed public API directly; do not use Class.forName, Method.invoke, "
+                    "InvocationHandler, or Proxy to avoid compile-time API checks."
                 ),
                 (
                     "For JMH reflective invocation findings, remove reflection, Proxy, "
