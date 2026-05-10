@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useApi, type DagPayload } from "../api";
-import { CostCell, RoleBadge, StatusPill, TokenCell, WallClockBar } from "../components/primitives";
+import { CostCell, RoleBadge, StatusPill, TaskLink, TokenCell, WallClockBar } from "../components/primitives";
 
 const roleLanes = ["planner", "designer", "qa", "qa.author", "implementer", "reviewer", "qa.verify.scrutiny", "qa.verify.usertest", "recovery"];
 const laneLabelWidth = 138;
@@ -75,11 +75,11 @@ export function DagView({ featureId }: { featureId: string }) {
               return (
                 <a key={task.id} href={`/feature/${featureId}/task/${encodeURIComponent(task.id)}`}>
                   <g transform={`translate(${p.x},${p.y})`} className="cc-dag-node" onMouseEnter={() => setSelected(task.id)} onFocus={() => setSelected(task.id)}>
-                    <rect x="0" y="0" width={nodeWidth} height={nodeHeight} rx="3" fill="var(--panel)" stroke={isSelected ? "var(--accent)" : roleColor(task.role)} strokeWidth={isSelected ? 1.8 : 1} />
-                    <rect x="0" y="0" width="3" height={nodeHeight} fill={roleColor(task.role)} />
-                    <text x="8" y="14" fill="var(--t1)" style={{ font: "500 10.5px var(--f-mono)" }}>{shortId(task.id)}</text>
-                    <text x="8" y="27" fill="rgba(170,178,188,0.7)" style={{ font: "400 9.5px var(--f-sans)" }}>{task.role}</text>
-                    <circle cx={nodeWidth - 11} cy="10" r="3" fill={`var(--st-${statusClass(task.status)})`} />
+                  <rect x="0" y="0" width={nodeWidth} height={nodeHeight} rx="3" fill="var(--panel)" stroke={isSelected ? "var(--accent)" : roleColor(task.role)} strokeWidth={isSelected ? 1.8 : 1} />
+                  <rect x="0" y="0" width="3" height={nodeHeight} fill={roleColor(task.role)} />
+                  <text x="8" y="14" fill="var(--t1)" style={{ font: "500 10.5px var(--f-mono)" }}>{shortId(task.id)}</text>
+                  <text x="8" y="27" fill="rgba(170,178,188,0.7)" style={{ font: "400 9.5px var(--f-sans)" }}>{task.role}</text>
+                    <circle cx={nodeWidth - 11} cy="10" r="3" fill={`var(--st-${statusClass(effectiveTaskStatus(task))})`} />
                   </g>
                 </a>
               );
@@ -95,8 +95,8 @@ export function DagView({ featureId }: { featureId: string }) {
               <div className="cc-kicker mono">SELECTED · TASK</div>
               <div className="cc-dag-side-title mono">{shortId(selectedTask.id)}</div>
               <div className="mono cc-dim cc-break">{selectedTask.id}</div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}><StatusPill status={selectedTask.status} /><span className="mono cc-dim">milestone {selectedTask.milestone_id.toUpperCase()}</span>{selectedTask.task_slice_id && <span className="mono cc-dim">slice {selectedTask.task_slice_id}</span>}</div>
-              <a className="cc-btn cc-btn-primary" href={`/feature/${featureId}/task/${encodeURIComponent(selectedTask.id)}`} style={{ marginTop: 10 }}>Open task</a>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}><StatusPill status={effectiveTaskStatus(selectedTask)} /><span className="mono cc-dim">milestone {selectedTask.milestone_id.toUpperCase()}</span>{selectedTask.task_slice_id && <span className="mono cc-dim">slice {selectedTask.task_slice_id}</span>}</div>
+              <div style={{ marginTop: 10 }}><TaskLink featureId={featureId} taskId={selectedTask.id} /></div>
             </div>
             <div className="cc-dag-side-sect" style={{ padding: 12 }}><RoleBadge role={selectedTask.role} full /></div>
             <div className="cc-dag-side-sect">
@@ -205,7 +205,11 @@ function roleColor(role: string) {
 
 function isMilestoneComplete(tasks: DagPayload["tasks"], milestoneId: string, mode: "milestone" | "slice") {
   const scoped = tasks.filter((task) => groupId(task, mode) === milestoneId);
-  return scoped.length > 0 && scoped.every((task) => ["completed", "complete", "done", "passed", "pass"].includes(task.status));
+  return scoped.length > 0 && scoped.every((task) => ["completed", "complete", "done", "passed", "pass"].includes(effectiveTaskStatus(task)));
+}
+
+function effectiveTaskStatus(task: DagPayload["tasks"][number]) {
+  return String(task.last_run?.status || task.status || "queued");
 }
 
 function sliceLabel(id: string) {

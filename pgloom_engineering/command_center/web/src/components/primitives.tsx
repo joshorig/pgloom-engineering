@@ -166,3 +166,30 @@ export function LiveEventStrip({ events }: { events: Array<{ kind: string; row_i
     </div>
   );
 }
+
+export function TaskLink({
+  featureId,
+  taskId,
+  label,
+  subtle = false
+}: {
+  featureId?: string | null;
+  taskId?: string | null;
+  label?: string;
+  subtle?: boolean;
+}) {
+  if (!featureId || !taskId) return <span className="mono cc-dim">-</span>;
+  return (
+    <a
+      className={`cc-tasklink ${subtle ? "is-subtle" : ""}`}
+      href={`/feature/${featureId}/task/${encodeURIComponent(taskId)}`}
+      title={taskId}
+    >
+      <span className="mono">{label || shortTaskId(taskId)}</span>
+    </a>
+  );
+}
+
+function shortTaskId(id: string) {
+  return id.length > 18 ? `${id.slice(0, 8)}...${id.slice(-6)}` : id;
+}

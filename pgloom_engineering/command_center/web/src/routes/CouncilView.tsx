@@ -1,6 +1,6 @@
 import { useApi, type CouncilRow } from "../api";
 import type { ReactNode } from "react";
-import { CostCell, Panel, RoleBadge, StatusPill, TokenCell } from "../components/primitives";
+import { CostCell, Panel, RoleBadge, StatusPill, TaskLink, TokenCell } from "../components/primitives";
 
 type Row = Record<string, unknown>;
 
@@ -61,6 +61,7 @@ export function CouncilView({ featureId, councilId }: { featureId: string; counc
         <StatLite k="critic verdict" v={data.critic_verdict || unavailable(data)} d="final decision" />
         <StatLite k="cost" v={data.legacy ? unavailable(data) : <CostCell micros={data.cost_usd_micros} precision={2} />} d="council roll-up" />
         <StatLite k="tokens" v={data.legacy ? unavailable(data) : <TokenCell value={data.total_tokens} />} d="panelists + critic" />
+        <StatLite k="task" v={<TaskLink featureId={featureId} taskId={data.task_id} subtle />} d="scoped council" />
       </div>
 
       {data.legacy && (

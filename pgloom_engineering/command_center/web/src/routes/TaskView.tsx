@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useApi, type RunRow, type TaskHeader } from "../api";
-import { CostCell, Panel, RoleBadge, StatusPill, TokenCell, WallClockBar } from "../components/primitives";
+import { CostCell, Panel, RoleBadge, StatusPill, TaskLink, TokenCell, WallClockBar } from "../components/primitives";
 import { formatSeconds } from "../lib/money";
 
 type Row = Record<string, unknown>;
@@ -66,7 +66,7 @@ export function TaskView({ featureId, taskId }: { featureId: string; taskId: str
                   <span className="mono">run #{run.id}</span>
                   <StatusPill status={run.status} />
                   {run.terminal_reason && <span className="cc-chip" title={run.terminal_detail || ""}>{run.terminal_reason}</span>}
-                  {run.council_run_id && <a className="cc-chip is-on" href={`/feature/${featureId}/councils/${run.council_run_id}`}>View council</a>}
+                {run.council_run_id && <a className="cc-chip is-on" href={`/feature/${featureId}/councils/${run.council_run_id}`}>View council</a>}
                 </div>
                 <div style={{ paddingTop: 8 }}>
                   <WallClockBar split={{ queue: run.queued_seconds, lease: run.leased_seconds, model: run.model_seconds, verify: run.verification_seconds, blocked: run.blocked_seconds }} label />
@@ -121,7 +121,7 @@ function MiniTable({ rows, featureId }: { rows: Row[]; featureId: string }) {
 function renderCell(value: unknown, featureId: string) {
   if (value == null) return "-";
   if (typeof value === "string" && (value.startsWith("task-") || value === "t0" || value === "t1")) {
-    return <a href={`/feature/${featureId}/task/${value}`}>{shortId(value)}</a>;
+    return <TaskLink featureId={featureId} taskId={value} subtle />;
   }
   if (typeof value === "object") return JSON.stringify(value).slice(0, 90);
   return String(value);
