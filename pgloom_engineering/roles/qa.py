@@ -192,6 +192,12 @@ class QAHandler:
             )
             for command in verification_commands(task_contract)
         ]
+        infra_findings = [
+            item.infra_error
+            for item in verification_results
+            if item.infra_error is not None
+        ]
+        command_findings = _qa_verify_command_findings(verification_results)
         contract = QAResultContract(
             feature_id=task_contract.feature_id,
             task_id=task_id,
@@ -242,26 +248,26 @@ class QAHandler:
                 ).model_dump(mode="json")
                 for index, item in enumerate(verification_results)
             ],
-            findings=[
-                item.infra_error
-                for item in verification_results
-                if item.infra_error is not None
-            ],
+            findings=[*infra_findings, *command_findings],
             validator_type=validator_type,  # type: ignore[arg-type]
             procedures_attestation=_procedures_attestation(task_contract),
         )
-        if contract.findings:
+        if infra_findings:
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.project_unhealthy",
-                blocker_reason=contract.findings[0],
+                blocker_reason=infra_findings[0],
                 result={"qa_result_contract": contract.model_dump(mode="json")},
             )
         if contract.verdict != "pass":
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.qa_verify_failed",
-                blocker_reason=f"qa.verify.{validator_type} command failed",
+                blocker_reason=(
+                    command_findings[0]
+                    if command_findings
+                    else f"qa.verify.{validator_type} command failed"
+                ),
                 result={"qa_result_contract": contract.model_dump(mode="json")},
             )
         return HandlerResult.done(
@@ -1073,6 +1079,26 @@ def _is_broad_project_validation_command(command: list[str]) -> bool:
         return False
     tasks = [token for token in tokens[1:] if not token.startswith("-")]
     return any(task in {"test", "check"} for task in tasks)
+
+
+def _qa_verify_command_findings(verification_results: list[Any]) -> list[str]:
+    findings: list[str] = []
+    for item in verification_results:
+        if item.original.exit_code == 0:
+            continue
+        excerpt = item.stderr_excerpt or item.stdout_excerpt or ""
+        excerpt = " ".join(str(excerpt).split())
+        command = " ".join(str(part) for part in item.original.argv)
+        if excerpt:
+            findings.append(
+                f"qa.verify command failed: {command} exited "
+                f"{item.original.exit_code}: {excerpt[:600]}"
+            )
+        else:
+            findings.append(
+                f"qa.verify command failed: {command} exited {item.original.exit_code}"
+            )
+    return findings
 
 
 def build_qa_no_changes_repair_prompt(
