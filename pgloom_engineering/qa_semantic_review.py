@@ -668,7 +668,11 @@ def _range_benchmark_smoke_threshold_findings(
     for path, text in files.items():
         if not path.endswith(("build.gradle", "build.gradle.kts")):
             continue
-        if "rangeScanSmoke" not in text or "jmhSmokeCheck" not in text:
+        if (
+            "rangeScanSmoke" not in text
+            and "RangeScanBenchmark" not in text
+            and "range scan" not in text.lower()
+        ) or "jmhSmokeCheck" not in text:
             continue
         for match in re.finditer(
             r"allocBytesPerOp\s*:\s*[^,\n]*\?:\s*([0-9]+(?:\.[0-9]+)?)d?",
