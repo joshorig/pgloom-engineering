@@ -38,6 +38,7 @@ from pgloom_engineering.qa_author_runtime import (
     build_qa_contract_repair_prompt,
     build_qa_quality_repair_prompt,
     command_for_worktree,
+    infer_tests_added_from_paths,
     isolate_codex_worktree_context,
     normalize_qa_author_payload,
     path_violations,
@@ -837,6 +838,17 @@ class QAHandler:
                     for proof in canonical_red_proof(verification)
                 ],
                 "paths_touched": sorted(set([*contract.paths_touched, *touched])),
+                "tests_added": sorted(
+                    set(
+                        [
+                            *contract.tests_added,
+                            *_new_inferred_tests_added(
+                                contract.tests_added,
+                                infer_tests_added_from_paths(touched),
+                            ),
+                        ]
+                    )
+                ),
                 "branch": handle.branch,
                 "worktree_path": str(handle.worktree),
                 "model_usage_ids": [*contract.model_usage_ids, *model_usage_ids],
@@ -894,6 +906,17 @@ def _qa_verify_worktree(
         if dependency_path is not None:
             return dependency_path
     return None
+
+
+def _new_inferred_tests_added(existing: list[str], inferred: list[str]) -> list[str]:
+    return [
+        path
+        for path in inferred
+        if not any(
+            item == path or item.startswith(f"{path}#") or item.startswith(f"{path}::")
+            for item in existing
+        )
+    ]
 
 
 def _usertest_skip_authorized(metadata: dict[str, Any]) -> bool:

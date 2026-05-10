@@ -72,6 +72,28 @@ def normalize_qa_author_payload(payload: object) -> object:
     return payload
 
 
+def infer_tests_added_from_paths(paths: list[str]) -> list[str]:
+    return [
+        path
+        for path in paths
+        if _looks_like_authored_test_or_benchmark(path)
+    ]
+
+
+def _looks_like_authored_test_or_benchmark(path: str) -> bool:
+    lowered = path.lower()
+    name = Path(path).name.lower()
+    if "fixture" in name or "fixtures" in lowered:
+        return False
+    if "/src/test/" in lowered or lowered.startswith("tests/"):
+        return name.endswith(("_test.py", "test.py", "test.java", "test.kt")) or (
+            "test" in name and name.endswith((".java", ".kt", ".py"))
+        )
+    if "src/jmh/" in lowered or "benchmarks/src/" in lowered:
+        return name.endswith(("benchmark.java", "bench.java", "benchmark.kt"))
+    return False
+
+
 def semantic_quality_findings(
     *,
     worktree: Path,

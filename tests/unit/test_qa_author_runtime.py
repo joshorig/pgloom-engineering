@@ -18,6 +18,7 @@ from pgloom_engineering.qa_author_runtime import (
     build_qa_author_prompt,
     build_qa_code_repair_prompt,
     build_qa_quality_repair_prompt,
+    infer_tests_added_from_paths,
     isolate_codex_worktree_context,
     normalize_qa_author_payload,
     path_violations,
@@ -543,6 +544,24 @@ def test_configured_gate_matrix_coverage_is_deterministic(tmp_path: Path) -> Non
     assert augmented.matrix_coverage == {
         "Configured QA gate coverage: qa/smoke.sh passes.": ["./qa/smoke.sh"]
     }
+
+
+def test_infer_tests_added_from_paths_keeps_real_tests_and_benchmarks() -> None:
+    assert infer_tests_added_from_paths(
+        [
+            "benchmarks/build.gradle",
+            "benchmarks/src/jmh/java/com/example/RangeScanVisitorBenchmark.java",
+            "conformance-tests/src/test/java/com/example/RangeScanConformanceFixtures.java",
+            "conformance-tests/src/test/java/com/example/RangeScanConformanceTest.java",
+            "conformance-tests/src/test/java/com/example/RangeScanConsumerJourneyTest.java",
+            "core/src/test/java/com/example/RangeScanApiTest.java",
+        ]
+    ) == [
+        "benchmarks/src/jmh/java/com/example/RangeScanVisitorBenchmark.java",
+        "conformance-tests/src/test/java/com/example/RangeScanConformanceTest.java",
+        "conformance-tests/src/test/java/com/example/RangeScanConsumerJourneyTest.java",
+        "core/src/test/java/com/example/RangeScanApiTest.java",
+    ]
 
 
 def test_gate_matrix_coverage_can_use_task_verification_commands(tmp_path: Path) -> None:
