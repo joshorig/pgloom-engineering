@@ -74,6 +74,7 @@ pgloom_engineering/command_center/
     dag.py                # /api/features/{id}/dag
     runs.py               # /api/features/{id}/runs
     tasks.py              # /api/features/{id}/tasks/{task_id}/...
+    councils.py           # /api/features/{id}/councils[/{council_id}]
     handoffs.py
     qa.py
     telemetry.py
@@ -99,6 +100,8 @@ pgloom_engineering/command_center/web/
       FeatureOverview.tsx
       DagView.tsx          # Cytoscape canvas
       TaskView.tsx         # per-task detail page
+      CouncilView.tsx      # per-council deliberation page
+      CouncilsList.tsx     # all councils for a feature
       HandoffView.tsx
       ValidationView.tsx
       TelemetryView.tsx
@@ -161,6 +164,8 @@ Event kinds (initial set):
 - `recovery.update` — `engineering_recovery_actions` insert/update
 - `plan.update` — `engineering_plan_contracts` insert/update
 - `task.update` — `engineering_task_contracts` insert/update
+- `council.update` — `engineering_councils` insert/update
+- `council_panelist.update` — `engineering_council_panelists` insert/update
 
 ### Triggers
 
@@ -351,6 +356,9 @@ Minimum useful views, each its own route under `/feature/:id/...`:
 - **Task view** (see §8a): everything about a single task — contract,
   worker runs, handoffs in/out, QA signoffs, recovery, interventions
   scoped to the task, artifacts, telemetry roll-up.
+- **Council view** (see §8b): per-council deliberation surface — panelists,
+  consolidator, critic loop, iterations, dissent. Used by planner today;
+  reviewer (and future roles) use the same surface.
 - **Handoff view**: compact chain (`from_task → to_task`) with handoff_type
   badges, artifact links, cumulative telemetry per hop.
 - **Validation view**: scrutiny and user-test evidence side by side, attempted
@@ -455,7 +463,162 @@ manual refresh.
 Every other view that mentions a task_id renders it as a link to this view.
 Specifically: DAG nodes, Handoff view rows, Validation view rows, Feature
 overview "current / next / blocked task" cells, Intervention view rows
-whose payload carries `task_id`, and Self-repair entries.
+whose payload carries `task_id`, and Self-repair entries. The Worker runs
+timeline surfaces a "View council" pill on any run whose `council_run_id`
+is set, linking to the Council view (§8b).
+
+## 8b. Council view
+
+Councils are not planner-only. The same multi-agent pattern (panelists →
+consolidator → critic → optional revision loop) is already used by reviewer
+and will be used by future roles (e.g. recovery, design). Command Center
+must therefore treat "council" as a first-class entity, not a planner
+sub-tab.
+
+### Schema (proposed; lives in migration `011_councils.sql`)
+
+Today, planner council output is stored as a JSONB blob on
+`engineering_plan_contracts.council_reports`. That worked for one role; it
+does not generalise. Add a normalised set of tables:
+
+```sql
+create table engineering_councils (
+  id              text primary key,             -- "council_<32hex>"
+  feature_id      text not null references engineering_features(id),
+  task_id         text,                          -- nullable for feature-level
+  role            text not null,                 -- planner | reviewer | ...
+  purpose         text not null,                 -- "initial_plan" | "revise_plan"
+                                                 -- | "review_implementation" | ...
+  status          text not null,                 -- running | passed | failed | aborted
+  iteration_max   int  not null default 1,
+  iterations_used int  not null default 0,
+  consolidated_artifact_id text,                 -- final agreed output
+  critic_verdict  text,                           -- accept | revise | reject
+  cost_usd_micros bigint not null default 0,
+  total_tokens    bigint not null default 0,
+  started_at      timestamptz not null default now(),
+  finished_at     timestamptz
+);
+
+create table engineering_council_panelists (
+  id               bigserial primary key,
+  council_id       text not null references engineering_councils(id),
+  iteration        int  not null,                -- 0-based
+  panelist_slot    text not null,                -- "panelist_a" | "consolidator" | "critic"
+  model_provider   text not null,
+  model            text not null,
+  reasoning_level  text,
+  worker_run_id    bigint references engineering_worker_runs(id),
+  artifact_id      text,                          -- their produced output
+  verdict          text,                           -- panelist's own self-verdict if applicable
+  vote             text,                           -- accept | revise | reject (for critic only)
+  cost_usd_micros  bigint not null default 0,
+  input_tokens     int,
+  output_tokens    int,
+  reasoning_tokens int,
+  started_at       timestamptz not null,
+  finished_at      timestamptz,
+  unique (council_id, iteration, panelist_slot)
+);
+
+create index engineering_councils_feature_idx
+  on engineering_councils (feature_id, started_at);
+create index engineering_councils_task_idx
+  on engineering_councils (task_id, started_at);
+create index engineering_council_panelists_council_idx
+  on engineering_council_panelists (council_id, iteration, panelist_slot);
+```
+
+Add `council_run_id text references engineering_councils(id)` to
+`engineering_worker_runs` so an individual model invocation knows which
+council (if any) it belongs to. Backfill is best-effort: pre-migration plan
+councils stay represented by `engineering_plan_contracts.council_reports`
+JSONB, with a read-side adapter exposing them through the same API.
+
+### Route
+
+`/feature/:featureId/council/:councilId`. The feature also exposes
+`/feature/:featureId/councils` — a list of every council that has run for
+the feature with role, purpose, status, iteration count, cost, and a link
+in.
+
+### Header strip
+
+- council_id, role badge, purpose, status pill
+- iterations used / max
+- final critic verdict (`accept` / `revise` / `reject` / pending)
+- total cost (micros → formatted) and total tokens
+- linked task_id (clickable → Task view) when the council is task-scoped
+- linked feature_id (always)
+- elapsed wall-clock (`finished_at − started_at`); a live ticker if
+  `finished_at` is null
+
+### Sections
+
+1. **Iteration timeline**: one column per iteration (0..n). Each column
+   stacks panelist tiles top-to-bottom in execution order: panelists →
+   consolidator → critic. Tile shows panelist_slot, model, cost, tokens,
+   self-verdict (if any), and an "Open output" link to the artifact.
+
+2. **Diff lane**: between iterations, render a side-by-side or unified
+   diff of consolidator outputs (iteration N vs N-1). Operators need to
+   see *what the critic forced to change*. If outputs are JSON, use a
+   structural diff; if prose, a textual diff.
+
+3. **Dissent panel**: panelists whose self-verdict or output disagreed
+   meaningfully with the consolidator. Show the panelist's full text + the
+   consolidator's chosen direction. This is how an operator sanity-checks
+   "did the consolidator drop a real concern?"
+
+4. **Critic verdict pane**: full critic output for the final iteration —
+   the rubric checks (the 14→17 named checks the planner brief defines for
+   plan-critic; reviewer-critic has its own rubric), pass/fail per check,
+   the binary `accept`/`revise`/`reject` summary, and any specific revision
+   demands that triggered the next iteration.
+
+5. **Worker runs**: every `engineering_worker_runs` row joined via
+   `council_run_id`. Same row format as the Task view's worker-runs section
+   (wall-clock bar, tokens, cost, model, blocker_code). Shows the operator
+   the raw cost composition of the council.
+
+6. **Outcome**: the consolidated artifact id (final accepted output) plus
+   downstream pointers — for a planner council, the accepted plan_contract
+   row(s); for a reviewer council, the review_verdict_contract; etc.
+
+7. **Telemetry roll-up**: cost by panelist_slot (panelists vs consolidator
+   vs critic), by model, by iteration. Highlights the common pathology of
+   "critic over-tightening" where critic + revise iterations dominate the
+   bill — Operator can see it at a glance.
+
+### Realtime
+
+Subscribe to two event kinds (added to §4): `council.update` (status,
+iterations_used, critic_verdict, totals) and `council_panelist.update`
+(individual panelist tile). When a panelist tile starts running, the column
+shows it as in-flight; when it finishes, the cost/tokens/verdict appear
+live.
+
+### Cross-linking
+
+- Plan contract rows show "Council: council_..." with a link in.
+- Reviewer task pages show their associated council.
+- Worker runs with `council_run_id` set show "View council" in the Task
+  view's worker-runs section (already noted above).
+- Telemetry view (§8) gains a "Cost by council" breakdown alongside the
+  existing per-role/per-model breakdowns, since councils can dominate the
+  bill on a slice and that needs to be queryable.
+
+### Reviewer councils — first concrete user beyond planner
+
+The reviewer brief (planner-impl-and-review.md) defines reviewer as a
+critic over implementer output. When reviewer is run as a council
+(panelists each form a verdict, consolidator merges, critic verifies the
+merge), every reviewer run produces an `engineering_councils` row with
+`role='reviewer'`, `purpose='review_implementation'`, scoped to the
+implementer task. The Council view renders identically — no reviewer-
+specific UI is added. This is the test that the abstraction is right: if
+adding reviewer to Council view requires touching the view, the
+abstraction leaked.
 
 ## 9. Data shapes — single source of truth
 
@@ -480,6 +643,11 @@ contract for what the API returns. Wrap each section as a dedicated endpoint:
 | `GET /api/features/{id}/tasks/{task_id}/interventions` | interventions touching task       |
 | `GET /api/features/{id}/tasks/{task_id}/artifacts` | dedup artifact roll-up                |
 | `GET /api/features/{id}/tasks/{task_id}/telemetry` | per-task telemetry roll-up            |
+| `GET /api/features/{id}/councils`             | list of councils for the feature           |
+| `GET /api/features/{id}/councils/{council_id}`     | council header + outcome              |
+| `GET /api/features/{id}/councils/{council_id}/panelists` | panelists by iteration          |
+| `GET /api/features/{id}/councils/{council_id}/runs`      | worker_runs joined by council_run_id |
+| `GET /api/features/{id}/councils/{council_id}/diffs`     | iteration N vs N-1 consolidator diffs|
 | `GET /api/features/{id}/handoffs`             | section 7                                  |
 | `GET /api/features/{id}/recovery`             | section 8                                  |
 | `GET /api/features/{id}/qa-signoffs`          | section 9                                  |
@@ -572,3 +740,10 @@ this slice cost too much, and where did the time go?"
    scoped interventions, deduped artifacts, and a per-task telemetry
    roll-up. A new `engineering_worker_runs` insert for the open task appears
    live.
+9. The Council view renders for any council_id and shows the iteration
+   timeline with panelist tiles, the consolidator-diff lane between
+   iterations, the dissent panel, the critic verdict pane, joined
+   worker_runs, the outcome pointer, and a per-council telemetry roll-up.
+   Reviewer councils render through the same view with no reviewer-specific
+   code path. Inserting an `engineering_council_panelists` row for an open
+   council updates the relevant iteration column live.
