@@ -69,15 +69,7 @@ class RepairingImplementerProvider(ImplementerProvider):
     def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
         self.calls += 1
         if self.calls == 1:
-            self.worktree.joinpath("tests/test_red.py").write_text(
-                "def test_red():\n    assert True\n",
-                encoding="utf-8",
-            )
             return SimpleNamespace(text='{"bad": true}', model_usage_id=201)
-        self.worktree.joinpath("tests/test_red.py").write_text(
-            "def test_red():\n    assert False\n",
-            encoding="utf-8",
-        )
         self.worktree.joinpath("src").mkdir(exist_ok=True)
         self.worktree.joinpath("src/App.java").write_text("class App {}\n", encoding="utf-8")
         return SimpleNamespace(
@@ -186,6 +178,28 @@ class StructuredEvidenceImplementerProvider(ImplementerProvider):
         )
 
 
+class QaPathMutatingImplementerProvider(ImplementerProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del profile, prompt, kwargs
+        self.calls += 1
+        self.worktree.joinpath("tests/test_red.py").write_text(
+            "def test_red():\n    assert True\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "TaskResultContract": {
+                        "feature_id": "feature-1",
+                        "task_id": "impl-1",
+                        "changed_files": ["tests/test_red.py"],
+                    }
+                }
+            ),
+            model_usage_id=600 + self.calls,
+        )
+
+
 def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -206,6 +220,34 @@ def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     assert contract["checks"][0]["status"] == "passed"
     assert contract["commands_run"][0]["cmd"][0] == sys.executable
     assert contract["commands_run"][0]["exit_code"] == 0
+
+
+def test_implementer_blocks_and_restores_qa_owned_path_before_verification(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    worktree = _git_repo(tmp_path)
+    worktree.joinpath("tests").mkdir()
+    worktree.joinpath("tests/test_red.py").write_text(
+        "def test_red():\n    assert False\n",
+        encoding="utf-8",
+    )
+
+    _patch_live_contracts(monkeypatch, worktree)
+    result = ImplementerHandler(provider=QaPathMutatingImplementerProvider(worktree)).handle(
+        _task()
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.implementation_path_violation"
+    assert result.result["violations"] == [
+        {"path": "tests/test_red.py", "reason": "forbidden_path"}
+    ]
+    assert "assert True" in result.result["violation_diffs"]["tests/test_red.py"][
+        "diff_excerpt"
+    ]
+    assert worktree.joinpath("tests/test_red.py").read_text(encoding="utf-8") == (
+        "def test_red():\n    assert False\n"
+    )
 
 
 def test_implementer_context_isolation_skips_eager_add_dir_by_default(
