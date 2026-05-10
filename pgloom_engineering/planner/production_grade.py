@@ -221,7 +221,7 @@ def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionF
         if task_slice.task_type == "engineering.implement"
     ]
     scoped = [
-        (task_slice, _variant_scope_text(_slice_text(task_slice)))
+        (task_slice, _variant_scope_text(_variant_scope_source(task_slice)))
         for task_slice in implementers
     ]
     findings: list[ProductionFinding] = []
@@ -293,15 +293,12 @@ def _looks_like_broad_variant_conformance(command: list[str]) -> bool:
     )
 
 
-def _slice_text(task_slice: object) -> str:
+def _variant_scope_source(task_slice: object) -> str:
     fields: list[str] = []
     for attr in [
         "slice_id",
         "objective",
         "expected_outputs",
-        "acceptance_assertion_ids",
-        "grading_criteria",
-        "validation_strategy",
     ]:
         value = getattr(task_slice, attr, None)
         if isinstance(value, str):
