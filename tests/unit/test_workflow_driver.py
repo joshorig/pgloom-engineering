@@ -892,6 +892,51 @@ def test_replan_payload_carries_implementation_failure_evidence() -> None:
     assert "RangeScanVisitorBenchmark" in payload["feature_goal_contract"]["requirements"][-1]
 
 
+def test_replan_payload_carries_implementation_artifact_hints() -> None:
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "blocker_code": "engineering.implementation_verification_failed",
+                }
+            ]
+        ),
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": "implementer verification commands failed",
+            "result": {
+                "stdout_excerpt": "BUILD FAILED",
+                "artifact_hints": {
+                    "gradle_test_failures": [
+                        {
+                            "test": "com.example.RangeScanApiTest.visitsInclusiveRange",
+                            "message": "expected:<3> but was:<2>",
+                        }
+                    ],
+                    "failure_output_lines": [
+                        "RangeScanApiTest > visitsInclusiveRange FAILED"
+                    ],
+                },
+                "commands": [["./gradlew", ":core:test"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    failure_context = payload["replan_context"]["failure_context"]
+    assert "gradle_test_failures" in failure_context
+    assert "RangeScanApiTest.visitsInclusiveRange" in failure_context
+    assert "expected:<3> but was:<2>" in failure_context
+
+
 def test_blocked_replan_skips_when_planner_is_already_active(monkeypatch: Any) -> None:
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
 

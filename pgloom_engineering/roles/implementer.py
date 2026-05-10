@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -276,6 +277,10 @@ class ImplementerHandler:
                         "commands": [item.original.argv for item in verification_results],
                         "stdout_excerpt": first.stdout_excerpt,
                         "stderr_excerpt": first.stderr_excerpt,
+                        "artifact_hints": _verification_artifact_hints(
+                            first,
+                            worktree=worktree,
+                        ),
                         "changed_files": touched,
                         "repair_attempts": repair_attempts,
                     },
@@ -589,6 +594,9 @@ def _verification_blocker_reason(item: Any, *, worktree: Path | None = None) -> 
     benchmark_diagnostic = _benchmark_smoke_diagnostic(item, worktree=worktree)
     if benchmark_diagnostic:
         excerpts.insert(0, benchmark_diagnostic)
+    verification_diagnostic = _verification_failure_diagnostic(item, worktree=worktree)
+    if verification_diagnostic:
+        excerpts.insert(0, verification_diagnostic)
     details = " | ".join(excerpts)
     reason = "implementer verification commands failed"
     if command:
@@ -612,7 +620,122 @@ def _verification_artifact_hints(item: Any, *, worktree: Path) -> dict[str, Any]
         benchmarks = _jmh_result_benchmarks(worktree / "benchmarks/build/jmh.json")
         if benchmarks:
             hints["jmh_result_benchmarks"] = benchmarks[:30]
+    failure_lines = _verification_failure_lines(item)
+    if failure_lines:
+        hints["failure_output_lines"] = failure_lines
+    test_failures = _gradle_test_report_failures(worktree)
+    if test_failures:
+        hints["gradle_test_failures"] = test_failures
     return hints
+
+
+def _verification_failure_diagnostic(item: Any, *, worktree: Path | None) -> str:
+    failures = _gradle_test_report_failures(worktree) if worktree is not None else []
+    if failures:
+        rendered: list[str] = []
+        for failure in failures[:5]:
+            location = failure.get("test") or failure.get("suite") or failure.get("path")
+            message = failure.get("message") or failure.get("type") or "failed"
+            rendered.append(f"{location}: {message}")
+        if rendered:
+            return "gradle_test_failures: " + " | ".join(rendered)
+    lines = _verification_failure_lines(item)
+    if lines:
+        return "verification_failure_lines: " + " | ".join(lines[:8])
+    return ""
+
+
+def _verification_failure_lines(item: Any, *, limit: int = 16) -> list[str]:
+    original = getattr(item, "original", None)
+    combined = "\n".join(
+        part
+        for part in [
+            str(getattr(original, "stdout", "") or ""),
+            str(getattr(original, "stderr", "") or ""),
+        ]
+        if part
+    )
+    if not combined:
+        return []
+    signals = (
+        " failed",
+        "failed ",
+        "failure:",
+        "failures:",
+        "error:",
+        "assertionerror",
+        "expected:",
+        "expected <",
+        "expected but was",
+        "comparisonfailure",
+        "cannot find symbol",
+        "incompatible types",
+        "there were failing tests",
+    )
+    lines: list[str] = []
+    for raw_line in combined.splitlines():
+        line = " ".join(raw_line.split())
+        if not line:
+            continue
+        lowered = line.lower()
+        if any(signal in lowered for signal in signals):
+            lines.append(line[:500])
+    return list(dict.fromkeys(lines))[:limit]
+
+
+def _gradle_test_report_failures(
+    worktree: Path,
+    *,
+    max_files: int = 40,
+    max_failures: int = 12,
+) -> list[dict[str, str]]:
+    failures: list[dict[str, str]] = []
+    paths = [
+        path
+        for path in sorted(worktree.rglob("TEST-*.xml"))
+        if "/build/test-results/" in f"/{path.relative_to(worktree).as_posix()}"
+    ][:max_files]
+    for path in paths:
+        relative = path.relative_to(worktree).as_posix()
+        try:
+            root = ET.parse(path).getroot()
+        except Exception:
+            continue
+        suite_name = str(root.attrib.get("name") or "")
+        for testcase in root.iter("testcase"):
+            failure_node = None
+            for child in testcase:
+                if child.tag in {"failure", "error"}:
+                    failure_node = child
+                    break
+            if failure_node is None:
+                continue
+            class_name = str(testcase.attrib.get("classname") or "")
+            test_name = str(testcase.attrib.get("name") or "")
+            test_id = ".".join(part for part in [class_name, test_name] if part)
+            message = str(failure_node.attrib.get("message") or "").strip()
+            failure_type = str(failure_node.attrib.get("type") or failure_node.tag)
+            text = " ".join(str(failure_node.text or "").split())
+            failures.append(
+                {
+                    "path": relative,
+                    "suite": suite_name,
+                    "test": test_id,
+                    "type": failure_type,
+                    "message": _compact_failure_text(message or text, limit=500),
+                    "details": _compact_failure_text(text, limit=900),
+                }
+            )
+            if len(failures) >= max_failures:
+                return failures
+    return failures
+
+
+def _compact_failure_text(value: str, *, limit: int) -> str:
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...[truncated]"
 
 
 def _benchmark_smoke_diagnostic(item: Any, *, worktree: Path | None) -> str:

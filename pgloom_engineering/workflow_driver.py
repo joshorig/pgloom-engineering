@@ -607,6 +607,11 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
             rendered = " ".join(str(part) for part in command)
             if rendered:
                 excerpts.append(f"command={rendered}")
+    artifact_hints = result.get("artifact_hints")
+    if isinstance(artifact_hints, dict):
+        rendered_hints = _compact_artifact_hints(artifact_hints)
+        if rendered_hints:
+            excerpts.append(f"artifact_hints={rendered_hints}")
     changed_files = result.get("changed_files")
     if isinstance(changed_files, list):
         rendered_files = [
@@ -631,6 +636,37 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
         if rendered_violations:
             excerpts.append(f"path_violations={', '.join(rendered_violations)}")
     return " | ".join(excerpts)[:3000]
+
+
+def _compact_artifact_hints(hints: dict[str, Any]) -> str:
+    parts: list[str] = []
+    failure_lines = hints.get("failure_output_lines")
+    if isinstance(failure_lines, list):
+        rendered_lines = [
+            " ".join(str(line).split())
+            for line in failure_lines[:6]
+            if isinstance(line, str) and line.strip()
+        ]
+        if rendered_lines:
+            parts.append("failure_output_lines=" + " ; ".join(rendered_lines))
+    gradle_failures = hints.get("gradle_test_failures")
+    if isinstance(gradle_failures, list):
+        rendered_failures: list[str] = []
+        for failure in gradle_failures[:6]:
+            if not isinstance(failure, dict):
+                continue
+            test = failure.get("test") or failure.get("suite") or failure.get("path")
+            message = failure.get("message") or failure.get("type")
+            if isinstance(test, str) and test.strip():
+                rendered_failures.append(
+                    f"{test}:{message}" if isinstance(message, str) else test
+                )
+        if rendered_failures:
+            parts.append("gradle_test_failures=" + " ; ".join(rendered_failures))
+    benchmark = hints.get("benchmark_smoke_diagnostic")
+    if isinstance(benchmark, str) and benchmark.strip():
+        parts.append("benchmark_smoke_diagnostic=" + " ".join(benchmark.split()))
+    return " | ".join(parts)[:1400]
 
 
 def _append_unique(values: list[str], value: str) -> list[str]:

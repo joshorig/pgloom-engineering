@@ -545,6 +545,72 @@ def test_implementer_repair_prompt_includes_jmh_artifact_hints(tmp_path: Path) -
     ]
 
 
+def test_implementer_repair_prompt_includes_gradle_test_artifact_hints(
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "core/build/test-results/test"
+    results_dir.mkdir(parents=True)
+    results_dir.joinpath("TEST-com.example.RangeScanApiTest.xml").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.RangeScanApiTest" tests="1" failures="1" errors="0">
+  <testcase classname="com.example.RangeScanApiTest" name="visitsInclusiveRange">
+    <failure message="expected: &lt;3&gt; but was: &lt;2&gt;" type="AssertionError">
+java.lang.AssertionError: expected: &lt;3&gt; but was: &lt;2&gt;
+    </failure>
+  </testcase>
+</testsuite>
+""",
+        encoding="utf-8",
+    )
+    failed = SimpleNamespace(
+        original=SimpleNamespace(
+            argv=["./gradlew", ":core:test", "--tests", "com.example.RangeScanApiTest"],
+            exit_code=1,
+            stdout=(
+                "> Task :core:test FAILED\n"
+                "com.example.RangeScanApiTest > visitsInclusiveRange FAILED\n"
+                "    java.lang.AssertionError: expected:<3> but was:<2>\n"
+                "BUILD FAILED\n"
+            ),
+            stderr="",
+        ),
+        stdout_excerpt="BUILD FAILED",
+        stderr_excerpt="",
+    )
+
+    prompt = json.loads(
+        build_implementer_repair_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract(),
+            qa_contract=QAAuthorContract(
+                feature_id="feature-1",
+                task_id="qa-1",
+                worktree_path=str(tmp_path),
+            ),
+            worktree=tmp_path,
+            changed_files=["src/App.java"],
+            path_violations=[],
+            failed_verifications=[failed],
+            contract_error=None,
+            raw_response="{}",
+            role_context={},
+        )
+    )
+
+    hints = prompt["failed_verifications"][0]["artifact_hints"]
+    assert hints["gradle_test_failures"][0]["test"] == (
+        "com.example.RangeScanApiTest.visitsInclusiveRange"
+    )
+    assert "expected:" in hints["gradle_test_failures"][0]["message"]
+    assert any("visitsInclusiveRange FAILED" in line for line in hints["failure_output_lines"])
+    reason = implementer._verification_blocker_reason(  # noqa: SLF001
+        failed,
+        worktree=tmp_path,
+    )
+    assert "gradle_test_failures" in reason
+    assert "RangeScanApiTest.visitsInclusiveRange" in reason
+
+
 def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     qa_contract = QAAuthorContract(
         feature_id="feature-1",
