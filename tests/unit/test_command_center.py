@@ -148,6 +148,75 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     assert stored_artifact["metadata"]["source_worker_run_id"] == finished["id"]
 
 
+def test_cancelled_worker_run_syncs_existing_model_usage(database_url: str) -> None:
+    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
+    feature = create_feature(
+        workflow_id=workflow["id"],
+        project="demo",
+        database_url=database_url,
+    )
+    task = enqueue_task(
+        workflow_id=workflow["id"],
+        domain="engineering",
+        task_type="engineering.qa.author",
+        slot="qa-author",
+        database_url=database_url,
+    )
+    run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="qa",
+        phase="author",
+        database_url=database_url,
+    )
+    with connect(database_url) as conn, conn.transaction():
+        row = conn.execute(
+            """
+            insert into model_usage(
+              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
+              metadata
+            )
+            values (%s, %s, 'qa-author', 100, 12, 0.000545, %s)
+            returning id
+            """,
+            (
+                workflow["id"],
+                task["id"],
+                jsonb(
+                    {
+                        "provider": "codex",
+                        "model": "gpt-5.4",
+                        "reasoning_level": "medium",
+                        "cached_input_tokens": 90,
+                        "reasoning_output_tokens": 3,
+                        "duration_seconds": 1.25,
+                    }
+                ),
+            ),
+        ).fetchone()
+        assert row is not None
+        conn.execute(
+            """
+            update engineering_worker_runs
+            set status = 'cancelled',
+                blocker_code = 'engineering.operator_cancelled_stale_eval',
+                finished_at = now()
+            where id = %s
+            """,
+            (run["id"],),
+        )
+
+    cancelled = store.list_runs(feature["id"], database_url=database_url)[0]
+    assert cancelled["input_tokens"] == 100
+    assert cancelled["output_tokens"] == 12
+    assert cancelled["reasoning_tokens"] == 3
+    assert cancelled["model_provider"] == "codex"
+    assert cancelled["model"] == "gpt-5.4"
+    assert cancelled["model_profile"] == "qa-author"
+    assert cancelled["model_usage_ids"] == [row["id"]]
+    assert cancelled["cost_usd_micros"] == 545
+
+
 def test_command_center_exposes_persisted_milestones_handoffs_slots_and_artifacts(
     database_url: str,
 ) -> None:
