@@ -44,6 +44,7 @@ def evaluate_production_grade(
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
     findings.extend(_qa_benchmark_output_path_findings(plan))
     findings.extend(_milestone_signoff_findings(plan))
+    findings.extend(_variant_scope_verification_findings(plan))
     findings.extend(_small_feature_surface_findings(plan))
     blocking = [finding for finding in findings if finding.severity == "blocking"]
     advisory = [finding for finding in findings if finding.severity == "advisory"]
@@ -211,6 +212,105 @@ def _small_feature_surface_findings(plan: PlanContract) -> list[ProductionFindin
                 )
             )
     return findings
+
+
+def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionFinding]:
+    implementers = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.implement"
+    ]
+    scoped = [
+        (task_slice, _variant_scope_text(_slice_text(task_slice)))
+        for task_slice in implementers
+    ]
+    findings: list[ProductionFinding] = []
+    for task_slice, scope in scoped:
+        if not scope:
+            continue
+        if not any(_variant_scope_conflicts(scope, other_scope) for _, other_scope in scoped):
+            continue
+        if not any(
+            _looks_like_broad_variant_conformance(command)
+            for command in task_slice.verification_commands
+        ):
+            continue
+        findings.append(
+            ProductionFinding(
+                severity="blocking",
+                code="variant_slice_uses_broad_conformance_gate",
+                slice_id=task_slice.slice_id,
+                message=(
+                    "Variant-scoped implementer slice uses a broad conformance gate. "
+                    "Either keep the implementation in one slice, or provide a "
+                    "slice-specific verification command so the worker is not forced "
+                    "to implement sibling variants."
+                ),
+            )
+        )
+    return findings
+
+
+def _variant_scope_text(text: str) -> set[str]:
+    lowered = text.lower()
+    scope: set[str] = set()
+    for include, exclude in {
+        "single": "double",
+        "double": "single",
+        "direct": "mmap",
+        "mmap": "direct",
+    }.items():
+        if include in lowered and exclude not in lowered:
+            scope.add(include)
+    return scope
+
+
+def _variant_scope_conflicts(left: set[str], right: set[str]) -> bool:
+    conflicts = {
+        "single": "double",
+        "double": "single",
+        "direct": "mmap",
+        "mmap": "direct",
+    }
+    return any(conflicts.get(item) in right for item in left)
+
+
+def _looks_like_broad_variant_conformance(command: list[str]) -> bool:
+    text = " ".join(command)
+    lowered = text.lower()
+    if ":conformance-tests:test" not in lowered:
+        return False
+    if "rangescanconformancetest" not in lowered:
+        return False
+    return not any(
+        marker in lowered
+        for marker in [
+            "single",
+            "double",
+            "direct",
+            "mmap",
+        ]
+    )
+
+
+def _slice_text(task_slice: object) -> str:
+    fields: list[str] = []
+    for attr in [
+        "slice_id",
+        "objective",
+        "expected_outputs",
+        "acceptance_assertion_ids",
+        "grading_criteria",
+        "validation_strategy",
+    ]:
+        value = getattr(task_slice, attr, None)
+        if isinstance(value, str):
+            fields.append(value)
+        elif isinstance(value, list):
+            fields.extend(str(item) for item in value)
+        elif value is not None:
+            fields.append(str(value))
+    return " ".join(fields)
 
 
 def _milestone_signoff_findings(plan: PlanContract) -> list[ProductionFinding]:

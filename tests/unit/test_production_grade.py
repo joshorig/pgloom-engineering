@@ -145,3 +145,63 @@ def test_production_grade_allows_benchmark_variant_fixture_without_benchmark_roo
         for finding in report.blocking_findings
         if finding.code == "qa_benchmark_output_path_not_allowed"
     ]
+
+
+def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.role not in {"implementer", "reviewer"}
+    ]
+    plan.task_slices.extend(
+        [
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-single",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement SINGLE range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["SINGLE implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest",
+                        ]
+                    ],
+                }
+            ),
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-double",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement DOUBLE range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["DOUBLE implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest",
+                        ]
+                    ],
+                }
+            ),
+        ]
+    )
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "variant_slice_uses_broad_conformance_gate"
+        and finding.slice_id == "impl-single"
+        for finding in report.blocking_findings
+    )
