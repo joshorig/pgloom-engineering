@@ -1008,6 +1008,54 @@ def test_replan_payload_carries_implementation_failure_evidence() -> None:
     assert "RangeScanVisitorBenchmark" in payload["feature_goal_contract"]["requirements"][-1]
 
 
+def test_replan_payload_routes_repeated_benchmark_gate_to_harness_repair() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "impl-1",
+                "slot": "implementer",
+                "task_type": "engineering.implement",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.implementation_verification_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": (
+                "benchmark_smoke_diagnostic: rangeScanSmoke allocated 0.031 B/op "
+                "above threshold during :benchmarks:jmhSmokeCheck"
+            ),
+            "result": {
+                "stderr_excerpt": "Allocation threshold exceeded: 0.031 B/op > 0.005 B/op",
+                "commands": [["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert context["same_blocker_recovery_count"] == 1
+    assert "Repeated implementer verification failure" in context["summary"]
+    assert "QA-author benchmark repair slice" in context["summary"]
+    assert "exact hot-path allocation source" in context["summary"]
+    assert "rangeScanSmoke allocated" in payload["feature_goal_contract"]["requirements"][-1]
+
+
 def test_replan_payload_carries_implementation_artifact_hints() -> None:
     payload = workflow_driver._replan_payload(  # noqa: SLF001
         "feature-1",

@@ -925,6 +925,17 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
         "engineering.implementation_path_violation",
     }:
         return allowed
+    if (
+        blocker_code == "engineering.implementation_verification_failed"
+        and int(context.get("same_blocker_recovery_count") or 0) >= 1
+        and _corrective_context_mentions_benchmark_gate_failure(context)
+    ):
+        return {
+            "engineering.qa.author",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
     if qa_owned:
         return {
             "engineering.qa.author",
@@ -950,12 +961,33 @@ def _corrective_context_mentions_qa_owned_paths(context: dict[str, Any]) -> bool
         "store/src/test",
         "missing smoke benchmark result",
         "benchmark-smoke",
+        "benchmark smoke",
+        "benchmark_smoke_diagnostic",
+        "jmhsmokecheck",
         "wrongmethodtypeexception",
         "classnotfoundexception",
         "forbidden benchmark",
         "forbidden qa",
     ]
     return any(signal in context_text for signal in qa_owned_signals)
+
+
+def _corrective_context_mentions_benchmark_gate_failure(context: dict[str, Any]) -> bool:
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    return any(
+        signal in context_text
+        for signal in (
+            "jmhsmokecheck",
+            "benchmark_smoke_diagnostic",
+            "benchmark smoke",
+            "allocated",
+            "b/op",
+            "allocation threshold",
+        )
+    )
 
 
 def _corrective_context_mentions_production_defect(context: dict[str, Any]) -> bool:

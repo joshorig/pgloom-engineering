@@ -794,6 +794,20 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             f"{blocker_reason}{detail}"
         )
     if blocker_code == "engineering.implementation_verification_failed":
+        if repeat_count >= 1 and "benchmark" in f"{blocker_reason} {detail}".lower():
+            return (
+                "Repeated implementer verification failure is still blocked on a "
+                "benchmark-smoke allocation gate. Replan must stop regenerating broad "
+                "implementation repairs. First inspect whether the benchmark harness, "
+                "threshold, operations-per-invocation, or fixture setup is invalid; if "
+                "the failure is QA-owned harness work, emit a QA-author benchmark repair "
+                "slice using project-metadata-approved benchmark paths. If it is truly "
+                "production allocation, emit one narrow implementation slice naming the "
+                "exact hot-path allocation source. All downstream verification commands "
+                "must reference only QA-authored test classes/methods that already exist "
+                "unless a QA-author repair slice creates new ones. Preserve these "
+                f"verification details: {blocker_reason}{detail}"
+            )
         return (
             "Previous implementer verification failed. Replan must inspect whether the "
             "failure is production-code behavior or QA-owned test/benchmark harness "
