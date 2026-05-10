@@ -19,6 +19,7 @@ from pgloom_engineering.projects import ProjectConfig
 from pgloom_engineering.roles import implementer
 from pgloom_engineering.roles.implementer import (
     ImplementerHandler,
+    _dirty_forbidden_path_violations,
     build_implementer_context_capsule,
     build_implementer_prompt,
     build_implementer_repair_prompt,
@@ -251,6 +252,46 @@ def test_dirty_scope_path_violations_block_stale_variant_files() -> None:
             "scope": "single_only",
         }
     ]
+
+
+def test_preexisting_forbidden_check_exempts_qa_authored_paths() -> None:
+    task_contract = _implementer_contract()
+    qa_contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="qa-1",
+        paths_touched=[
+            "benchmarks/build.gradle",
+            "conformance-tests/src/test/java/com/example/RangeScanTest.java",
+        ],
+    )
+    task_contract = task_contract.model_copy(
+        update={
+            "forbidden_paths": [
+                "benchmarks/build.gradle",
+                "conformance-tests/src/test/java/",
+                "core/src/test/java/",
+            ]
+        }
+    )
+
+    assert (
+        _dirty_forbidden_path_violations(
+            [
+                "benchmarks/build.gradle",
+                "conformance-tests/src/test/java/com/example/RangeScanTest.java",
+                "core/src/test/java/com/example/LeakTest.java",
+            ],
+            touched=[],
+            task_contract=task_contract,
+            qa_contract=qa_contract,
+        )
+        == [
+            {
+                "path": "core/src/test/java/com/example/LeakTest.java",
+                "reason": "preexisting_forbidden_dirty_path",
+            }
+        ]
+    )
 
 
 def test_implementer_repairs_contract_path_and_verification_failures(
