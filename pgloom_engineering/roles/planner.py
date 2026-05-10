@@ -845,7 +845,6 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     if str(context.get("blocker_code") or "") == "engineering.qa_semantic_quality_failed":
         return {
             "engineering.qa.author",
-            "engineering.implement",
             "engineering.review",
             "engineering.qa.verify.scrutiny",
             "engineering.qa.verify.usertest",
