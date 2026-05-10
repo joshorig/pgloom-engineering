@@ -164,7 +164,15 @@ class ImplementerHandler:
         )
         while True:
             touched = _implementation_changed_files(worktree, baseline, project.metadata)
-            violations = implementation_path_violations(touched, task_contract)
+            violations = [
+                *implementation_path_violations(touched, task_contract),
+                *_dirty_forbidden_path_violations(
+                    relevant_changed_files(changed_files(worktree), project.metadata),
+                    touched=touched,
+                    task_contract=task_contract,
+                    qa_contract=qa_contract,
+                ),
+            ]
             verification_results = [
                 run_qa_verification(
                     command,
@@ -790,6 +798,42 @@ def implementation_path_violations(
                 }
             )
     return violations
+
+
+def _dirty_forbidden_path_violations(
+    paths: list[str],
+    *,
+    touched: list[str],
+    task_contract: TaskContract,
+    qa_contract: QAAuthorContract,
+) -> list[dict[str, str]]:
+    touched_set = set(touched)
+    qa_paths = _qa_authored_paths(qa_contract)
+    violations: list[dict[str, str]] = []
+    for path in paths:
+        if path in touched_set or _path_in_roots(path, qa_paths):
+            continue
+        if any(path_matches(path, root) for root in task_contract.forbidden_paths):
+            violations.append(
+                {
+                    "path": path,
+                    "reason": "preexisting_forbidden_dirty_path",
+                }
+            )
+    return violations
+
+
+def _qa_authored_paths(qa_contract: QAAuthorContract) -> list[str]:
+    paths: list[str] = []
+    for item in [*qa_contract.paths_touched, *qa_contract.tests_added]:
+        path = str(item).split("#", 1)[0]
+        if path:
+            paths.append(path)
+    return list(dict.fromkeys(paths))
+
+
+def _path_in_roots(path: str, roots: list[str]) -> bool:
+    return any(path_matches(path, root) for root in roots)
 
 
 def _dependency_qa_contract(

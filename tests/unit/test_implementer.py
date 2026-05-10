@@ -196,6 +196,33 @@ def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     assert contract["commands_run"][0]["exit_code"] == 0
 
 
+def test_implementer_blocks_preexisting_forbidden_dirty_paths(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    worktree = _git_repo(tmp_path)
+    worktree.joinpath("tests").mkdir()
+    worktree.joinpath("tests/test_red.py").write_text(
+        "def test_red():\n    assert False\n",
+        encoding="utf-8",
+    )
+    worktree.joinpath("tests/leak.py").write_text(
+        "def test_leak():\n    assert True\n",
+        encoding="utf-8",
+    )
+
+    _patch_live_contracts(monkeypatch, worktree)
+    result = ImplementerHandler(provider=ImplementerProvider(worktree)).handle(_task())
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.implementation_path_violation"
+    assert result.result["violations"] == [
+        {
+            "path": "tests/leak.py",
+            "reason": "preexisting_forbidden_dirty_path",
+        }
+    ]
+
+
 def test_implementer_repairs_contract_path_and_verification_failures(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
