@@ -294,6 +294,9 @@ def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> N
             "replan_context": {
                 "mode": "corrective_slice",
                 "blocker_code": "engineering.implementer_contract_invalid",
+                "blocked_task_contract": {
+                    "task_type": "engineering.implement",
+                },
                 "blocked_slice_allowed_paths": [
                     "store/src/main/java/com/joshorig/ull/lvc/store/mmap/"
                 ],
@@ -313,6 +316,87 @@ def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> N
         "core/src/main/java/com/joshorig/ull/lvc/metrics/"
     ]
     assert reviewer.allowed_paths == ["core/src/main/java/", "store/src/main/java/"]
+
+
+def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct QA scrutiny benchmark failure.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["range smoke benchmark passes"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-mmap-range",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair mmap range scan allocation behavior.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["benchmarks/", "conformance-tests/src/test/java/"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review mmap repair.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["impl-mmap-range"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Run focused feature gates.",
+                allowed_paths=["benchmarks/", "conformance-tests/src/test/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["impl-mmap-range", "review", "qa-scrutiny"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.qa_verify_failed",
+                "blocked_task_contract": {
+                    "task_type": "engineering.qa.verify.scrutiny",
+                },
+                "blocked_slice_allowed_paths": [
+                    "benchmarks/",
+                    "conformance-tests/src/test/java/",
+                ],
+                "blocked_slice_forbidden_paths": [
+                    "core/src/main/java/",
+                    "store/src/main/java/",
+                ],
+                "blocker_reason": (
+                    "mmap rangeScanSmoke allocation 0.008 B/op exceeds 0.005 B/op"
+                ),
+            }
+        },
+    )
+
+    implementer = scoped.task_slices[0]
+    assert implementer.task_type == "engineering.implement"
+    assert implementer.allowed_paths == ["store/src/main/java/"]
+    assert implementer.forbidden_paths == [
+        "benchmarks/",
+        "conformance-tests/src/test/java/",
+    ]
 
 
 def test_apply_corrective_slice_scope_keeps_one_best_implementer_slice() -> None:

@@ -604,6 +604,11 @@ def _corrective_path_scope(
 ) -> dict[str, list[str]]:
     if task_slice.task_type != "engineering.implement":
         return {}
+    blocked_contract = context.get("blocked_task_contract")
+    if not isinstance(blocked_contract, dict):
+        return {}
+    if blocked_contract.get("task_type") != "engineering.implement":
+        return {}
     allowed = _context_string_list(context, "blocked_slice_allowed_paths")
     forbidden = _context_string_list(context, "blocked_slice_forbidden_paths")
     update: dict[str, list[str]] = {}
