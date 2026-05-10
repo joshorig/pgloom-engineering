@@ -294,10 +294,12 @@ def _fallback_cost_usd(
         )
     if route_metadata.get("provider") != "codex":
         return 0.0
+    reasoning_tokens = _int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0
+    billable_output_tokens = max(output_tokens, reasoning_tokens)
     return _codex_cost_usd(
         input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        reasoning_tokens=_int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0,
+        output_tokens=billable_output_tokens,
+        reasoning_tokens=0,
         cached_input_tokens=_int_or_none(usage_metadata.get("cached_input_tokens")) or 0,
     )
 
