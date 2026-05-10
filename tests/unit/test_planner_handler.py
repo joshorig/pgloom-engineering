@@ -190,6 +190,90 @@ def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:
     ]
 
 
+def test_apply_corrective_slice_scope_keeps_one_best_implementer_slice() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct reviewer findings.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-single",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair SINGLE direct range scans.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["tests/"],
+                expected_outputs=["SINGLE range repair"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-double-mmap",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair DOUBLE mmap seqlock snapshot copy and validation.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["tests/"],
+                depends_on=["impl-single"],
+                expected_outputs=["DOUBLE mmap seqlock repair"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review fix.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["tests/"],
+                depends_on=["impl-double-mmap"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Verify fix.",
+                allowed_paths=["tests/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        acceptance_test_matrix=["reviewer finding fixed"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["impl-single", "impl-double-mmap", "review", "qa-scrutiny"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.review_rejected",
+                "blocker_reason": "DOUBLE mmap range scan has seqlock snapshot bug.",
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "impl-double-mmap",
+        "review",
+        "qa-scrutiny",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["impl-double-mmap"]
+    assert scoped.task_slices[2].depends_on == ["review"]
+    assert scoped.milestones[0].slice_ids == [
+        "impl-double-mmap",
+        "review",
+        "qa-scrutiny",
+    ]
+
+
 def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_failure() -> None:
     plan = PlanContract(
         feature_id="wf_range",

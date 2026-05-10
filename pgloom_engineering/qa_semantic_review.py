@@ -49,6 +49,7 @@ def review_semantic_quality(
     findings.extend(_structured_payload_assertion_findings(files, conventions))
     findings.extend(_jmh_cold_restore_findings(files, context, conventions))
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
+    findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
 
@@ -398,6 +399,66 @@ def _jmh_reflective_invocation_findings(
             )
         )
     return findings
+
+
+def _range_prefix_behavior_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_prefix_behavior"))
+    if range_config.get("required") is False:
+        return []
+    if "range" not in context or "prefix" not in context:
+        return []
+    candidate_files = {
+        path: text
+        for path, text in files.items()
+        if path.endswith(".java") and "test" in path.lower()
+    }
+    if not candidate_files:
+        return []
+    combined = "\n".join(candidate_files.values()).lower()
+    has_range_call = "ascendingrange" in combined or "descendingrange" in combined
+    has_matching_prefix = any(
+        marker in combined
+        for marker in [
+            "prefix_match",
+            "prefixmatch",
+            "matching prefix",
+            "match prefix",
+            "matching-prefix",
+        ]
+    )
+    has_nonmatching_prefix = any(
+        marker in combined
+        for marker in [
+            "prefix_non_match",
+            "prefixnonmatch",
+            "non-matching prefix",
+            "nonmatching prefix",
+            "non match prefix",
+        ]
+    )
+    if has_range_call and has_matching_prefix and has_nonmatching_prefix:
+        return []
+    first_path = next(iter(candidate_files))
+    return [
+        SemanticFinding(
+            code="qa_semantic_range_prefix_behavior_missing",
+            severity="blocking",
+            message=(
+                "Range-scan QA must include public-API behavior assertions for both "
+                "matching-prefix and non-matching-prefix scans; overload existence or "
+                "build wiring alone does not cover prefix acceptance."
+            ),
+            file=first_path,
+            line=_first_line_containing_any(
+                candidate_files[first_path],
+                ["ascendingRange", "descendingRange", "prefix"],
+            ),
+        )
+    ]
 
 
 def _mapping(value: Any) -> dict[str, Any]:

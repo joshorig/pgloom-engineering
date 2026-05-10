@@ -23,6 +23,7 @@ from pgloom_engineering.contracts import (
     PlanContract,
     RecoveryDecisionContract,
     TaskContract,
+    TaskSliceContract,
 )
 from pgloom_engineering.features import attach_task
 from pgloom_engineering.model_provider import EngineeringCLIModelProvider
@@ -455,13 +456,19 @@ def _apply_corrective_slice_scope(
     if not kept:
         return contract
 
+    kept = _narrow_corrective_slice_chain(kept, context)
     kept_ids = {task_slice.slice_id for task_slice in kept}
+    dependency_by_type = {
+        task_slice.task_type: task_slice.slice_id for task_slice in kept
+    }
     scoped_slices = [
         task_slice.model_copy(
             update={
-                "depends_on": [
-                    dependency for dependency in task_slice.depends_on if dependency in kept_ids
-                ]
+                "depends_on": _corrective_dependencies(
+                    task_slice,
+                    dependency_by_type=dependency_by_type,
+                    kept_ids=kept_ids,
+                )
             }
         )
         for task_slice in kept
@@ -482,6 +489,138 @@ def _apply_corrective_slice_scope(
             "milestones": scoped_milestones,
         }
     )
+
+
+def _narrow_corrective_slice_chain(
+    task_slices: list[TaskSliceContract],
+    context: dict[str, Any],
+) -> list[TaskSliceContract]:
+    primary_types = ["engineering.implement"]
+    blocker_code = str(context.get("blocker_code") or "")
+    if blocker_code in {
+        "engineering.qa_semantic_quality_failed",
+        "engineering.qa_handoff_missing",
+    } or any(task_slice.task_type == "engineering.qa.author" for task_slice in task_slices):
+        primary_types.insert(0, "engineering.qa.author")
+    selected_ids: set[str] = set()
+    narrowed: list[TaskSliceContract] = []
+    for task_type in primary_types:
+        candidates = [
+            task_slice for task_slice in task_slices if task_slice.task_type == task_type
+        ]
+        if not candidates:
+            continue
+        selected = _best_corrective_slice(candidates, context)
+        narrowed.append(selected)
+        selected_ids.add(selected.slice_id)
+    for task_slice in task_slices:
+        if task_slice.slice_id in selected_ids:
+            continue
+        if task_slice.task_type in {
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }:
+            narrowed.append(task_slice)
+            selected_ids.add(task_slice.slice_id)
+    return narrowed
+
+
+def _best_corrective_slice(
+    candidates: list[TaskSliceContract],
+    context: dict[str, Any],
+) -> TaskSliceContract:
+    context_terms = _corrective_context_terms(context)
+    if not context_terms:
+        return candidates[0]
+    return max(
+        candidates,
+        key=lambda task_slice: (
+            len(context_terms & _corrective_slice_terms(task_slice)),
+            -candidates.index(task_slice),
+        ),
+    )
+
+
+def _corrective_context_terms(context: dict[str, Any]) -> set[str]:
+    text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_code", "blocker_reason", "failure_context", "summary")
+    )
+    return _corrective_terms(text)
+
+
+def _corrective_slice_terms(task_slice: TaskSliceContract) -> set[str]:
+    text = " ".join(
+        [
+            task_slice.slice_id,
+            task_slice.objective,
+            " ".join(task_slice.allowed_paths),
+            " ".join(task_slice.expected_outputs),
+            " ".join(task_slice.acceptance_assertion_ids),
+        ]
+    )
+    return _corrective_terms(text)
+
+
+def _corrective_terms(text: str) -> set[str]:
+    normalized = "".join(char.lower() if char.isalnum() else " " for char in text)
+    stop_words = {
+        "and",
+        "the",
+        "for",
+        "with",
+        "that",
+        "this",
+        "into",
+        "from",
+        "must",
+        "these",
+        "after",
+        "before",
+        "slice",
+        "slices",
+        "repair",
+        "corrective",
+        "engineering",
+    }
+    return {
+        token
+        for token in normalized.split()
+        if len(token) >= 4 and token not in stop_words
+    }
+
+
+def _corrective_dependencies(
+    task_slice: TaskSliceContract,
+    *,
+    dependency_by_type: dict[str, str],
+    kept_ids: set[str],
+) -> list[str]:
+    task_type = task_slice.task_type
+    if task_type == "engineering.qa.author":
+        return []
+    if task_type == "engineering.implement":
+        qa_author_id = dependency_by_type.get("engineering.qa.author")
+        return [qa_author_id] if qa_author_id else []
+    if task_type == "engineering.review":
+        upstream = dependency_by_type.get(
+            "engineering.implement"
+        ) or dependency_by_type.get("engineering.qa.author")
+        return [upstream] if upstream else []
+    if task_type == "engineering.qa.verify.scrutiny":
+        upstream = dependency_by_type.get("engineering.review") or dependency_by_type.get(
+            "engineering.implement"
+        ) or dependency_by_type.get("engineering.qa.author")
+        return [upstream] if upstream else []
+    if task_type == "engineering.qa.verify.usertest":
+        upstream = dependency_by_type.get(
+            "engineering.qa.verify.scrutiny"
+        ) or dependency_by_type.get("engineering.review") or dependency_by_type.get(
+            "engineering.implement"
+        ) or dependency_by_type.get("engineering.qa.author")
+        return [upstream] if upstream else []
+    return [dependency for dependency in task_slice.depends_on if dependency in kept_ids]
 
 
 def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:

@@ -715,6 +715,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_reflective_invocation",
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
+        "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_build_file_string_assertion",
     }
     codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}

@@ -583,3 +583,56 @@ def test_semantic_review_blocks_reflective_jmh_smoke_harness() -> None:
         "qa_semantic_jmh_reflective_invocation"
     ]
     assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_blocks_missing_range_prefix_behavior() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0, 7, visitor);
+                    assertEquals(List.of(1, 2, 4), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans must support matching and non-matching prefix filters.",
+        task_text="Write conformance tests for range prefix behavior.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_prefix_behavior_missing"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_range_prefix_behavior_coverage() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                private static final int PREFIX_MATCH = 0x10;
+                private static final int PREFIX_NON_MATCH = 0x20;
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0, 7, PREFIX_MATCH, 4, visitor);
+                    assertEquals(List.of(1, 2), visited);
+                    store.ascendingRange(0, 7, PREFIX_NON_MATCH, 4, visitor);
+                    assertEquals(List.of(), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans must support matching and non-matching prefix filters.",
+        task_text="Write conformance tests for range prefix behavior.",
+        project_metadata={},
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_behavior_missing"
+    ]

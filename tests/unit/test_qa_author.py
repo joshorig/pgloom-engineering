@@ -1831,6 +1831,19 @@ def test_qa_quality_repairable_accepts_reflective_jmh_finding() -> None:
     )
 
 
+def test_qa_quality_repairable_accepts_range_prefix_coverage_finding() -> None:
+    assert qa_quality_repairable(
+        {
+            "blocking_findings": [
+                {
+                    "code": "qa_semantic_range_prefix_behavior_missing",
+                    "file": "conformance-tests/src/test/java/RangeScanConformanceTest.java",
+                }
+            ]
+        }
+    )
+
+
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:
     prompt = build_qa_author_prompt(
         _plan(),
