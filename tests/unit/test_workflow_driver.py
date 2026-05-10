@@ -1003,6 +1003,8 @@ def test_replan_payload_carries_implementation_failure_evidence() -> None:
     assert payload is not None
     assert payload["replan_context"]["failure_context"].startswith("Missing smoke")
     assert "production-code behavior or QA-owned" in payload["replan_context"]["summary"]
+    assert "QA-authored test classes/methods" in payload["replan_context"]["summary"]
+    assert "Do not invent replacement test classes" in payload["replan_context"]["summary"]
     assert "RangeScanVisitorBenchmark" in payload["feature_goal_contract"]["requirements"][-1]
 
 

@@ -20,4 +20,8 @@ Deterministic validator and critic checks are authoritative. In particular:
   a concrete slice-specific Gradle `--tests Class.method` or class filter that
   the QA-author slice is instructed to create. Do not keep the same broad
   conformance class command on multiple variant slices.
+- In corrective-slice recovery, do not invent replacement test class/method
+  names unless the revised plan includes a QA-author repair slice that creates
+  them. Implementation-only recovery must reuse QA-authored test names from the
+  prior plan, failure evidence, or handoff.
 - Remove wildcard paths and same-slice allowed/forbidden overlap.

@@ -798,7 +798,13 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             "Previous implementer verification failed. Replan must inspect whether the "
             "failure is production-code behavior or QA-owned test/benchmark harness "
             "invalidity; emit only the narrow corrective slice needed, then rerun review "
-            f"and split validators. Preserve these verification details: {blocker_reason}"
+            "and split validators. If the corrective plan does not include a QA-author "
+            "repair slice, every verification command in review, QA scrutiny, and QA "
+            "user-test must reference only QA-authored test classes/methods that already "
+            "exist in the active worktree or prior QA handoff. Do not invent replacement "
+            "test classes such as generic conformance names during implementation-only "
+            "recovery. Preserve these verification details: "
+            f"{blocker_reason}"
             f"{detail}"
         )
     if blocker_code == "engineering.planner_council_exhausted":

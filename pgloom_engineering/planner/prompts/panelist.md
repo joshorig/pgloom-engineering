@@ -192,3 +192,8 @@ Rules:
 - If PRIOR_ITERATION contains a repair_brief, satisfy every item in
   `required_repairs` before optimizing for extra coverage. Deterministic
   validator and critic checks are authoritative.
+- In corrective-slice recovery, reuse existing QA-authored test class/method
+  names from failure evidence and prior handoffs unless you emit a QA-author
+  repair slice. Do not invent new verification class names for implementer-only
+  recovery; invented tests will make downstream validators fail for the wrong
+  reason.

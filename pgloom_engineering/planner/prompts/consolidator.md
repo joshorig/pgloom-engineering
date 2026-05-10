@@ -100,6 +100,10 @@ Rules:
   or full benchmark sweeps in user-test verification.
 - Remove exploratory commands (`grep`, `cat`, `echo`), list-only commands, and
   dry-run-only commands when they are used as verification proof.
+- In corrective-slice recovery, preserve existing QA-authored test class/method
+  names from failure evidence and prior handoffs unless the plan also includes a
+  QA-author repair slice that creates the replacement test. Do not synthesize
+  generic conformance class names for implementation-only recovery.
 - Dependency IDs must refer only to earlier slices.
 - Use `open_final_feature_pr_for_human_merge` for finalization_policy.
 - The input is summarized to save tokens; do not treat omitted raw JSON as omitted
