@@ -55,6 +55,7 @@ from pgloom_engineering.qa_runtime import (
     command_with_env,
     hydrate_dependencies,
     is_authored_test_compile_failure,
+    is_expected_missing_api_compile_failure,
     is_red_test_failure,
     qa_env,
     relevant_changed_files,
@@ -741,6 +742,10 @@ class QAHandler:
                 verification
                 for verification in verification_results
                 if is_red_test_failure(verification)
+                or is_expected_missing_api_compile_failure(
+                    verification,
+                    task_text=_qa_author_task_text(plan, task_contract),
+                )
             ]
             if red_verifications:
                 break
@@ -748,6 +753,10 @@ class QAHandler:
                 verification
                 for verification in verification_results
                 if is_authored_test_compile_failure(verification)
+                and not is_expected_missing_api_compile_failure(
+                    verification,
+                    task_text=_qa_author_task_text(plan, task_contract),
+                )
             ]
             verification = compile_failures[0] if compile_failures else verification_results[-1]
             repair_outcome = {
@@ -1206,6 +1215,19 @@ def _procedures_attestation(task_contract: TaskContract) -> dict[str, bool | str
     if not task_contract.required_procedures:
         return {}
     return {procedure: True for procedure in task_contract.required_procedures}
+
+
+def _qa_author_task_text(plan: PlanContract, task_contract: TaskContract) -> str:
+    return "\n".join(
+        [
+            plan.problem_statement,
+            *plan.acceptance_test_matrix,
+            task_contract.objective,
+            *task_contract.expected_outputs,
+            *task_contract.required_procedures,
+            " ".join(task_contract.inputs.get("acceptance_assertion_ids") or []),
+        ]
+    )
 
 
 def _worktree_path_from_payload(payload: Any) -> Path | None:

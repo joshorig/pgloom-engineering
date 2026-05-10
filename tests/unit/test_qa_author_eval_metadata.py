@@ -550,9 +550,9 @@ def test_qa_code_repair_prompt_includes_verification_failure_and_file_contents(
         current_contract={"tests_added": ["tests/test_feature.py"]},
     )
 
-    assert "Compile errors, import errors, syntax errors" in prompt
+    assert "missing-symbol compile failure" in prompt
     assert "Run the narrowest available compile/test command" in prompt
-    assert "qa_tests_do_not_compile" in prompt
+    assert "missing expected public API symbols" in prompt
     assert "pytest" in prompt
     assert "invalid syntax" in prompt
     assert "def test_feature" in prompt

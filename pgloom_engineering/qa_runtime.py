@@ -434,6 +434,48 @@ def is_authored_test_compile_failure(result: QAVerificationResult) -> bool:
     return False
 
 
+def is_expected_missing_api_compile_failure(
+    result: QAVerificationResult,
+    *,
+    task_text: str,
+) -> bool:
+    if not is_authored_test_compile_failure(result):
+        return False
+    combined = f"{result.original.stdout}\n{result.original.stderr}".lower()
+    if not any(
+        signal in combined
+        for signal in (
+            "cannot find symbol",
+            "cannot resolve symbol",
+            "symbol not found",
+            "unresolved reference",
+        )
+    ):
+        return False
+    if any(
+        signal in combined
+        for signal in (
+            "syntax error",
+            "syntaxerror",
+            "package does not exist",
+            "error: incompatible",
+        )
+    ):
+        return False
+    lowered_task = task_text.lower()
+    return "api" in lowered_task and any(
+        signal in lowered_task
+        for signal in (
+            "new",
+            "add",
+            "public",
+            "method",
+            "interface",
+            "contract",
+        )
+    )
+
+
 def _is_pytest_command(command_text: str) -> bool:
     return "pytest" in command_text
 

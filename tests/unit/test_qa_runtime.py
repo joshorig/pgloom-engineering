@@ -12,6 +12,7 @@ from pgloom_engineering.qa_runtime import (
     discover_route_inventory,
     hydrate_dependencies,
     is_authored_test_compile_failure,
+    is_expected_missing_api_compile_failure,
     is_generated_tool_artifact,
     is_red_test_failure,
     prompt_safe_qa_metadata,
@@ -563,6 +564,55 @@ def test_gradle_test_compile_failure_is_authored_compile_failure() -> None:
 
     assert is_authored_test_compile_failure(result)
     assert not is_red_test_failure(result)
+
+
+def test_missing_expected_api_compile_failure_can_be_red_proof() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./gradlew", ":core:test", "--tests", "RangeScanApiTest"],
+            exit_code=1,
+            stdout=(
+                "> Task :core:compileTestJava FAILED\n"
+                "error: cannot find symbol\n"
+                "  symbol:   class StoreVisitor\n"
+            ),
+            stderr="BUILD FAILED",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="cannot find symbol StoreVisitor",
+        stderr_excerpt="BUILD FAILED",
+        infra_error=None,
+    )
+
+    assert is_authored_test_compile_failure(result)
+    assert is_expected_missing_api_compile_failure(
+        result,
+        task_text="Add public API contract for StoreVisitor range scan methods.",
+    )
+
+
+def test_syntax_compile_failure_is_not_expected_api_red_proof() -> None:
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./gradlew", ":core:test"],
+            exit_code=1,
+            stdout="> Task :core:compileTestJava FAILED\nsyntax error\ncannot find symbol",
+            stderr="BUILD FAILED",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="syntax error",
+        stderr_excerpt="BUILD FAILED",
+        infra_error=None,
+    )
+
+    assert not is_expected_missing_api_compile_failure(
+        result,
+        task_text="Add public API contract for StoreVisitor.",
+    )
 
 
 def test_assertion_failure_is_not_authored_compile_failure() -> None:

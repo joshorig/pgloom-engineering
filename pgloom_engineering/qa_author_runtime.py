@@ -244,14 +244,16 @@ def build_qa_author_prompt(
             ),
             (
                 "Before final submission, run the narrowest compile/test command for every "
-                "authored test file when the tool environment permits it. Returned tests must "
-                "compile cleanly; red proof must be a product behavior failure, not syntax, "
-                "import, fixture, or compile errors."
+                "authored test file when the tool environment permits it. Returned tests should "
+                "compile cleanly unless this task defines a new public API; in that case a "
+                "missing-symbol compile failure for the expected API type or method is valid "
+                "red proof. Syntax, import, fixture, dependency, and incompatible-signature "
+                "compile errors are never valid red proof."
             ),
             (
                 "Self-validate authored tests before handing them to review. If validation "
-                "shows compile/import/syntax errors, repair the tests before returning the "
-                "QAAuthorContract."
+                "shows compile/import/syntax errors unrelated to a missing expected public API, "
+                "repair the tests before returning the QAAuthorContract."
             ),
             (
                 "If deterministic_test_skeleton has benchmark cases, parameterize generated "
@@ -680,14 +682,15 @@ def build_qa_code_repair_prompt(
                 ),
                 (
                     "The selected verification command must fail because the authored acceptance "
-                    "test exposes missing product behavior. Compile errors, import errors, syntax "
-                    "errors, missing dependencies, and sandbox/tool failures do not count as "
-                    "red proof."
+                    "test exposes missing product behavior. For new public API features, a "
+                    "missing-symbol compile failure for the expected API type or method counts "
+                    "as red proof; syntax errors, import errors, missing dependencies, "
+                    "incompatible signatures, and sandbox/tool failures do not."
                 ),
                 (
                     "Run the narrowest available compile/test command for the changed test files "
-                    "before returning. Fix authored test compile/import/syntax errors first; the "
-                    "orchestrator will reject them as qa_tests_do_not_compile."
+                    "before returning. Fix authored test compile/import/syntax errors first, "
+                    "except for missing expected public API symbols on new-API tasks."
                 ),
                 (
                     "Keep acceptance coverage intact. If you remove a test, replace its matrix "

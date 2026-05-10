@@ -49,6 +49,10 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
     assert payload["task_contract"]["task_type"] == "engineering.qa.author"
     assert payload["qa_context_capsule"]["contract"] == "qa_context_capsule.v1"
     assert "deterministic_test_skeleton" in payload
+    assert any(
+        "missing-symbol compile failure" in instruction
+        for instruction in payload["instructions"]
+    )
 
 
 def test_qa_author_prompt_includes_shared_role_context() -> None:
