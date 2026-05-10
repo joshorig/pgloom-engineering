@@ -418,9 +418,9 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             )
         return (
             "Previous QA author output failed semantic quality review. Replan with smaller QA "
-            "author slices when endpoint coverage is broad, require project-approved HTTP "
-            "harnesses such as MockMvc/WebTestClient/TestRestTemplate for route/query/status "
-            f"acceptance, and preserve these failure details: {blocker_reason}"
+            "author slices when coverage is broad, require project-approved public API or "
+            "user-facing harnesses that directly address the semantic finding, and preserve "
+            f"these failure details: {blocker_reason}{detail}"
         )
     if blocker_code == "engineering.qa_tests_do_not_compile":
         return (
@@ -642,6 +642,24 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
                 )
         if rendered_violations:
             excerpts.append(f"path_violations={', '.join(rendered_violations)}")
+    findings = result.get("findings")
+    if isinstance(findings, list):
+        rendered_findings: list[str] = []
+        for finding in findings[:20]:
+            if not isinstance(finding, dict):
+                continue
+            code = str(finding.get("code") or "").strip()
+            path = str(finding.get("file") or finding.get("path") or "").strip()
+            line = finding.get("line")
+            message = str(finding.get("message") or "").strip()
+            location = path
+            if path and line is not None:
+                location = f"{path}:{line}"
+            parts = [part for part in (code, location, message) if part]
+            if parts:
+                rendered_findings.append(" - ".join(parts))
+        if rendered_findings:
+            excerpts.append(f"findings={'; '.join(rendered_findings)}")
     return " | ".join(excerpts)[:3000]
 
 

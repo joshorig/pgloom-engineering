@@ -807,7 +807,12 @@ def test_blocked_replan_enqueues_planner_with_failure_knowledge(monkeypatch: Any
     assert payload["replan_context"]["mode"] == "corrective_slice"
     assert payload["replan_context"]["max_new_slices"] == 3
     assert payload["replan_context"]["blocker_code"] == "engineering.qa_semantic_quality_failed"
-    assert "MockMvc/WebTestClient/TestRestTemplate" in payload["replan_context"]["summary"]
+    assert "project-approved public API or user-facing harnesses" in payload[
+        "replan_context"
+    ]["summary"]
+    assert "MockMvc/WebTestClient/TestRestTemplate" not in payload[
+        "replan_context"
+    ]["summary"]
     assert any(
         "direct Spring controller call" in item
         for item in payload["feature_goal_contract"]["requirements"]
@@ -815,6 +820,71 @@ def test_blocked_replan_enqueues_planner_with_failure_knowledge(monkeypatch: Any
     assert attached == [("feature-1", "planner-replan-1", "planner")]
     assert transitioned == [("qa-1", "abandoned"), ("impl-1", "abandoned")]
     assert recovered[0]["action"] == "corrective_slice"
+
+
+def test_replan_payload_carries_qa_semantic_findings_without_http_assumption() -> None:
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "qa-1",
+                    "slot": "qa-engineer",
+                    "task_type": "engineering.qa.author",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 4,
+                    "blocker_code": "engineering.qa_semantic_quality_failed",
+                    "blocker_reason": (
+                        "qa.author output failed deterministic semantic quality review"
+                    ),
+                    "result": {
+                        "findings": [
+                            {
+                                "code": "qa_semantic_range_prefix_behavior_missing",
+                                "file": "RangeScanConsumerJourneyTest.java",
+                                "line": 29,
+                                "message": (
+                                    "Range-scan QA must include public-API behavior "
+                                    "assertions for matching and non-matching prefix scans."
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ]
+        ),
+        {
+            "id": "qa-1",
+            "slot": "qa-engineer",
+            "task_type": "engineering.qa.author",
+            "state": "blocked",
+            "attempt": 1,
+            "priority": 4,
+            "blocker_code": "engineering.qa_semantic_quality_failed",
+            "blocker_reason": "qa.author output failed deterministic semantic quality review",
+            "result": {
+                "findings": [
+                    {
+                        "code": "qa_semantic_range_prefix_behavior_missing",
+                        "file": "RangeScanConsumerJourneyTest.java",
+                        "line": 29,
+                        "message": (
+                            "Range-scan QA must include public-API behavior assertions "
+                            "for matching and non-matching prefix scans."
+                        ),
+                    }
+                ]
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert "qa_semantic_range_prefix_behavior_missing" in context["failure_context"]
+    assert "RangeScanConsumerJourneyTest.java:29" in context["failure_context"]
+    assert "MockMvc" not in context["summary"]
+    assert "public API or user-facing harnesses" in context["summary"]
 
 
 def test_replan_payload_carries_active_plan_contract_id() -> None:
