@@ -309,6 +309,8 @@ def _looks_like_broad_variant_conformance(command: list[str]) -> bool:
         return False
     if "rangescanconformancetest" not in lowered:
         return False
+    if "rangescanconformancetest." in lowered:
+        return False
     return not any(
         marker in lowered
         for marker in [

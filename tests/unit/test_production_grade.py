@@ -229,6 +229,64 @@ def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() ->
     )
 
 
+def test_production_grade_accepts_variant_slice_with_method_conformance_gate() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.role not in {"implementer", "reviewer"}
+    ]
+    plan.task_slices.extend(
+        [
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-single",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement SINGLE range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["SINGLE implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest.singleStoreRangeSemantics",
+                        ]
+                    ],
+                }
+            ),
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-double",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement DOUBLE range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["DOUBLE implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest.doubleStoreRangeSemantics",
+                        ]
+                    ],
+                }
+            ),
+        ]
+    )
+
+    report = evaluate_production_grade(plan)
+
+    assert not any(
+        finding.code == "variant_slice_uses_broad_conformance_gate"
+        for finding in report.blocking_findings
+    )
+
+
 def test_production_grade_rejects_variant_slice_when_outputs_mention_sibling() -> None:
     plan = _plan_contract()
     plan.task_slices = [
