@@ -80,9 +80,16 @@ pgloom_engineering/command_center/
     telemetry.py
     interventions.py      # POST handlers; insert + NOTIFY
   serializers.py          # row -> JSON (usd_micros, ISO timestamps)
-  schema/
-    010_command_center_notify.sql  # triggers + intervention indexes
 ```
+
+> **Note on migrations.** Migrations 010-015 are already shipped:
+> `010_command_center_notify.sql` (NOTIFY triggers + the
+> `engineering_feature_intervention_state` view), `011_command_center_persistence.sql`
+> (`milestone_id`, `task_slice_id`, handoff `title`/`summary`),
+> `012_command_center_backfill.sql`, `013_task_contract_membership_trigger.sql`,
+> `014_codex_cost_backfill.sql`, `015_worker_run_model_usage_sync.sql`.
+> New schema work in this brief starts at `016_*.sql` and below. The brief
+> assumes the 010-015 surfaces exist — do not redefine them.
 
 Frontend layout (sibling tree, also versioned in the repo):
 
@@ -123,16 +130,32 @@ is `vite dev` with proxy to the API.
 
 ## 3. Auth and binding (v1)
 
-- FastAPI app binds `host="127.0.0.1"`. Refuse to start if config requests a
-  non-loopback host in v1.
-- Middleware additionally inspects `request.client.host` and rejects anything
-  that is not `127.0.0.1` or `::1` with HTTP 403. Belt and braces in case
-  someone misconfigures a reverse proxy in v2.
-- WebSocket handshake performs the same loopback check.
-- No login, no cookies, no CSRF in v1. Document in the README that v1 is a
-  developer console, not an internet-facing surface.
-- v2 will add an env-var bearer token + reverse-proxy posture; out of scope
-  here, but `auth.py` should expose a single check function that v2 can
+Loopback is necessary but not sufficient — a malicious page in any browser
+the operator opens is also a loopback peer. The v1 hardening list:
+
+- **Bind**: FastAPI app binds `host="127.0.0.1"`. Refuse to start if config
+  requests a non-loopback host in v1.
+- **Peer check**: Middleware inspects `request.client.host` and rejects
+  anything that is not `127.0.0.1` or `::1` with HTTP 403.
+- **Host header check (DNS-rebind defence)**: Middleware rejects requests
+  whose `Host` header is not `127.0.0.1[:<port>]` or `localhost[:<port>]`.
+  This blocks DNS-rebound attacks where a tricked browser resolves an
+  attacker-controlled domain to 127.0.0.1.
+- **WebSocket handshake**: same loopback + Host checks, plus an `Origin`
+  allowlist: only accept WS upgrades whose `Origin` is `http://localhost:<port>`
+  or `http://127.0.0.1:<port>`. WebSockets bypass CORS at the browser, so
+  this Origin allowlist is the only thing stopping a tab on `evil.example`
+  from streaming your run telemetry.
+- **CORS default-deny**: Do not enable `CORSMiddleware` with permissive
+  origins. The SPA is same-origin (served by FastAPI from `web/dist/`), so
+  no CORS is needed. If a developer wants to run `vite dev` against the
+  API, the dev-mode override should add only `http://localhost:5173` (or
+  whichever Vite port) and only when an explicit `CC_DEV_MODE=1` env var
+  is set.
+- **No login, no cookies, no CSRF in v1.** Document in the README that v1
+  is a developer console, not an internet-facing surface.
+- **v2 hooks**: add an env-var bearer token + reverse-proxy posture; out
+  of scope here, but `auth.py` exposes a single check function v2 can
   replace without touching routes.
 
 ## 4. Realtime via LISTEN / NOTIFY
@@ -169,8 +192,8 @@ Event kinds (initial set):
 
 ### Triggers
 
-Migration `010_command_center_notify.sql` adds `AFTER INSERT OR UPDATE`
-triggers on each table above. Each trigger constructs the minimal payload and
+Migration `010_command_center_notify.sql` (already shipped) adds
+`AFTER INSERT OR UPDATE` triggers on each table above. Each trigger constructs the minimal payload and
 calls `pg_notify('cc_events', payload::text)`. Triggers must:
 
 - compute `fields[]` by diffing OLD/NEW; on INSERT, list the salient columns
@@ -218,45 +241,25 @@ The dataset endpoint `/api/features/{id}/dag` returns:
   "milestones": [{"id": "m1", "label": "Range API foundation", "task_ids": [...]}],
   "tasks": [{"id": "task_...", "role": "implementer", "status": "running",
              "depends_on": ["task_..."], "milestone_id": "m1",
-             "last_run": {"started_at": "...", "cost_usd_cents": 312}}],
+             "last_run": {"started_at": "...", "cost_usd_micros": 312000}}],
   "edges": [{"from": "task_a", "to": "task_b", "kind": "dep"|"milestone_lock"}]
 }
 ```
 
 ## 6. Operator interventions
 
-### Schema
+### Schema (already shipped)
 
-The existing planning brief proposed `engineering_operator_interventions`.
-Lock that schema in migration `010` (or whichever number is next):
+`engineering_operator_interventions` and the
+`engineering_feature_intervention_state` view both ship in migration
+`010_command_center_notify.sql`. The shipped view uses
+`distinct on (feature_id) order by created_at desc, id desc` (O(N) per
+feature, not the O(N²) correlated subquery shown in earlier drafts) — read
+it from disk for the current shape; do not redefine it here.
 
-```sql
-create table engineering_operator_interventions (
-  id            bigserial primary key,
-  feature_id    text not null references engineering_features(id),
-  actor         text not null,                 -- "operator:<email|hostuser>"
-  action_type   text not null,                 -- see enum below
-  payload       jsonb not null default '{}'::jsonb,
-  created_at    timestamptz not null default now()
-);
-
-create index engineering_operator_interventions_feature_idx
-  on engineering_operator_interventions (feature_id, created_at);
-
--- Optional but recommended: derive the "current" feature pause state from a
--- view rather than mutating engineering_features. The truth is the audit log.
-create view engineering_feature_intervention_state as
-select
-  feature_id,
-  bool_or(action_type = 'pause_feature' and not exists (
-    select 1 from engineering_operator_interventions x
-     where x.feature_id = e.feature_id
-       and x.action_type = 'resume_feature'
-       and x.created_at > e.created_at
-  )) as paused
-from engineering_operator_interventions e
-group by feature_id;
-```
+Columns the brief depends on: `id bigserial pk`, `feature_id text fk →
+engineering_features(id)`, `actor text`, `action_type text`, `payload
+jsonb`, `created_at timestamptz`. Indexed by `(feature_id, created_at)`.
 
 ### Supported action types (v1)
 
@@ -318,13 +321,21 @@ workers consume the change uniformly. Dashboard-only state is a smell.
 ```
 POST /api/features/{id}/interventions
   body: { "action_type": "...", "payload": {...} }
-  side effects: insert row; emit NOTIFY 'intervention.added'; for
-                pause/resume also recompute view-derived state and emit
-                'feature.update'.
+  side effects:
+    - insert row into engineering_operator_interventions
+    - the row insert fires the existing 010 trigger which emits
+      'intervention.added' on cc_events
+    - for pause_feature / resume_feature, the API handler ALSO emits a
+      synthetic 'feature.update' on cc_events (the engineering_features
+      table is not mutated, so the trigger-based feature.update would not
+      fire). Payload kind: {"v":1, "kind":"feature.update", "feature_id":"...",
+      "fields":["paused"], "ts":"..."}.
 ```
 
 The frontend never PATCHes feature state directly. All mutations flow
-through interventions.
+through interventions. Pause-state is read by clients via the shipped
+`engineering_feature_intervention_state` view (joined into
+`/api/features/{id}` and `/api/features`).
 
 ## 7. User-test resources
 
@@ -403,7 +414,7 @@ Handoff view rows, Validation view rows, and the feature overview's
    this task_id, oldest first. Each row shows:
    - role / phase / validator_type / model_provider / model / reasoning_level
    - status, attempt, repair_count
-   - wall-clock stacked bar (`queue_seconds`, `lease_seconds`,
+   - wall-clock stacked bar (`queued_seconds`, `leased_seconds`,
      `model_seconds`, `verification_seconds`, `blocked_seconds`)
    - tokens (input / cached_input / cache_creation / output / reasoning)
    - cost (per-run + cumulative)
@@ -475,11 +486,12 @@ and will be used by future roles (e.g. recovery, design). Command Center
 must therefore treat "council" as a first-class entity, not a planner
 sub-tab.
 
-### Schema (proposed; lives in migration `011_councils.sql`)
+### Schema (proposed; lives in migration `016_councils.sql`)
 
 Today, planner council output is stored as a JSONB blob on
 `engineering_plan_contracts.council_reports`. That worked for one role; it
-does not generalise. Add a normalised set of tables:
+does not generalise. Add a normalised set of tables. (Migrations 010-015
+are already shipped — see §2 note. New work starts at 016.)
 
 ```sql
 create table engineering_councils (
@@ -504,7 +516,8 @@ create table engineering_council_panelists (
   id               bigserial primary key,
   council_id       text not null references engineering_councils(id),
   iteration        int  not null,                -- 0-based
-  panelist_slot    text not null,                -- "panelist_a" | "consolidator" | "critic"
+  panelist_kind    text not null,                -- "panelist" | "consolidator" | "critic"
+  panelist_ordinal int  not null default 0,      -- 0..N-1 for "panelist"; 0 for consolidator/critic
   model_provider   text not null,
   model            text not null,
   reasoning_level  text,
@@ -518,7 +531,7 @@ create table engineering_council_panelists (
   reasoning_tokens int,
   started_at       timestamptz not null,
   finished_at      timestamptz,
-  unique (council_id, iteration, panelist_slot)
+  unique (council_id, iteration, panelist_kind, panelist_ordinal)
 );
 
 create index engineering_councils_feature_idx
@@ -526,7 +539,7 @@ create index engineering_councils_feature_idx
 create index engineering_councils_task_idx
   on engineering_councils (task_id, started_at);
 create index engineering_council_panelists_council_idx
-  on engineering_council_panelists (council_id, iteration, panelist_slot);
+  on engineering_council_panelists (council_id, iteration, panelist_kind, panelist_ordinal);
 ```
 
 Add `council_run_id text references engineering_councils(id)` to
@@ -557,7 +570,7 @@ in.
 
 1. **Iteration timeline**: one column per iteration (0..n). Each column
    stacks panelist tiles top-to-bottom in execution order: panelists →
-   consolidator → critic. Tile shows panelist_slot, model, cost, tokens,
+   consolidator → critic. Tile shows panelist_kind/ordinal, model, cost, tokens,
    self-verdict (if any), and an "Open output" link to the artifact.
 
 2. **Diff lane**: between iterations, render a side-by-side or unified
@@ -585,7 +598,7 @@ in.
    downstream pointers — for a planner council, the accepted plan_contract
    row(s); for a reviewer council, the review_verdict_contract; etc.
 
-7. **Telemetry roll-up**: cost by panelist_slot (panelists vs consolidator
+7. **Telemetry roll-up**: cost by panelist_kind (panelists vs consolidator
    vs critic), by model, by iteration. Highlights the common pathology of
    "critic over-tightening" where critic + revise iterations dominate the
    bill — Operator can see it at a glance.
@@ -619,6 +632,28 @@ implementer task. The Council view renders identically — no reviewer-
 specific UI is added. This is the test that the abstraction is right: if
 adding reviewer to Council view requires touching the view, the
 abstraction leaked.
+
+### Legacy councils (read-only adapter)
+
+Pre-016 planner councils only exist as JSONB on
+`engineering_plan_contracts.council_reports`. Project them through the
+same `/api/.../councils/...` API via a read adapter. Two rules:
+
+1. Mark every legacy-projected council in the response payload with
+   `legacy: true`. The Council view renders a "legacy" badge in the header
+   and disables panes that require per-tile data.
+2. Do not promise feature parity. Specifically, legacy councils have no
+   per-panelist `started_at` / `finished_at` / `cost_usd_micros` /
+   `worker_run_id` (those would require joining `model_usage` via the
+   plan-contract's `model_usage_id` and were never recorded per-tile).
+   Render those fields as "unavailable (legacy)" rather than zero.
+3. Synthesise stable-but-fake council ids of the form
+   `council_legacy_<plan_contract_id>_<iter>` so URLs are stable.
+4. Infer `purpose` from the plan-contract status: `active` first plan →
+   `initial_plan`; later versions → `revise_plan`.
+
+New councils (post-016) get full per-tile detail and never carry
+`legacy: true`.
 
 ## 9. Data shapes — single source of truth
 
@@ -678,7 +713,7 @@ For each row that has a cost or token total, also surface:
 - `cumulative_cost_usd` (already in `engineering_worker_runs`)
 - `token_savior_saved_tokens`, `token_savior_reduction_ratio`
 - `rtk_saved_tokens`
-- wall-clock split: `queue_seconds`, `lease_seconds`, `model_seconds`,
+- wall-clock split: `queued_seconds`, `leased_seconds`, `model_seconds`,
   `verification_seconds`, `blocked_seconds` — render as a stacked bar in
   the worker-run row
 - model identity: `model_provider`, `model`, `reasoning_level`
