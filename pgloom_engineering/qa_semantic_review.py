@@ -52,6 +52,7 @@ def review_semantic_quality(
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
     findings.extend(_range_benchmark_behavior_findings(files, context, conventions))
     findings.extend(_range_benchmark_smoke_threshold_findings(files, context, conventions))
+    findings.extend(_existing_smoke_threshold_relaxation_findings(files, context, conventions))
     findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
@@ -700,6 +701,60 @@ def _range_benchmark_smoke_threshold_findings(
                     details={
                         "threshold_bytes_per_op": threshold,
                         "minimum_threshold_bytes_per_op": minimum,
+                    },
+                )
+            )
+    return findings
+
+
+def _existing_smoke_threshold_relaxation_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    threshold_config = _mapping(conventions.get("existing_smoke_thresholds"))
+    if threshold_config.get("allow_relaxation"):
+        return []
+    if "benchmark" not in context and "allocation" not in context and "range" not in context:
+        return []
+    max_existing = float(threshold_config.get("max_existing_alloc_bytes_per_op") or 0.005)
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(("build.gradle", "build.gradle.kts")):
+            continue
+        current_benchmark = ""
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            key_match = re.search(r"['\"]([^'\"]*Benchmark\.[^'\"]+)['\"]\s*:", line)
+            if key_match:
+                current_benchmark = key_match.group(1)
+            threshold_match = re.search(
+                r"allocBytesPerOp\s*:\s*[^,\n]*\?:\s*([0-9]+(?:\.[0-9]+)?)d?",
+                line,
+            )
+            if threshold_match is None or not current_benchmark:
+                continue
+            threshold = float(threshold_match.group(1))
+            if (
+                "cismokebenchmark." not in current_benchmark.lower()
+                or "rangescan" in current_benchmark.lower()
+                or threshold <= max_existing
+            ):
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_existing_smoke_threshold_relaxed",
+                    severity="blocking",
+                    message=(
+                        "Range benchmark QA may add feature-specific smoke coverage, but "
+                        "must not relax existing CiSmokeBenchmark allocation thresholds; "
+                        "that weakens unrelated project gates."
+                    ),
+                    file=path,
+                    line=line_no,
+                    details={
+                        "benchmark": current_benchmark,
+                        "threshold_bytes_per_op": threshold,
+                        "max_existing_threshold_bytes_per_op": max_existing,
                     },
                 )
             )

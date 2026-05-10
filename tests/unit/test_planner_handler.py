@@ -1094,6 +1094,15 @@ def test_feature_scoped_verification_commands_replace_broad_smoke_gate() -> None
                             ],
                             [
                                 "./gradlew",
+                                ":core:checkstyleMain",
+                                ":store:checkstyleMain",
+                                ":core:checkstyleTest",
+                                ":conformance-tests:checkstyleTest",
+                                ":benchmarks:checkstyleJmh",
+                                "--continue",
+                            ],
+                            [
+                                "./gradlew",
                                 ":benchmarks:jmhSmokeCheck",
                                 "-Pjmh.smoke=true",
                             ]
@@ -1106,6 +1115,15 @@ def test_feature_scoped_verification_commands_replace_broad_smoke_gate() -> None
 
     assert commands == [
         ["./gradlew", ":core:compileJava", ":store:compileJava"],
+        [
+            "./gradlew",
+            ":core:checkstyleMain",
+            ":store:checkstyleMain",
+            ":core:checkstyleTest",
+            ":conformance-tests:checkstyleTest",
+            ":benchmarks:checkstyleJmh",
+            "--continue",
+        ],
         [
             "./gradlew",
             ":benchmarks:jmhSmokeCheck",

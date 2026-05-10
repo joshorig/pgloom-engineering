@@ -1111,17 +1111,9 @@ def _qa_verify_findings(
         has_bare_project_gate = any(
             _is_bare_gradle_project_gate(command) for command in commands
         )
-        has_feature_specific = any(
-            "gradlew" in command
-            and (
-                ":test" in command
-                or " test" in command
-                or ":check" in command
-                or ":compile" in command
-                or ":benchmarks:jmhSmokeCheck" in command
-            )
-            for command in commands
-        )
+        has_lint_or_style = any(_is_feature_lint_command(command) for command in commands)
+        has_build_or_compile = any(_is_feature_build_command(command) for command in commands)
+        has_feature_test = any(_is_feature_test_command(command) for command in commands)
         if has_periodic_regression:
             findings.append(
                 _finding(
@@ -1147,7 +1139,12 @@ def _qa_verify_findings(
                     verify.slice_id,
                 )
             )
-        if not has_benchmark_smoke or not has_feature_specific:
+        if (
+            not has_benchmark_smoke
+            or not has_lint_or_style
+            or not has_build_or_compile
+            or not has_feature_test
+        ):
             findings.append(
                 _finding(
                     definition,
@@ -1209,6 +1206,74 @@ def _qa_verify_findings(
                     )
                 )
     return findings
+
+
+def _is_feature_lint_command(command: str) -> bool:
+    lowered = command.lower()
+    return any(
+        marker in lowered
+        for marker in [
+            "checkstyle",
+            "spotbugs",
+            "pmd",
+            "ktlint",
+            " detekt",
+            ":detekt",
+            "eslint",
+            "ruff",
+            "clippy",
+            "golangci-lint",
+        ]
+    )
+
+
+def _is_feature_build_command(command: str) -> bool:
+    lowered = command.lower()
+    return (
+        "gradlew" in lowered
+        and (
+            ":compile" in lowered
+            or " compile" in lowered
+            or "assemble" in lowered
+            or ":classes" in lowered
+        )
+    ) or any(
+        marker in lowered
+        for marker in [
+            "mvn -q -dskiptests compile",
+            "cargo build",
+            "go test -run '^$'",
+            "tsc ",
+            "npm run build",
+        ]
+    )
+
+
+def _is_feature_test_command(command: str) -> bool:
+    lowered = command.lower()
+    return (
+        "gradlew" in lowered
+        and (
+            ":test" in lowered
+            or " test " in lowered
+            or lowered.endswith(" test")
+        )
+        and (
+            "--tests" in lowered
+            or "testsingle" in lowered
+            or ".test" in lowered
+        )
+    ) or any(
+        marker in lowered
+        for marker in [
+            "pytest ",
+            "pytest\t",
+            "vitest",
+            "jest ",
+            "go test ./",
+            "cargo test",
+        ]
+    )
 
 
 def _is_broad_usertest_gate(command: str) -> bool:

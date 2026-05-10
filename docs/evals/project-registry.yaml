@@ -97,6 +97,21 @@ projects:
                 - :core:compileJava
                 - :store:compileJava
               - - ./gradlew
+                - :core:checkstyleMain
+                - :store:checkstyleMain
+                - :core:checkstyleTest
+                - :conformance-tests:checkstyleTest
+                - :benchmarks:checkstyleJmh
+                - --continue
+              - - ./gradlew
+                - :core:test
+                - --tests
+                - com.joshorig.ull.lvc.api.RangeScanApiTest
+              - - ./gradlew
+                - :conformance-tests:test
+                - --tests
+                - com.joshorig.ull.lvc.conformance.RangeScanConformanceTest
+              - - ./gradlew
                 - --no-daemon
                 - --console=plain
                 - :benchmarks:jmhSmokeCheck

@@ -763,6 +763,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_benchmark_smoke_threshold_too_strict",
+        "qa_semantic_existing_smoke_threshold_relaxed",
         "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
@@ -839,6 +840,12 @@ def build_qa_quality_repair_prompt(
                     "For range benchmark behavior gaps, add benchmark methods or parameters "
                     "that exercise ascending, descending, and prefix-filtered StoreVisitor "
                     "range scans through typed public APIs."
+                ),
+                (
+                    "For existing smoke threshold findings, keep unrelated "
+                    "CiSmokeBenchmark allocation thresholds unchanged. Add only "
+                    "feature-specific RangeScanBenchmark thresholds or wiring needed "
+                    "for the new benchmark smoke gate."
                 ),
                 (
                     "For benchmark visitor signature mismatches, update StoreVisitor "

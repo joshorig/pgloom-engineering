@@ -396,6 +396,8 @@ def _qa_verify_slice(
         depends_on=depends_on,
         expected_outputs=["QAResultContract"],
         verification_commands=[
+            ["./gradlew", ":store:checkstyleMain", ":store:checkstyleTest"],
+            ["./gradlew", ":store:compileJava"],
             ["./gradlew", ":store:test", "--tests", "*Range*"],
             ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
         ],
