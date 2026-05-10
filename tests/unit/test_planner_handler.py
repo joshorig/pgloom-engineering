@@ -787,7 +787,7 @@ def test_apply_corrective_slice_scope_routes_path_violation_to_qa_author() -> No
     assert scoped.task_slices[0].depends_on == []
 
 
-def test_apply_corrective_slice_scope_keeps_only_qa_author_for_qa_quality_failure() -> None:
+def test_apply_corrective_slice_scope_repairs_qa_then_continues_implementation() -> None:
     plan = PlanContract(
         feature_id="wf_range",
         project="lvc-standard",
@@ -858,11 +858,15 @@ def test_apply_corrective_slice_scope_keeps_only_qa_author_for_qa_quality_failur
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
         "qa-author-repair",
+        "impl-fix",
         "review",
     ]
     assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
+    assert scoped.task_slices[2].depends_on == ["impl-fix"]
     assert scoped.milestones[0].slice_ids == [
         "qa-author-repair",
+        "impl-fix",
         "review",
     ]
 
