@@ -413,6 +413,26 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             f"repair slice with explicit allowed_paths. Details: {blocker_reason}{detail}"
         )
     if blocker_code == "engineering.review_rejected":
+        if any(
+            signal in f"{blocker_reason}{detail}".lower()
+            for signal in [
+                "benchmarks/src/jmh",
+                "benchmarks/build.gradle",
+                "conformance-tests/src/test",
+                "core/src/test",
+                "store/src/test",
+                "benchmark-smoke",
+                "qa-authored",
+            ]
+        ):
+            return (
+                "Previous reviewer verdict rejected QA-owned benchmark/test harness "
+                "coverage. Replan must emit a narrow QA-author repair slice with "
+                "project-metadata-approved benchmark/test paths, followed by any required "
+                "implementation repair, review, and split validators. Do not emit an "
+                "implementation-only plan that forbids the files named in the reviewer "
+                f"finding. Preserve these reviewer findings: {blocker_reason}{detail}"
+            )
         return (
             "Previous reviewer verdict required coder repair. Replan must emit a narrow "
             "corrective implementation slice followed by review and validation, preserving "

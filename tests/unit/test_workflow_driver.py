@@ -331,6 +331,50 @@ def test_contract_invalid_blockers_replan_immediately(monkeypatch: Any) -> None:
         assert recovered[0]["status"] == "completed"
 
 
+def test_review_rejected_benchmark_finding_requests_qa_author_repair(
+    monkeypatch: Any,
+) -> None:
+    enqueued: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 3,
+                    "blocker_code": "engineering.review_rejected",
+                    "blocker_reason": (
+                        "benchmarks/src/jmh/java/CiSmokeBenchmark.java does not call "
+                        "LvcStore.ascendingRange; benchmark-smoke misses StoreVisitor API"
+                    ),
+                }
+            ]
+        ),
+        None,
+    )
+
+    assert result is not None
+    payload = enqueued[0]["payload"]
+    assert payload["replan_context"]["blocker_code"] == "engineering.review_rejected"
+    summary = payload["replan_context"]["summary"]
+    assert "QA-owned benchmark/test harness" in summary
+    assert "Do not emit an implementation-only plan" in summary
+
+
 def test_qa_handoff_missing_replans_with_qa_dependency(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())

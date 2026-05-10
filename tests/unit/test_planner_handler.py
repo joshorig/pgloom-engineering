@@ -274,6 +274,78 @@ def test_apply_corrective_slice_scope_keeps_one_best_implementer_slice() -> None
     ]
 
 
+def test_apply_corrective_slice_scope_routes_qa_owned_review_rejection_to_qa_author() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct reviewer findings.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "benchmarks/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author-repair",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair benchmark smoke harness.",
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["core/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair production code only if needed.",
+                allowed_paths=["core/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["qa-author-repair"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review repaired harness.",
+                allowed_paths=["core/", "benchmarks/"],
+                forbidden_paths=[],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        acceptance_test_matrix=["benchmark smoke harness is valid"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["qa-author-repair", "impl-fix", "review"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.review_rejected",
+                "blocker_reason": (
+                    "Reviewer rejected benchmark-smoke coverage in "
+                    "benchmarks/src/jmh/java/RangeScanSmokeBenchmark.java."
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "qa-author-repair",
+        "impl-fix",
+        "review",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
+    assert scoped.task_slices[2].depends_on == ["impl-fix"]
+
+
 def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_failure() -> None:
     plan = PlanContract(
         feature_id="wf_range",
@@ -355,6 +427,90 @@ def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_fai
         "qa-author-repair",
         "review",
     ]
+
+
+def test_apply_corrective_slice_scope_routes_review_benchmark_rejection_to_qa_author() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct reviewer benchmark finding.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["benchmark smoke gate is valid"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author-repair",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair QA-owned StoreVisitor benchmark smoke wiring.",
+                allowed_paths=["benchmarks/src/jmh/java/", "benchmarks/build.gradle"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix production range behavior only if still needed.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["qa-author-repair"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review benchmark and implementation repair.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/", "benchmarks/"],
+                forbidden_paths=[],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Verify focused feature gates.",
+                allowed_paths=["benchmarks/", "conformance-tests/src/test/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["qa-author-repair", "impl-fix", "review", "qa-scrutiny"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.review_rejected",
+                "blocker_reason": (
+                    "benchmarks/src/jmh/java/CiSmokeBenchmark.java does not call "
+                    "LvcStore.ascendingRange; benchmark-smoke misses StoreVisitor API"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "qa-author-repair",
+        "impl-fix",
+        "review",
+        "qa-scrutiny",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
+    assert scoped.task_slices[2].depends_on == ["impl-fix"]
+    assert scoped.task_slices[3].depends_on == ["review"]
 
 
 def test_apply_corrective_slice_scope_routes_path_violation_to_qa_author() -> None:

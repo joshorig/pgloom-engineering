@@ -500,7 +500,9 @@ def _narrow_corrective_slice_chain(
     if blocker_code in {
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_handoff_missing",
-    } or any(task_slice.task_type == "engineering.qa.author" for task_slice in task_slices):
+    } or _corrective_context_mentions_qa_owned_paths(context) or any(
+        task_slice.task_type == "engineering.qa.author" for task_slice in task_slices
+    ):
         primary_types.insert(0, "engineering.qa.author")
     selected_ids: set[str] = set()
     narrowed: list[TaskSliceContract] = []
@@ -646,11 +648,31 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
         "engineering.qa.verify.usertest",
     }
     blocker_code = str(context.get("blocker_code") or "")
+    qa_owned = _corrective_context_mentions_qa_owned_paths(context)
+    if blocker_code == "engineering.review_rejected" and qa_owned:
+        return {
+            "engineering.qa.author",
+            "engineering.implement",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
     if blocker_code not in {
         "engineering.implementation_verification_failed",
         "engineering.implementation_path_violation",
     }:
         return allowed
+    if qa_owned:
+        return {
+            "engineering.qa.author",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
+    return allowed
+
+
+def _corrective_context_mentions_qa_owned_paths(context: dict[str, Any]) -> bool:
     context_text = " ".join(
         str(context.get(key) or "")
         for key in ("blocker_reason", "failure_context", "summary")
@@ -660,20 +682,17 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
         "qa author",
         "benchmarks/src/jmh",
         "benchmarks/build.gradle",
+        "conformance-tests/src/test",
+        "core/src/test",
+        "store/src/test",
         "missing smoke benchmark result",
+        "benchmark-smoke",
         "wrongmethodtypeexception",
         "classnotfoundexception",
         "forbidden benchmark",
         "forbidden qa",
     ]
-    if any(signal in context_text for signal in qa_owned_signals):
-        return {
-            "engineering.qa.author",
-            "engineering.review",
-            "engineering.qa.verify.scrutiny",
-            "engineering.qa.verify.usertest",
-        }
-    return allowed
+    return any(signal in context_text for signal in qa_owned_signals)
 
 
 def _build_council(
