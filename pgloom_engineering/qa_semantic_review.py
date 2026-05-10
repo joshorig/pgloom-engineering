@@ -630,6 +630,10 @@ def _range_prefix_behavior_findings(
             "nonmatching prefix",
             "non match prefix",
             "prefix miss",
+            "missingprefix",
+            "assertprefixskipsnonmatches",
+            "skip nonmatch",
+            "skips nonmatch",
         ]
     )
     if has_range_call and has_matching_prefix and has_nonmatching_prefix:
