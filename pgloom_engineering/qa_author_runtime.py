@@ -109,6 +109,13 @@ def semantic_quality_findings(
         for path in changed_paths
         if (worktree / path).is_file()
     }
+    if any(_looks_like_authored_test_or_benchmark(path) for path in changed_paths):
+        store_visitor = worktree / "core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java"
+        if store_visitor.is_file():
+            files.setdefault(
+                "core/src/main/java/com/joshorig/ull/lvc/api/StoreVisitor.java",
+                store_visitor.read_text(encoding="utf-8", errors="replace"),
+            )
     findings = review_semantic_quality(
         files=files,
         plan_text="\n".join(
@@ -755,6 +762,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_range_benchmark_behavior_gap",
+        "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_build_file_string_assertion",
@@ -830,6 +838,13 @@ def build_qa_quality_repair_prompt(
                     "For range benchmark behavior gaps, add benchmark methods or parameters "
                     "that exercise ascending, descending, and prefix-filtered StoreVisitor "
                     "range scans through typed public APIs."
+                ),
+                (
+                    "For benchmark visitor signature mismatches, update StoreVisitor "
+                    "method-reference targets to exactly match the current public "
+                    "StoreVisitor abstract method parameter list. Do not adapt with "
+                    "reflection, Proxy, MethodHandle, boxing wrappers, or allocating "
+                    "bridge callbacks."
                 ),
                 (
                     "For build/script string assertion findings, remove the generated test "
