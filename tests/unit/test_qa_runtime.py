@@ -584,6 +584,8 @@ def test_missing_expected_api_compile_failure_can_be_red_proof() -> None:
         stdout_excerpt="cannot find symbol StoreVisitor",
         stderr_excerpt="BUILD FAILED",
         infra_error=None,
+        artifact_id_unfiltered_stdout="artifact-stdout",
+        artifact_id_unfiltered_stderr="artifact-stderr",
     )
 
     assert is_authored_test_compile_failure(result)
@@ -591,7 +593,10 @@ def test_missing_expected_api_compile_failure_can_be_red_proof() -> None:
         result,
         task_text="Add public API contract for StoreVisitor range scan methods.",
     )
-    assert "StoreVisitor" in canonical_red_proof(result)[0]["failure_excerpt"]
+    proof = canonical_red_proof(result)[0]
+    assert "StoreVisitor" in proof["failure_excerpt"]
+    assert proof["duration_s"] == 0.1
+    assert proof["artifact_ids"] == ["artifact-stdout", "artifact-stderr"]
 
 
 def test_red_proof_keeps_diagnostic_lines_when_filtered_tail_is_generic() -> None:

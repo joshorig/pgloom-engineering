@@ -746,6 +746,11 @@ def _datetime_or_none(value: Any) -> datetime | None:
 def _commands_run_from_result(result: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(result, dict):
         return []
+    qa_author = result.get("qa_author_contract")
+    if isinstance(qa_author, dict):
+        commands = _commands_run_from_red_proof(qa_author.get("red_proof"))
+        if commands:
+            return commands
     for key in ("task_result_contract", "qa_result_contract", "handoff_envelope"):
         payload = result.get(key)
         if isinstance(payload, dict) and isinstance(payload.get("commands_run"), list):
@@ -755,6 +760,30 @@ def _commands_run_from_result(result: dict[str, Any] | None) -> list[dict[str, A
             if commands:
                 return commands
     return []
+
+
+def _commands_run_from_red_proof(red_proof: Any) -> list[dict[str, Any]]:
+    if not isinstance(red_proof, list):
+        return []
+    commands: list[dict[str, Any]] = []
+    for item in red_proof:
+        if not isinstance(item, dict):
+            continue
+        command = item.get("command") or item.get("cmd")
+        if not isinstance(command, list):
+            continue
+        artifact_ids = item.get("artifact_ids")
+        payload: dict[str, Any] = {
+            "cmd": [str(part) for part in command],
+            "exit_code": int(item.get("exit_code") or 0),
+            "duration_s": float(item.get("duration_s") or 0.0),
+        }
+        if isinstance(artifact_ids, list):
+            payload["artifact_ids"] = [
+                str(artifact_id) for artifact_id in artifact_ids if artifact_id is not None
+            ]
+        commands.append(payload)
+    return commands
 
 
 def _commands_run_from_checks(checks: list[Any]) -> list[dict[str, Any]]:
@@ -801,6 +830,12 @@ def _artifact_ids_from_result(result: dict[str, Any] | None) -> list[str]:
         payload = result.get(key)
         if isinstance(payload, dict):
             raw = payload.get("artifact_ids") or payload.get("artifacts")
+            if isinstance(raw, list):
+                ids.extend(str(item) for item in raw)
+    qa_author = result.get("qa_author_contract")
+    if isinstance(qa_author, dict):
+        for command in _commands_run_from_red_proof(qa_author.get("red_proof")):
+            raw = command.get("artifact_ids")
             if isinstance(raw, list):
                 ids.extend(str(item) for item in raw)
     return ids

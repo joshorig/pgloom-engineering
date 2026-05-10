@@ -399,6 +399,14 @@ def run_qa_verification(
 
 
 def canonical_red_proof(result: QAVerificationResult) -> list[dict[str, Any]]:
+    artifact_ids = [
+        artifact_id
+        for artifact_id in [
+            result.artifact_id_unfiltered_stdout,
+            result.artifact_id_unfiltered_stderr,
+        ]
+        if artifact_id
+    ]
     return [
         {
             "source": "orchestrator",
@@ -409,6 +417,8 @@ def canonical_red_proof(result: QAVerificationResult) -> list[dict[str, Any]]:
             "stderr_excerpt": result.stderr_excerpt,
             "timed_out": result.original.timed_out,
             "killed": result.original.killed,
+            "duration_s": result.original.duration_seconds,
+            "artifact_ids": artifact_ids,
         }
     ]
 

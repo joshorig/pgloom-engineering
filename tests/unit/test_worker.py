@@ -44,6 +44,34 @@ def test_commands_run_from_result_falls_back_to_checks() -> None:
     ) == [{"cmd": ["pytest", "-q"], "exit_code": 0, "duration_s": 1.2}]
 
 
+def test_commands_run_from_result_uses_qa_author_red_proof_artifacts() -> None:
+    result = {
+        "qa_author_contract": {
+            "red_proof": [
+                {
+                    "command": ["./gradlew", ":core:test"],
+                    "exit_code": 1,
+                    "duration_s": 2.5,
+                    "artifact_ids": ["artifact-stdout", "artifact-stderr"],
+                }
+            ]
+        }
+    }
+
+    assert _commands_run_from_result(result) == [
+        {
+            "cmd": ["./gradlew", ":core:test"],
+            "exit_code": 1,
+            "duration_s": 2.5,
+            "artifact_ids": ["artifact-stdout", "artifact-stderr"],
+        }
+    ]
+    assert worker._artifact_ids_from_result(result) == [  # noqa: SLF001
+        "artifact-stdout",
+        "artifact-stderr",
+    ]
+
+
 def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch: Any) -> None:
     handoffs: list[dict[str, Any]] = []
     monkeypatch.setattr(

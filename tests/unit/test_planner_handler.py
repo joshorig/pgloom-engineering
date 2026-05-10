@@ -1008,6 +1008,44 @@ def test_feature_scoped_verification_commands_replace_broad_smoke_gate() -> None
     ]
 
 
+def test_feature_scoped_verification_commands_drop_redundant_wildcard_test_filter() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["RangeScanBenchmark smoke"]),
+        affected_surfaces=["store/"],
+        task_slices=[],
+        acceptance_test_matrix=["double store range behavior"],
+    )
+
+    commands = _feature_scoped_verification_commands(
+        [
+            [
+                "./gradlew",
+                ":store:test",
+                "--tests",
+                "com.joshorig.ull.lvc.store.DoubleRangeScanTest",
+            ],
+            ["./gradlew", ":store:test", "--tests", "*Mmap*RangeScan*"],
+            ["./gradlew", ":store:compileJava"],
+        ],
+        plan=plan,
+        task_objective="Implement DOUBLE-store direct and mmap range scans.",
+        project_metadata={},
+    )
+
+    assert commands == [
+        [
+            "./gradlew",
+            ":store:test",
+            "--tests",
+            "com.joshorig.ull.lvc.store.DoubleRangeScanTest",
+        ],
+        ["./gradlew", ":store:compileJava"],
+    ]
+
+
 def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:
     plan = PlanContract(
         feature_id="wf_range",

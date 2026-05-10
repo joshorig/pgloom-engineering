@@ -23,6 +23,7 @@ from pgloom_engineering.contract_store import (
 )
 from pgloom_engineering.contracts import TaskContract
 from pgloom_engineering.features import create_feature
+from pgloom_engineering.worker import _commands_run_from_result
 
 
 def test_usd_to_micros_uses_integer_wire_unit() -> None:
@@ -215,6 +216,63 @@ def test_cancelled_worker_run_syncs_existing_model_usage(database_url: str) -> N
     assert cancelled["model_profile"] == "qa-author"
     assert cancelled["model_usage_ids"] == [row["id"]]
     assert cancelled["cost_usd_micros"] == 545
+
+
+def test_qa_author_red_proof_artifacts_get_source_command_linkage(
+    database_url: str,
+) -> None:
+    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
+    feature = create_feature(
+        workflow_id=workflow["id"],
+        project="demo",
+        database_url=database_url,
+    )
+    task = enqueue_task(
+        workflow_id=workflow["id"],
+        domain="engineering",
+        task_type="engineering.qa.author",
+        slot="qa-author",
+        database_url=database_url,
+    )
+    run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="qa",
+        phase="author",
+        database_url=database_url,
+    )
+    artifact = register_artifact(
+        workflow_id=workflow["id"],
+        task_id=task["id"],
+        artifact_type="subprocess-stdout",
+        content=b"compile failed",
+        metadata={"argv": ["./gradlew", ":core:test"], "stream": "stdout"},
+        database_url=database_url,
+    )
+    result = {
+        "qa_author_contract": {
+            "red_proof": [
+                {
+                    "command": ["./gradlew", ":core:test"],
+                    "exit_code": 1,
+                    "duration_s": 2.5,
+                    "artifact_ids": [artifact["id"]],
+                }
+            ]
+        }
+    }
+
+    finish_worker_run(
+        run["id"],
+        status="done",
+        commands_run=_commands_run_from_result(result),
+        artifact_ids=[artifact["id"]],
+        database_url=database_url,
+    )
+
+    stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
+    assert stored_artifact["source_command"] == "./gradlew :core:test"
+    assert stored_artifact["metadata"]["source_worker_run_id"] == run["id"]
 
 
 def test_command_center_exposes_persisted_milestones_handoffs_slots_and_artifacts(
