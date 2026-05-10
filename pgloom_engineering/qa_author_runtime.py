@@ -762,6 +762,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_range_benchmark_behavior_gap",
+        "qa_semantic_range_benchmark_smoke_threshold_too_strict",
         "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",

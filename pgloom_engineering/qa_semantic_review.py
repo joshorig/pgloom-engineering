@@ -51,6 +51,7 @@ def review_semantic_quality(
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
     findings.extend(_range_benchmark_behavior_findings(files, context, conventions))
+    findings.extend(_range_benchmark_smoke_threshold_findings(files, context, conventions))
     findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
@@ -650,6 +651,51 @@ def _range_prefix_behavior_findings(
             ),
         )
     ]
+
+
+def _range_benchmark_smoke_threshold_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    threshold_config = _mapping(conventions.get("range_benchmark_smoke_threshold"))
+    if threshold_config.get("required") is False:
+        return []
+    if "range" not in context or "benchmark" not in context:
+        return []
+    minimum = float(threshold_config.get("minimum_alloc_bytes_per_op") or 0.05)
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(("build.gradle", "build.gradle.kts")):
+            continue
+        if "rangeScanSmoke" not in text or "jmhSmokeCheck" not in text:
+            continue
+        for match in re.finditer(
+            r"allocBytesPerOp\s*:\s*[^,\n]*\?:\s*([0-9]+(?:\.[0-9]+)?)d?",
+            text,
+        ):
+            threshold = float(match.group(1))
+            if threshold >= minimum:
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_range_benchmark_smoke_threshold_too_strict",
+                    severity="blocking",
+                    message=(
+                        "Range-scan JMH smoke gate uses a near-zero allocation threshold. "
+                        "Smoke benchmarks should prove coverage and catch gross allocation "
+                        "regressions; sub-0.01 B/op thresholds are too noisy for autonomous "
+                        "feature validation."
+                    ),
+                    file=path,
+                    line=text[: match.start()].count("\n") + 1,
+                    details={
+                        "threshold_bytes_per_op": threshold,
+                        "minimum_threshold_bytes_per_op": minimum,
+                    },
+                )
+            )
+    return findings
 
 
 def _mapping(value: Any) -> dict[str, Any]:
