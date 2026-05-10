@@ -585,6 +585,67 @@ def test_semantic_review_blocks_reflective_jmh_smoke_harness() -> None:
     assert findings[0].severity == "blocking"
 
 
+def test_semantic_review_blocks_range_benchmark_that_uses_read_slice_pooled() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private LvcStore store;
+
+                @Benchmark
+                public int rangeSmoke() {
+                    int matches = 0;
+                    for (int slot = 0; slot < 1024; slot++) {
+                        try (LvcStore.ReadOnlySlice slice = store.readSlicePooled(slot)) {
+                            matches += slice.length();
+                        }
+                    }
+                    return matches;
+                }
+            }
+            """
+        },
+        plan_text="Range benchmark smoke must prove StoreVisitor allocation behavior.",
+        task_text="Write JMH benchmark smoke for range scans.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_benchmark_not_public_api"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_range_benchmark_that_calls_public_range_api() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            import org.openjdk.jmh.annotations.Benchmark;
+
+            class RangeScanBenchmark {
+                private LvcStore store;
+                private StoreVisitor visitor;
+
+                @Benchmark
+                public void rangeSmoke() {
+                    store.ascendingRange(0, 1023, visitor);
+                }
+            }
+            """
+        },
+        plan_text="Range benchmark smoke must prove StoreVisitor allocation behavior.",
+        task_text="Write JMH benchmark smoke for range scans.",
+        project_metadata={},
+    )
+
+    assert [
+        finding for finding in findings
+        if finding.code == "qa_semantic_range_benchmark_not_public_api"
+    ] == []
+
+
 def test_semantic_review_blocks_missing_range_prefix_behavior() -> None:
     findings = review_semantic_quality(
         files={

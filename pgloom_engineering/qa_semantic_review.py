@@ -49,6 +49,7 @@ def review_semantic_quality(
     findings.extend(_structured_payload_assertion_findings(files, conventions))
     findings.extend(_jmh_cold_restore_findings(files, context, conventions))
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
+    findings.extend(_range_benchmark_api_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
@@ -396,6 +397,48 @@ def _jmh_reflective_invocation_findings(
                 ),
                 file=path,
                 line=_first_line_containing_any(text, reflective_markers),
+            )
+        )
+    return findings
+
+
+def _range_benchmark_api_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_benchmark"))
+    if range_config.get("require_public_range_api") is False:
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "benchmark" not in normalized_context:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not _looks_like_jmh_benchmark(path, text):
+            continue
+        lowered = text.lower()
+        if "range" not in lowered:
+            continue
+        calls_range_api = "ascendingrange" in lowered or "descendingrange" in lowered
+        if calls_range_api:
+            continue
+        if "readslicepooled" not in lowered and "readonlyslice" not in lowered:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_range_benchmark_not_public_api",
+                severity="blocking",
+                message=(
+                    "Range benchmark smoke must exercise the public StoreVisitor range "
+                    "API; looping over readSlicePooled or ReadOnlySlice measures a lower "
+                    "level path and does not prove the visitor range hot path."
+                ),
+                file=path,
+                line=_first_line_containing_any(
+                    text,
+                    ["readSlicePooled", "ReadOnlySlice"],
+                ),
             )
         )
     return findings
