@@ -158,7 +158,24 @@ GitHub Actions were green on `main` for the pushed workflow/council commits.
 ## Next engineering focus
 
 Do not reopen broad workflow plumbing unless fresh evidence points there.
-The current priority is live-eval convergence and output quality:
+The current priority is live-eval convergence and output quality. R66
+(`wf_5f7e45d95e4649a684a8639db497aaf8`) reached end-to-end completion, so
+accepted artifacts are now evidence for production-grade review gaps, not only
+orchestration progress.
+
+R66 follow-up:
+
+- Keep the per-feature validation shape: feature-scoped lint/style,
+  build/compile, feature tests, direct benchmark smoke, then model-driven
+  user-test. Do not substitute broad regression scripts for feature validation.
+- QA may add feature-specific `RangeScanBenchmark` smoke thresholds, including
+  a realistic allocation noise margin for the new benchmark.
+- QA must not relax unrelated existing `CiSmokeBenchmark` allocation thresholds
+  to make a new feature pass. That weakens established project gates and should
+  fail semantic QA review before implementer or reviewer consume the handoff.
+- Treat accepted-run artifacts as review inputs. If an end-to-end run passes
+  but changes unrelated gates, add deterministic semantic review coverage so
+  the next run rejects the same class of drift.
 
 1. Inspect accepted planner and QA-author artifacts from the current
    lvc-standard run, not only contracts.
