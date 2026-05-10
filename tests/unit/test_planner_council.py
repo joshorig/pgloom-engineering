@@ -1183,3 +1183,35 @@ def test_planner_prompts_warn_gradle_test_filters_are_case_sensitive() -> None:
     for prompt in [panelist, consolidator]:
         assert "Gradle `--tests` filters are case-sensitive" in prompt
         assert "*Mmap*RangeScan*" in prompt
+
+
+def test_planner_prompts_repair_variant_scoped_broad_conformance_gates() -> None:
+    prompt_dir = Path("pgloom_engineering/planner/prompts")
+
+    panelist = prompt_dir.joinpath("panelist.md").read_text(encoding="utf-8")
+    consolidator = prompt_dir.joinpath("consolidator.md").read_text(encoding="utf-8")
+    revise = prompt_dir.joinpath("revise.md").read_text(encoding="utf-8")
+
+    for prompt in [panelist, consolidator, revise]:
+        assert "variant" in prompt
+        assert "Class.method" in prompt
+        assert "broad" in prompt
+
+
+def test_planner_repair_brief_explains_variant_broad_gate_repair() -> None:
+    prior_iteration = SimpleNamespace(
+        validator_errors=[
+            {
+                "code": "variant_slice_uses_broad_conformance_gate",
+                "slice_id": "impl-double",
+            }
+        ],
+        critic=None,
+        substance=None,
+    )
+
+    brief = build_repair_brief(prior_iteration)
+
+    assert brief["must_fix_codes"] == ["variant_slice_uses_broad_conformance_gate"]
+    assert "Class.method" in brief["required_repairs"][0]
+    assert "merge the variant slices" in brief["required_repairs"][0]

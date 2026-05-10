@@ -14,4 +14,10 @@ Deterministic validator and critic checks are authoritative. In particular:
   clear multi-surface risk. If a code-heavy hot-path feature was collapsed into
   one broad implementer slice, split it into 2-4 smaller implementer slices by
   API/core and backend/variant surfaces instead of preserving the broad slice.
+- If a prior validator error says `variant_slice_uses_broad_conformance_gate`,
+  fix it directly: either merge the variant-scoped implementer slices into one
+  broader implementer slice, or keep the split only when each variant slice has
+  a concrete slice-specific Gradle `--tests Class.method` or class filter that
+  the QA-author slice is instructed to create. Do not keep the same broad
+  conformance class command on multiple variant slices.
 - Remove wildcard paths and same-slice allowed/forbidden overlap.

@@ -176,6 +176,12 @@ Rules:
   not collapse all implementation into one broad slice. Prefer 2-4 smaller
   implementer slices split by API/core surface and backend/variant surface so
   implementer sessions read less context and reviewers get narrower diffs.
+- If implementer slices are split by variant/backend such as SINGLE vs DOUBLE
+  or direct vs mmap, each variant-scoped slice must use slice-specific
+  verification commands. Prefer concrete Gradle `--tests Class.method` filters
+  matching the QA-author objective. Do not give each variant slice the same
+  broad all-variant conformance class command. If no slice-specific method or
+  class exists, keep the implementation in one broader implementer slice.
 - Wide/system features should not be collapsed into one broad implementer.
   Split by ownership surface, for example DSL/compiler, API/workflow, UI, and
   lifecycle/overflow/invariants when those concerns exist.

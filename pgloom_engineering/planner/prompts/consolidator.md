@@ -51,6 +51,13 @@ Rules:
   backends/variants, prefer 2-4 smaller implementer slices over one broad
   implementer slice; this preserves quality and avoids excessive model context
   replay. Merge redundant QA/review work.
+- If implementer slices are split by variant/backend such as SINGLE vs DOUBLE
+  or direct vs mmap, each variant-scoped slice must use slice-specific
+  verification commands. Prefer concrete Gradle `--tests Class.method` filters
+  matching the QA-author objective. Do not preserve a plan where multiple
+  variant slices each run the same broad all-variant conformance class command;
+  either make the command method/class-specific or merge those implementer
+  slices.
 - Preserve separate implementer slices for wide/system features that span
   independent ownership surfaces such as DSL/compiler, API/workflow, UI, and
   lifecycle/overflow/invariants.

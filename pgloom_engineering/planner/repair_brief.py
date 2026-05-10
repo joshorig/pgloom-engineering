@@ -153,6 +153,13 @@ def _action_for_code(code: str) -> str:
             "For benchmark acceptance, make the QA author slice enumerate all configured "
             "benchmark variants and generate coverage for each variant."
         ),
+        "variant_slice_uses_broad_conformance_gate": (
+            "If implementer slices are split by SINGLE/DOUBLE/direct/mmap variant, replace "
+            "broad conformance-class verification with slice-specific Gradle --tests "
+            "Class.method or class filters that the QA-author slice creates. If no "
+            "slice-specific test exists, merge the variant slices into one implementer "
+            "slice so one worker owns the broad all-variant gate."
+        ),
         "qa_benchmark_output_path_not_allowed": (
             "If the QA author slice is expected to author JMH or benchmark artifacts, include "
             "metadata-declared benchmark_roots such as benchmarks/src/jmh/java/ in allowed_paths "
