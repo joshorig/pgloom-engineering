@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+# mypy: disable-error-code="func-returns-value"
 from types import SimpleNamespace
 from typing import Any
 
 from pgloom_engineering import workflow_driver
+from pgloom_engineering.contracts import (
+    DesignContract,
+    MilestoneContract,
+    PlanContract,
+    TaskSliceContract,
+)
 
 
 def test_run_workflow_drives_planner_then_qa_until_done(monkeypatch: Any) -> None:
@@ -1073,6 +1080,100 @@ def test_blocked_replan_skips_when_planner_is_already_active(monkeypatch: Any) -
     assert result is None
 
 
+def test_operator_replan_from_milestone_enqueues_planner_and_supersedes_suffix(
+    monkeypatch: Any,
+) -> None:
+    enqueued: list[dict[str, Any]] = []
+    attached: list[tuple[str, str, str]] = []
+    superseded: list[str] = []
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(
+        workflow_driver,
+        "attach_task",
+        lambda feature_id, task_id, *, role, database_url=None: attached.append(
+            (feature_id, task_id, role)
+        )
+        or {},
+    )
+    monkeypatch.setattr(
+        workflow_driver,
+        "_supersede_tasks_for_operator_replan",
+        lambda task_ids, *, database_url: superseded.extend(task_ids),
+    )
+    aggregate = _aggregate(
+        [
+            {"id": "design-task", "slot": "designer", "state": "done"},
+            {"id": "qa-task", "slot": "qa-engineer", "state": "queued", "priority": 2},
+            {"id": "impl-task", "slot": "implementer", "state": "queued", "priority": 3},
+        ]
+    )
+    plan = _milestone_plan()
+    aggregate["active_plan_contract"] = {"id": "plan-old", "contract": plan.model_dump(mode="json")}
+    aggregate["task_contracts"] = [
+        {"task_id": "design-task", "task_slice_id": "design", "milestone_id": "m1"},
+        {"task_id": "qa-task", "task_slice_id": "qa-author", "milestone_id": "m2"},
+        {"task_id": "impl-task", "task_slice_id": "impl", "milestone_id": "m2"},
+    ]
+    aggregate["operator_interventions"] = [
+        {
+            "id": 12,
+            "action_type": "replan_from_milestone",
+            "payload": {"milestone_id": "m2", "reason": "validator found a gap"},
+        }
+    ]
+
+    result = workflow_driver._maybe_consume_replan_from_milestone(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        "postgres://unit",
+    )
+
+    assert result is not None
+    assert result["status"] == "replan_from_milestone"
+    assert superseded == ["qa-task", "impl-task"]
+    assert attached == [("feature-1", "planner-replan-1", "planner")]
+    payload = enqueued[0]["payload"]
+    assert payload["baseline_plan"]["feature_id"] == "feature-1"
+    assert payload["replan_from_milestone_id"] == "m2"
+    assert payload["frozen_prefix_task_ids"] == ["design-task"]
+    assert payload["replan_context"]["frozen_prefix_slice_ids"] == ["design"]
+    assert payload["replan_context"]["replanned_slice_ids"] == ["qa-author", "impl"]
+    assert enqueued[0]["priority"] == 4
+
+
+def test_operator_replan_from_milestone_skips_consumed_intervention() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "planner-replan-1",
+                "slot": "planner",
+                "task_type": "engineering.plan",
+                "state": "done",
+                "payload": {"operator_intervention_id": "12"},
+            }
+        ]
+    )
+    aggregate["operator_interventions"] = [
+        {
+            "id": 12,
+            "action_type": "replan_from_milestone",
+            "payload": {"milestone_id": "m2"},
+        }
+    ]
+
+    result = workflow_driver._maybe_consume_replan_from_milestone(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        None,
+    )
+
+    assert result is None
+
+
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         workflow_replan_after_blocked_attempts=3,
@@ -1133,3 +1234,73 @@ def _aggregate(tasks: list[dict[str, Any]]) -> dict[str, Any]:
         "tasks": tasks,
         "agent_topology": {"planning": "multi_agent"},
     }
+
+
+def _milestone_plan() -> PlanContract:
+    return PlanContract(
+        feature_id="feature-1",
+        project="trade-research-platform",
+        problem_statement="Add small feature",
+        design_contract=DesignContract(public_api="Small API"),
+        affected_surfaces=["src/", "tests/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="design",
+                role="designer",
+                task_type="engineering.design",
+                objective="Design the small API.",
+                allowed_paths=["docs/"],
+                forbidden_paths=["src/"],
+                expected_outputs=["DesignContract"],
+                verification_commands=[["./gradlew", "test"]],
+                acceptance_assertion_ids=["behavior is covered"],
+                milestone_id="m1",
+            ),
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Write feature-specific tests.",
+                allowed_paths=["tests/"],
+                forbidden_paths=["src/"],
+                depends_on=["design"],
+                expected_outputs=["QAAuthorContract"],
+                verification_commands=[["./gradlew", "test"]],
+                acceptance_assertion_ids=["behavior is covered"],
+                milestone_id="m2",
+            ),
+            TaskSliceContract(
+                slice_id="impl",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement the small API.",
+                allowed_paths=["src/"],
+                forbidden_paths=["tests/"],
+                depends_on=["qa-author"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[["./gradlew", "test"]],
+                acceptance_assertion_ids=["behavior is covered"],
+                milestone_id="m2",
+            ),
+        ],
+        acceptance_test_matrix=["behavior is covered"],
+        acceptance_assertions=["behavior is covered"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Design",
+                slice_ids=["design"],
+                acceptance_assertions=["behavior is covered"],
+                validation_contract={"scrutiny": True},
+                signoff_policy="scrutiny_only",
+            ),
+            MilestoneContract(
+                milestone_id="m2",
+                name="Build",
+                slice_ids=["qa-author", "impl"],
+                acceptance_assertions=["behavior is covered"],
+                validation_contract={"scrutiny": True},
+                signoff_policy="scrutiny_only",
+            ),
+        ],
+    )

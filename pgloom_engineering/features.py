@@ -83,6 +83,8 @@ def update_feature_state(
     *,
     state: str,
     pr_url: str | None = None,
+    abort_reason: str | None = None,
+    abort_detail: str | None = None,
     metadata_patch: dict[str, Any] | None = None,
     database_url: str | None = None,
 ) -> dict[str, Any] | None:
@@ -101,12 +103,36 @@ def update_feature_state(
             update engineering_features
             set state = %s,
                 pr_url = coalesce(%s, pr_url),
+                abort_reason = case
+                  when %s::text is null then abort_reason
+                  else %s::text
+                end,
+                abort_detail = case
+                  when %s::text is null then abort_detail
+                  else %s::text
+                end,
+                aborted_at = case
+                  when %s::text is not null or (%s = 'aborted' and aborted_at is null)
+                  then now()
+                  else aborted_at
+                end,
                 metadata = %s,
                 updated_at = now()
             where id = %s
             returning *
             """,
-            (state, pr_url, jsonb(metadata), feature_id),
+            (
+                state,
+                pr_url,
+                abort_reason,
+                abort_reason,
+                abort_detail,
+                abort_detail,
+                abort_reason,
+                state,
+                jsonb(metadata),
+                feature_id,
+            ),
         ).fetchone()
     return dict(row) if row is not None else None
 

@@ -76,6 +76,10 @@ Rules:
   when the feature evidence clearly requires it.
 - PROJECT_CONTEXT is lens-specific. Your `context_lens` tells you which evidence
   to emphasize, but you must still produce a complete PlanContract.
+- If INHERIT_BASELINE_MODE.enabled is true, this is an operator
+  replan-from-milestone request. Copy every baseline frozen-prefix task slice
+  exactly, preserving byte-for-byte JSON values for those slice objects. Replace
+  only the requested milestone and downstream work.
 - PROJECT_CONTEXT.qa_policy_summary is authoritative QA handoff policy. Preserve
   endpoint harness, structured assertion, benchmark variant, required gate, and
   avoid-pattern guidance in QA author objectives/outputs when the feature touches

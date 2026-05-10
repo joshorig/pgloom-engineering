@@ -208,6 +208,12 @@ RUBRIC_CHECKS: list[CheckDefinition] = [
         "blocking",
         "Small or single-surface roadmap items should use a compact handoff with limited slices.",
     ),
+    CheckDefinition(
+        "check_frozen_prefix_unchanged",
+        "Frozen prefix unchanged",
+        "blocking",
+        "Operator replan-from-milestone must preserve frozen-prefix slices exactly.",
+    ),
 ]
 
 
@@ -246,10 +252,20 @@ class CriticRunner:
         plan: PlanContract,
         project_context: Any,
         validator_errors: list[dict[str, Any]],
+        baseline_plan: PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
         workflow_id: str | None = None,
         task_id: str | None = None,
     ) -> CriticVerdict:
-        prompt = build_critic_prompt(plan, project_context, validator_errors)
+        prompt = build_critic_prompt(
+            plan,
+            project_context,
+            validator_errors,
+            baseline_plan=baseline_plan,
+            replan_from_milestone_id=replan_from_milestone_id,
+            frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+        )
         response = self._provider.invoke(
             profile=self._profile,
             prompt=prompt,
@@ -268,6 +284,8 @@ class CriticRunner:
             plan,
             validator_errors,
             qa_write_paths=qa_write_paths,
+            baseline_plan=baseline_plan,
+            frozen_prefix_slice_ids=frozen_prefix_slice_ids,
         )
         results = normalize_check_results(payload.get("per_check_results"))
         results = reconcile_model_results_with_deterministic_checks(
@@ -490,6 +508,8 @@ def deterministic_check_results(
     validator_errors: list[dict[str, Any]],
     *,
     qa_write_paths: list[str] | None = None,
+    baseline_plan: PlanContract | None = None,
+    frozen_prefix_slice_ids: list[str] | None = None,
 ) -> list[CriticCheckResult]:
     checks: list[CriticCheckResult] = []
     for definition in RUBRIC_CHECKS:
@@ -498,6 +518,8 @@ def deterministic_check_results(
             plan,
             validator_errors,
             qa_write_paths=qa_write_paths,
+            baseline_plan=baseline_plan,
+            frozen_prefix_slice_ids=frozen_prefix_slice_ids,
         )
         checks.append(
             CriticCheckResult(
@@ -518,11 +540,15 @@ def deterministic_accept_verdict(
     rationale: str,
     preempted: bool = False,
     qa_write_paths: list[str] | None = None,
+    baseline_plan: PlanContract | None = None,
+    frozen_prefix_slice_ids: list[str] | None = None,
 ) -> CriticVerdict:
     deterministic_results = deterministic_check_results(
         plan,
         validator_errors,
         qa_write_paths=qa_write_paths,
+        baseline_plan=baseline_plan,
+        frozen_prefix_slice_ids=frozen_prefix_slice_ids,
     )
     verdict = compute_verdict(deterministic_results, validator_errors)
     quality_report = build_plan_quality_report(
@@ -567,6 +593,10 @@ def build_critic_prompt(
     plan: PlanContract,
     project_context: Any,
     validator_errors: list[dict[str, Any]],
+    *,
+    baseline_plan: PlanContract | None = None,
+    replan_from_milestone_id: str | None = None,
+    frozen_prefix_slice_ids: list[str] | None = None,
 ) -> str:
     rubric = "\n".join(
         f"### {check.check_id}\nName: {check.name}\nSeverity: {check.severity_if_failed}\n"
@@ -583,6 +613,16 @@ def build_critic_prompt(
         + json.dumps(_dump_context(project_context), indent=2, sort_keys=True, default=str)
         + "\n\nVALIDATOR_ERRORS:\n"
         + json.dumps(validator_errors, indent=2, sort_keys=True)
+        + "\n\nINHERIT_BASELINE_MODE:\n"
+        + json.dumps(
+            _baseline_payload(
+                baseline_plan,
+                replan_from_milestone_id,
+                frozen_prefix_slice_ids,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
     )
 
 
@@ -592,8 +632,17 @@ def _run_deterministic_check(
     validator_errors: list[dict[str, Any]],
     *,
     qa_write_paths: list[str] | None = None,
+    baseline_plan: PlanContract | None = None,
+    frozen_prefix_slice_ids: list[str] | None = None,
 ) -> list[CriticFinding]:
     check_id = definition.check_id
+    if check_id == "check_frozen_prefix_unchanged":
+        return _frozen_prefix_findings(
+            definition,
+            plan,
+            baseline_plan=baseline_plan,
+            frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+        )
     if check_id == "check_design_contract_completeness":
         text = _plan_text(plan)
         if _is_lifecycle_text(text) and (
@@ -682,11 +731,80 @@ def _run_deterministic_check(
     return []
 
 
+def _frozen_prefix_findings(
+    definition: CheckDefinition,
+    plan: PlanContract,
+    *,
+    baseline_plan: PlanContract | None,
+    frozen_prefix_slice_ids: list[str] | None,
+) -> list[CriticFinding]:
+    if baseline_plan is None or not frozen_prefix_slice_ids:
+        return []
+    findings: list[CriticFinding] = []
+    current_by_id = {item.slice_id: item for item in plan.task_slices}
+    baseline_by_id = {item.slice_id: item for item in baseline_plan.task_slices}
+    for slice_id in frozen_prefix_slice_ids:
+        baseline_slice = baseline_by_id.get(slice_id)
+        current_slice = current_by_id.get(slice_id)
+        if baseline_slice is None:
+            continue
+        if current_slice is None:
+            findings.append(
+                _finding(
+                    definition,
+                    "frozen_prefix_slice_missing",
+                    f"Frozen-prefix slice {slice_id} is missing from replanned contract.",
+                    slice_id,
+                )
+            )
+            continue
+        baseline_text = json.dumps(
+            baseline_slice.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        current_text = json.dumps(
+            current_slice.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if baseline_text != current_text:
+            findings.append(
+                _finding(
+                    definition,
+                    "frozen_prefix_slice_changed",
+                    f"Frozen-prefix slice {slice_id} changed during milestone replan.",
+                    slice_id,
+                )
+            )
+    return findings
+
+
 def _definition(check_id: str) -> CheckDefinition | None:
     for definition in RUBRIC_CHECKS:
         if definition.check_id == check_id:
             return definition
     return None
+
+
+def _baseline_payload(
+    baseline_plan: PlanContract | None,
+    replan_from_milestone_id: str | None,
+    frozen_prefix_slice_ids: list[str] | None,
+) -> dict[str, Any]:
+    if baseline_plan is None or not replan_from_milestone_id:
+        return {"enabled": False}
+    frozen = set(frozen_prefix_slice_ids or [])
+    return {
+        "enabled": True,
+        "replan_from_milestone_id": replan_from_milestone_id,
+        "frozen_prefix_slice_ids": sorted(frozen),
+        "baseline_frozen_slices": [
+            item.model_dump(mode="json")
+            for item in baseline_plan.task_slices
+            if item.slice_id in frozen
+        ],
+    }
 
 
 def _finding(

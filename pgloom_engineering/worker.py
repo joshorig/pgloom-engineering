@@ -134,6 +134,8 @@ def run_once(
             int(worker_run["id"]),
             status="crashed",
             blocker_code="engineering.worker_crash",
+            terminal_reason="lifecycle_error",
+            terminal_detail=str(exc),
             metadata_patch={"exception": str(exc)},
             database_url=database_url,
         )
@@ -201,6 +203,8 @@ def run_once(
             int(worker_run["id"]),
             status="retry",
             blocker_code=result.blocker_code,
+            terminal_reason=result.blocker_code or "handler_retry",
+            terminal_detail=result.message,
             commands_run=_commands_run_from_result(result.result),
             database_url=database_url,
         )

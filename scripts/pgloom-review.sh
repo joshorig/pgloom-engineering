@@ -86,11 +86,19 @@ cmd_review() {
   fi
   psql "$DB_URL" -P pager=off -v wf="$wf" <<'SQL'
 \echo '\n=== 0. FEATURE ROW ==='
-SELECT id, project, branch, pr_url, state,
+SELECT id, project, branch, pr_url, state, abort_reason, abort_detail,
        to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+       to_char(aborted_at, 'YYYY-MM-DD HH24:MI:SS') AS aborted_at,
        to_char(updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
 FROM engineering_features
 WHERE id = :'wf';
+
+\echo '\n=== 0b. TASK TERMINAL REASONS ==='
+SELECT id, task_type, state, blocker_code, terminal_reason, terminal_detail
+FROM tasks
+WHERE workflow_id = :'wf'
+  AND (terminal_reason IS NOT NULL OR terminal_detail IS NOT NULL)
+ORDER BY created_at;
 
 \echo '\n=== 1. PER-CALL WORKER RUNS ==='
 SELECT task_id, role, phase, validator_type, status, attempt, repair_count,
@@ -105,7 +113,7 @@ SELECT task_id, role, phase, validator_type, status, attempt, repair_count,
        token_savior_saved_tokens               AS ts_saved,
        ROUND(token_savior_reduction_ratio::numeric, 3) AS ts_ratio,
        rtk_saved_tokens,
-       blocker_code
+       blocker_code, terminal_reason, terminal_detail
 FROM engineering_worker_runs
 WHERE feature_id = :'wf'
 ORDER BY started_at;

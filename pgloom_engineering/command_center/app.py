@@ -163,6 +163,26 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
     ) -> list[dict[str, Any]]:
         return store.artifacts(feature_id, database_url=resolved.effective_database_url)
 
+    @app.get("/api/features/{feature_id}/councils")
+    def api_councils(
+        feature_id: str
+    ) -> list[dict[str, Any]]:
+        return store.councils(feature_id, database_url=resolved.effective_database_url)
+
+    @app.get("/api/features/{feature_id}/councils/{council_id}")
+    def api_council_detail(
+        feature_id: str,
+        council_id: str,
+    ) -> dict[str, Any]:
+        council = store.council_detail(
+            feature_id,
+            council_id,
+            database_url=resolved.effective_database_url,
+        )
+        if council is None:
+            raise HTTPException(status_code=404, detail="council not found")
+        return council
+
     @app.get("/api/features/{feature_id}/plans")
     def api_plans(
         feature_id: str

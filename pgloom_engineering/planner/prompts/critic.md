@@ -82,3 +82,8 @@ without exercising matching and non-matching behavior is insufficient.
 
 ### check_small_feature_compactness
 Small or single-surface roadmap items should use a compact handoff with limited slices.
+
+### check_frozen_prefix_unchanged
+When INHERIT_BASELINE_MODE.enabled is true, every frozen-prefix task slice must
+match the baseline slice exactly. A milestone replan may only change the
+requested milestone and downstream slices.

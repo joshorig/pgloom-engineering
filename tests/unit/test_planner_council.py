@@ -1108,6 +1108,44 @@ def test_deterministic_critic_accepts_metadata_test_support_paths() -> None:
     assert "qa_benchmark_output_path_not_allowed" not in blocked_codes
 
 
+def test_deterministic_critic_rejects_changed_frozen_prefix_slice() -> None:
+    baseline = _plan_contract()
+    replanned = baseline.model_copy(deep=True)
+    replanned.task_slices[0].objective = "Mutated frozen prefix objective."
+
+    results = deterministic_check_results(
+        replanned,
+        validator_errors=[],
+        baseline_plan=baseline,
+        frozen_prefix_slice_ids=["design"],
+    )
+
+    frozen = next(
+        result for result in results if result.check_id == "check_frozen_prefix_unchanged"
+    )
+    assert not frozen.passed
+    assert frozen.findings[0].code == "frozen_prefix_slice_changed"
+    assert frozen.findings[0].slice_id == "design"
+
+
+def test_deterministic_critic_accepts_unchanged_frozen_prefix_slice() -> None:
+    baseline = _plan_contract()
+    replanned = baseline.model_copy(deep=True)
+    replanned.task_slices[2].objective = "Change downstream implementer slice only."
+
+    results = deterministic_check_results(
+        replanned,
+        validator_errors=[],
+        baseline_plan=baseline,
+        frozen_prefix_slice_ids=["design", "qa-author"],
+    )
+
+    frozen = next(
+        result for result in results if result.check_id == "check_frozen_prefix_unchanged"
+    )
+    assert frozen.passed
+
+
 def test_planner_prompts_warn_gradle_test_filters_are_case_sensitive() -> None:
     prompt_dir = Path("pgloom_engineering/planner/prompts")
 

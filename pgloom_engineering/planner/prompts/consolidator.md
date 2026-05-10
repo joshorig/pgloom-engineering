@@ -9,6 +9,10 @@ Rules:
   Consolidate candidates back toward its order, role/task_type mapping, and
   target slice count unless the feature evidence justifies extra implementer
   slices.
+- If INHERIT_BASELINE_MODE.enabled is true, this is an operator
+  replan-from-milestone request. Preserve every baseline frozen-prefix task
+  slice exactly, with unchanged JSON values for those slice objects. Consolidate
+  only the requested milestone and downstream replacement work.
 - Valid roles are only `designer`, `implementer`, `reviewer`, `qa`, and
   `historian`. Convert candidate terms like `worker` or `developer` to
   `implementer`.

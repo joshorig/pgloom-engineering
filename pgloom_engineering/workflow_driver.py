@@ -3,18 +3,23 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal
 
+from pgloom.db.postgres import connect
 from pgloom.states import TaskState
 from pgloom.tasks import enqueue_task, transition_task
 
 from pgloom_engineering.config import get_settings
 from pgloom_engineering.contract_store import record_recovery_action
-from pgloom_engineering.contracts import FeatureGoalContract, RecoveryDecisionContract
+from pgloom_engineering.contracts import (
+    FeatureGoalContract,
+    PlanContract,
+    RecoveryDecisionContract,
+)
 from pgloom_engineering.features import attach_task, get_feature_aggregate, update_feature_state
 from pgloom_engineering.worker import run_once as run_engineering_worker_once
 
 WorkerFn = Callable[..., dict[str, object]]
 
-TERMINAL_STATES = {"done", "failed", "abandoned", "cancelled"}
+TERMINAL_STATES = {"done", "failed", "abandoned", "cancelled", "superseded"}
 HUMAN_GATE_STATES = {"awaiting_approval"}
 BLOCKED_STATES = {"blocked"}
 PREFERRED_SLOT_ORDER = [
@@ -42,6 +47,14 @@ def run_workflow(
         aggregate = get_feature_aggregate(feature_id, database_url=database_url)
         if aggregate is None:
             return {"status": "not_found", "feature_id": feature_id, "steps": steps}
+        operator_replan = _maybe_consume_replan_from_milestone(
+            feature_id,
+            aggregate,
+            database_url,
+        )
+        if operator_replan is not None:
+            steps.append(operator_replan)
+            continue
         replan = _maybe_replan_blocked_feature(feature_id, aggregate, database_url)
         if replan is not None:
             steps.append(replan)
@@ -251,6 +264,269 @@ def _recoverable_blocked_task(
         if total_input_tokens >= int(settings.workflow_replan_after_input_tokens):
             return dict(task)
     return None
+
+
+def _maybe_consume_replan_from_milestone(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    database_url: str | None,
+) -> dict[str, object] | None:
+    if _active_planner_exists(aggregate):
+        return None
+    intervention = _next_replan_from_milestone_intervention(aggregate)
+    if intervention is None:
+        return None
+    payload = _replan_from_milestone_payload(feature_id, aggregate, intervention)
+    if payload is None:
+        return None
+    milestone_id = str(payload["replan_from_milestone_id"])
+    task_ids_to_supersede = _task_ids_at_or_after_milestone(
+        aggregate,
+        milestone_id=milestone_id,
+    )
+    _supersede_tasks_for_operator_replan(
+        task_ids_to_supersede,
+        database_url=database_url,
+    )
+    planner = enqueue_task(
+        workflow_id=feature_id,
+        domain="engineering",
+        task_type="engineering.plan",
+        slot="planner",
+        payload=payload,
+        priority=_next_planner_priority(aggregate),
+        max_attempts=3,
+        database_url=database_url,
+    )
+    attach_task(feature_id, planner["id"], role="planner", database_url=database_url)
+    return {
+        "slot": "planner",
+        "claimed": True,
+        "status": "replan_from_milestone",
+        "task_id": str(planner["id"]),
+        "operator_intervention_id": str(intervention["id"]),
+        "replan_from_milestone_id": milestone_id,
+        "superseded_task_ids": task_ids_to_supersede,
+    }
+
+
+def _next_replan_from_milestone_intervention(
+    aggregate: dict[str, Any],
+) -> dict[str, Any] | None:
+    consumed_ids = _consumed_operator_intervention_ids(aggregate)
+    for intervention in aggregate.get("operator_interventions") or []:
+        if not isinstance(intervention, dict):
+            continue
+        if str(intervention.get("action_type") or "") != "replan_from_milestone":
+            continue
+        intervention_id = str(intervention.get("id") or "")
+        if not intervention_id or intervention_id in consumed_ids:
+            continue
+        payload = intervention.get("payload")
+        if not isinstance(payload, dict) or not payload.get("milestone_id"):
+            continue
+        return dict(intervention)
+    return None
+
+
+def _consumed_operator_intervention_ids(aggregate: dict[str, Any]) -> set[str]:
+    consumed: set[str] = set()
+    for task in aggregate.get("tasks") or []:
+        payload = task.get("payload") if isinstance(task, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        intervention_id = payload.get("operator_intervention_id")
+        if intervention_id is not None:
+            consumed.add(str(intervention_id))
+        context = payload.get("replan_context")
+        if isinstance(context, dict) and context.get("operator_intervention_id") is not None:
+            consumed.add(str(context["operator_intervention_id"]))
+    return consumed
+
+
+def _replan_from_milestone_payload(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    intervention: dict[str, Any],
+) -> dict[str, Any] | None:
+    feature = aggregate.get("feature") or {}
+    metadata = feature.get("metadata") if isinstance(feature, dict) else None
+    if not isinstance(metadata, dict):
+        metadata = {}
+    raw_goal = metadata.get("feature_goal_contract")
+    if not isinstance(raw_goal, dict):
+        return None
+    active_plan_row = aggregate.get("active_plan_contract")
+    raw_plan = active_plan_row.get("contract") if isinstance(active_plan_row, dict) else None
+    if not isinstance(raw_plan, dict):
+        return None
+    plan = PlanContract.model_validate(raw_plan)
+    intervention_payload = intervention.get("payload")
+    if not isinstance(intervention_payload, dict):
+        return None
+    milestone_id = str(intervention_payload.get("milestone_id") or "")
+    if not milestone_id:
+        return None
+    milestone_ids = [milestone.milestone_id for milestone in plan.milestones]
+    if milestone_id not in milestone_ids:
+        return None
+    frozen_slice_ids = _slice_ids_before_milestone(plan, milestone_id=milestone_id)
+    frozen_task_ids = _task_ids_for_slice_ids(aggregate, frozen_slice_ids)
+    at_after_slice_ids = _slice_ids_at_or_after_milestone(plan, milestone_id=milestone_id)
+    reason = str(intervention_payload.get("reason") or "operator requested milestone replan")
+    goal = FeatureGoalContract.model_validate(raw_goal)
+    revised_goal = goal.model_copy(
+        update={
+            "requirements": _append_unique(
+                goal.requirements,
+                (
+                    f"Operator requested replan from milestone {milestone_id}: {reason}. "
+                    "Preserve every frozen-prefix slice byte-for-byte and replace only "
+                    "the requested milestone and downstream work."
+                ),
+            )
+        }
+    )
+    active_plan_id = (
+        str(active_plan_row.get("id"))
+        if isinstance(active_plan_row, dict) and active_plan_row.get("id")
+        else None
+    )
+    return {
+        "feature_goal_contract": revised_goal.model_dump(mode="json"),
+        "agent_topology": aggregate.get("agent_topology") or metadata.get("agent_topology"),
+        "project": metadata.get("project"),
+        "allow_unregistered_project": False,
+        "requires_multi_agent_council": True,
+        "baseline_plan": plan.model_dump(mode="json"),
+        "replan_from_milestone_id": milestone_id,
+        "frozen_prefix_task_ids": frozen_task_ids,
+        "operator_intervention_id": str(intervention["id"]),
+        "replan_context": {
+            "source": "workflow_driver",
+            "mode": "replan_from_milestone",
+            "operator_intervention_id": str(intervention["id"]),
+            "active_plan_contract_id": active_plan_id,
+            "replan_from_milestone_id": milestone_id,
+            "frozen_prefix_task_ids": frozen_task_ids,
+            "frozen_prefix_slice_ids": frozen_slice_ids,
+            "replanned_slice_ids": at_after_slice_ids,
+            "reason": reason,
+            "summary": (
+                f"Operator requested replan from milestone {milestone_id}. "
+                "Frozen-prefix slices before that milestone must remain unchanged; "
+                "replace only the requested milestone and downstream slices."
+            ),
+        },
+    }
+
+
+def _slice_ids_before_milestone(plan: PlanContract, *, milestone_id: str) -> list[str]:
+    slice_ids: list[str] = []
+    for milestone in plan.milestones:
+        if milestone.milestone_id == milestone_id:
+            break
+        slice_ids.extend(milestone.slice_ids)
+    return slice_ids
+
+
+def _slice_ids_at_or_after_milestone(plan: PlanContract, *, milestone_id: str) -> list[str]:
+    slice_ids: list[str] = []
+    include = False
+    for milestone in plan.milestones:
+        if milestone.milestone_id == milestone_id:
+            include = True
+        if include:
+            slice_ids.extend(milestone.slice_ids)
+    return slice_ids
+
+
+def _task_ids_for_slice_ids(
+    aggregate: dict[str, Any],
+    slice_ids: list[str],
+) -> list[str]:
+    wanted = set(slice_ids)
+    task_ids: list[str] = []
+    for row in aggregate.get("task_contracts") or []:
+        if not isinstance(row, dict):
+            continue
+        slice_id = str(row.get("task_slice_id") or "")
+        if not slice_id:
+            input_contract = row.get("input_contract")
+            if isinstance(input_contract, dict):
+                inputs = input_contract.get("inputs")
+                if isinstance(inputs, dict):
+                    slice_id = str(inputs.get("task_slice_id") or "")
+        if slice_id in wanted and row.get("task_id"):
+            task_ids.append(str(row["task_id"]))
+    return task_ids
+
+
+def _task_ids_at_or_after_milestone(
+    aggregate: dict[str, Any],
+    *,
+    milestone_id: str,
+) -> list[str]:
+    active_plan_row = aggregate.get("active_plan_contract")
+    raw_plan = active_plan_row.get("contract") if isinstance(active_plan_row, dict) else None
+    if not isinstance(raw_plan, dict):
+        return []
+    plan = PlanContract.model_validate(raw_plan)
+    slice_ids = set(_slice_ids_at_or_after_milestone(plan, milestone_id=milestone_id))
+    terminal_task_ids = {
+        str(task["id"])
+        for task in aggregate.get("tasks") or []
+        if str(task.get("state")) in TERMINAL_STATES and task.get("id")
+    }
+    return [
+        task_id
+        for task_id in _task_ids_for_slice_ids(aggregate, list(slice_ids))
+        if task_id not in terminal_task_ids
+    ]
+
+
+def _next_planner_priority(aggregate: dict[str, Any]) -> int:
+    priorities = [
+        int(task.get("priority") or 0)
+        for task in aggregate.get("tasks") or []
+        if isinstance(task, dict)
+    ]
+    return (max(priorities) if priorities else 0) + 1
+
+
+def _supersede_tasks_for_operator_replan(
+    task_ids: list[str],
+    *,
+    database_url: str | None,
+) -> None:
+    if not task_ids:
+        return
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            update tasks
+            set state = 'superseded',
+                terminal_reason = coalesce(terminal_reason, %s),
+                terminal_detail = coalesce(terminal_detail, %s),
+                updated_at = now()
+            where id = any(%s)
+              and state not in ('done', 'failed', 'abandoned', 'cancelled', 'superseded')
+            """,
+            (
+                "operator_replan_from_milestone",
+                "Superseded by operator replan-from-milestone intervention.",
+                task_ids,
+            ),
+        )
+        conn.execute(
+            """
+            update engineering_task_contracts
+            set status = 'superseded',
+                updated_at = now()
+            where task_id = any(%s)
+            """,
+            (task_ids,),
+        )
 
 
 def _total_model_input_tokens(aggregate: dict[str, Any]) -> int:
@@ -718,3 +994,32 @@ def _abandon_nonterminal_tasks(
             message="Superseded by workflow recovery replan.",
             database_url=database_url,
         )
+        _record_task_terminal_reason(
+            task_id,
+            reason="workflow_recovery_replan",
+            detail="Superseded by workflow recovery replan.",
+            database_url=database_url,
+        )
+
+
+def _record_task_terminal_reason(
+    task_id: str,
+    *,
+    reason: str,
+    detail: str | None = None,
+    database_url: str | None,
+) -> None:
+    try:
+        with connect(database_url) as conn, conn.transaction():
+            conn.execute(
+                """
+                update tasks
+                set terminal_reason = coalesce(terminal_reason, %s::text),
+                    terminal_detail = coalesce(terminal_detail, %s::text),
+                    updated_at = now()
+                where id = %s
+                """,
+                (reason, detail, task_id),
+            )
+    except Exception:
+        return

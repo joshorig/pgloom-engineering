@@ -23,8 +23,15 @@ def create_plan_contract(
     planner_task_id: str | None = None,
     database_url: str | None = None,
     qa_write_paths: list[str] | None = None,
+    replaced_plan_contract_id: str | None = None,
+    replan_from_milestone_id: str | None = None,
 ) -> dict[str, Any]:
     payload = contract_payload(contract)
+    metadata: dict[str, Any] = {}
+    if replaced_plan_contract_id:
+        metadata["replaced_plan_contract_id"] = replaced_plan_contract_id
+    if replan_from_milestone_id:
+        metadata["replan_from_milestone_id"] = replan_from_milestone_id
     row_id = new_id("plan")
     with connect(database_url) as conn, conn.transaction():
         active_origin = conn.execute(
@@ -59,9 +66,9 @@ def create_plan_contract(
             """
             insert into engineering_plan_contracts(
               id, feature_id, planner_task_id, version, status, active, contract_hash,
-              contract, validation_errors, council_reports
+              contract, validation_errors, council_reports, metadata
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             returning *
             """,
             (
@@ -75,6 +82,7 @@ def create_plan_contract(
                 jsonb(payload),
                 jsonb(validation_errors),
                 jsonb(contract.council_reports),
+                jsonb(metadata),
             ),
         ).fetchone()
     if row is None:
@@ -287,6 +295,8 @@ def finish_worker_run(
     *,
     status: str,
     blocker_code: str | None = None,
+    terminal_reason: str | None = None,
+    terminal_detail: str | None = None,
     commands_run: list[dict[str, Any]] | None = None,
     evidence_ids: list[str] | None = None,
     artifact_ids: list[str] | None = None,
@@ -367,6 +377,14 @@ def finish_worker_run(
                 model_usage_ids = %s,
                 token_savior_usage_ids = %s,
                 handoff_id = %s,
+                terminal_reason = case
+                  when %s::text is null then terminal_reason
+                  else %s::text
+                end,
+                terminal_detail = case
+                  when %s::text is null then terminal_detail
+                  else %s::text
+                end,
                 metadata = %s
             where id = %s
             returning *
@@ -408,6 +426,10 @@ def finish_worker_run(
                 jsonb(model_usage["ids"]),
                 jsonb(token_savior["ids"]),
                 handoff_id,
+                terminal_reason,
+                terminal_reason,
+                terminal_detail,
+                terminal_detail,
                 jsonb(metadata),
                 worker_run_id,
             ),
@@ -973,6 +995,145 @@ def record_operator_intervention(
     return dict(row)
 
 
+def create_council_run(
+    *,
+    feature_id: str,
+    task_id: str | None,
+    role: str,
+    purpose: str,
+    iteration_max: int,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    row_id = new_id("council")
+    with connect(database_url) as conn, conn.transaction():
+        row = conn.execute(
+            """
+            insert into engineering_councils(
+              id, feature_id, task_id, role, purpose, status, iteration_max
+            )
+            values (%s, %s, %s, %s, %s, 'running', %s)
+            returning *
+            """,
+            (row_id, feature_id, task_id, role, purpose, iteration_max),
+        ).fetchone()
+        if task_id:
+            conn.execute(
+                """
+                update engineering_worker_runs
+                set council_run_id = %s
+                where feature_id = %s and task_id = %s and council_run_id is null
+                """,
+                (row_id, feature_id, task_id),
+            )
+    if row is None:
+        raise RuntimeError("council insert did not return a row")
+    return dict(row)
+
+
+def finish_council_run(
+    council_id: str,
+    *,
+    status: str,
+    iterations_used: int,
+    critic_verdict: str | None = None,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    with connect(database_url) as conn, conn.transaction():
+        totals = _council_totals(conn, council_id)
+        row = conn.execute(
+            """
+            update engineering_councils
+            set status = %s,
+                iterations_used = %s,
+                critic_verdict = %s,
+                cost_usd_micros = %s,
+                total_tokens = %s,
+                finished_at = now()
+            where id = %s
+            returning *
+            """,
+            (
+                status,
+                iterations_used,
+                critic_verdict,
+                totals["cost_usd_micros"],
+                totals["total_tokens"],
+                council_id,
+            ),
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("council update did not return a row")
+    return dict(row)
+
+
+def record_council_panelist(
+    *,
+    council_id: str,
+    iteration: int,
+    panelist_kind: str,
+    panelist_ordinal: int = 0,
+    model_usage_id: int | None = None,
+    verdict: str | None = None,
+    vote: str | None = None,
+    status: str = "completed",
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    with connect(database_url) as conn, conn.transaction():
+        usage = _model_usage_by_id(conn, model_usage_id)
+        worker_run_id = _council_worker_run_id(conn, council_id)
+        row = conn.execute(
+            """
+            insert into engineering_council_panelists(
+              council_id, iteration, panelist_kind, panelist_ordinal, status,
+              model_provider, model, reasoning_level, worker_run_id, verdict, vote,
+              cost_usd_micros, input_tokens, output_tokens, reasoning_tokens,
+              model_usage_id, finished_at
+            )
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            on conflict (council_id, iteration, panelist_kind, panelist_ordinal)
+            do update set
+              status = excluded.status,
+              model_provider = excluded.model_provider,
+              model = excluded.model,
+              reasoning_level = excluded.reasoning_level,
+              worker_run_id = coalesce(
+                excluded.worker_run_id,
+                engineering_council_panelists.worker_run_id
+              ),
+              verdict = excluded.verdict,
+              vote = excluded.vote,
+              cost_usd_micros = excluded.cost_usd_micros,
+              input_tokens = excluded.input_tokens,
+              output_tokens = excluded.output_tokens,
+              reasoning_tokens = excluded.reasoning_tokens,
+              model_usage_id = excluded.model_usage_id,
+              finished_at = excluded.finished_at
+            returning *
+            """,
+            (
+                council_id,
+                iteration,
+                panelist_kind,
+                panelist_ordinal,
+                status,
+                usage["provider"],
+                usage["model"],
+                usage["reasoning_level"],
+                worker_run_id,
+                verdict,
+                vote,
+                usage["cost_usd_micros"],
+                usage["input_tokens"],
+                usage["output_tokens"],
+                usage["reasoning_tokens"],
+                model_usage_id,
+            ),
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("council panelist insert did not return a row")
+    return dict(row)
+
+
 def list_operator_interventions(
     feature_id: str, *, database_url: str | None = None
 ) -> list[dict[str, Any]]:
@@ -1002,3 +1163,68 @@ def feature_is_paused(feature_id: str, *, database_url: str | None = None) -> bo
             (feature_id,),
         ).fetchone()
     return bool(row and row["action_type"] == "pause_feature")
+
+
+def _model_usage_by_id(conn: Any, model_usage_id: int | None) -> dict[str, Any]:
+    if model_usage_id is None:
+        return {
+            "provider": "unknown",
+            "model": "unknown",
+            "reasoning_level": None,
+            "cost_usd_micros": 0,
+            "input_tokens": None,
+            "output_tokens": None,
+            "reasoning_tokens": None,
+        }
+    row = conn.execute(
+        """
+        select id, profile_name, input_tokens, output_tokens, cost_usd, metadata
+        from model_usage
+        where id = %s
+        """,
+        (model_usage_id,),
+    ).fetchone()
+    if row is None:
+        return _model_usage_by_id(conn, None)
+    usage = _model_usage_call(dict(row))
+    return {
+        "provider": str(usage.get("provider") or "unknown"),
+        "model": str(usage.get("model") or "unknown"),
+        "reasoning_level": usage.get("reasoning_level"),
+        "cost_usd_micros": int(round(float(usage.get("cost_usd") or 0) * 1_000_000)),
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+        "reasoning_tokens": int(usage.get("reasoning_tokens") or 0),
+    }
+
+
+def _council_worker_run_id(conn: Any, council_id: str) -> int | None:
+    row = conn.execute(
+        """
+        select id
+        from engineering_worker_runs
+        where council_run_id = %s
+        order by created_at desc, id desc
+        limit 1
+        """,
+        (council_id,),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
+def _council_totals(conn: Any, council_id: str) -> dict[str, int]:
+    row = conn.execute(
+        """
+        select coalesce(sum(cost_usd_micros), 0) as cost_usd_micros,
+               coalesce(sum(coalesce(input_tokens, 0)
+                            + coalesce(output_tokens, 0)
+                            + coalesce(reasoning_tokens, 0)), 0) as total_tokens
+        from engineering_council_panelists
+        where council_id = %s
+        """,
+        (council_id,),
+    ).fetchone()
+    return {
+        "cost_usd_micros": int(row["cost_usd_micros"] or 0) if row else 0,
+        "total_tokens": int(row["total_tokens"] or 0) if row else 0,
+    }

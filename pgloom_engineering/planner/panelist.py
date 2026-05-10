@@ -46,12 +46,18 @@ class PanelistRunner:
         prior_iteration: Any = None,
         workflow_id: str | None = None,
         task_id: str | None = None,
+        baseline_plan: PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
     ) -> tuple[PlanContract, str, int | None]:
         prompt = self._build_prompt(
             feature_goal,
             project_context,
             prior_iteration,
             plan_skeleton,
+            baseline_plan,
+            replan_from_milestone_id,
+            frozen_prefix_slice_ids,
         )
         response = self._provider.invoke(
             profile=self._profile,
@@ -77,6 +83,9 @@ class PanelistRunner:
         project_context: Any,
         prior_iteration: Any,
         plan_skeleton: DeterministicPlanSkeleton | None,
+        baseline_plan: PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
     ) -> str:
         base = Path(__file__).with_name("prompts").joinpath("panelist.md").read_text(
             encoding="utf-8"
@@ -95,6 +104,16 @@ class PanelistRunner:
             )
             + "\n\nPRIOR_ITERATION:\n"
             + json.dumps(_dump_iteration(prior_iteration), indent=2, sort_keys=True, default=str)
+            + "\n\nINHERIT_BASELINE_MODE:\n"
+            + json.dumps(
+                _baseline_payload(
+                    baseline_plan,
+                    replan_from_milestone_id,
+                    frozen_prefix_slice_ids,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
         )
 
 
@@ -133,3 +152,27 @@ def _dump_iteration(prior_iteration: Any) -> dict[str, Any]:
             ],
         }
     return payload
+
+
+def _baseline_payload(
+    baseline_plan: PlanContract | None,
+    replan_from_milestone_id: str | None,
+    frozen_prefix_slice_ids: list[str] | None,
+) -> dict[str, Any]:
+    if baseline_plan is None or not replan_from_milestone_id:
+        return {"enabled": False}
+    frozen = set(frozen_prefix_slice_ids or [])
+    return {
+        "enabled": True,
+        "replan_from_milestone_id": replan_from_milestone_id,
+        "frozen_prefix_slice_ids": sorted(frozen),
+        "baseline_frozen_slices": [
+            item.model_dump(mode="json")
+            for item in baseline_plan.task_slices
+            if item.slice_id in frozen
+        ],
+        "instruction": (
+            "Copy every baseline_frozen_slices object exactly into the new plan. "
+            "Only change slices at or after replan_from_milestone_id."
+        ),
+    }

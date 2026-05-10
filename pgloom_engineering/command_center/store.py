@@ -503,6 +503,68 @@ def artifacts(feature_id: str, *, database_url: str | None) -> list[dict[str, An
     return serialize_rows(rows)
 
 
+def councils(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_councils
+        where feature_id = %s
+        order by started_at, id
+        """,
+        (feature_id,),
+        database_url=database_url,
+    )
+    current = serialize_rows(rows)
+    return [*current, *_legacy_councils(feature_id, database_url=database_url)]
+
+
+def council_detail(
+    feature_id: str,
+    council_id: str,
+    *,
+    database_url: str | None,
+) -> dict[str, Any] | None:
+    if council_id.startswith("council_legacy_"):
+        return _legacy_council_detail(feature_id, council_id, database_url=database_url)
+    council = _fetchone(
+        """
+        select *
+        from engineering_councils
+        where feature_id = %s and id = %s
+        """,
+        (feature_id, council_id),
+        database_url=database_url,
+    )
+    if council is None:
+        return None
+    panelists = _fetchall(
+        """
+        select *
+        from engineering_council_panelists
+        where council_id = %s
+        order by iteration, panelist_kind, panelist_ordinal
+        """,
+        (council_id,),
+        database_url=database_url,
+    )
+    runs = _fetchall(
+        """
+        select *
+        from engineering_worker_runs
+        where council_run_id = %s
+        order by coalesce(started_at, created_at), id
+        """,
+        (council_id,),
+        database_url=database_url,
+    )
+    return {
+        **serialize_row(council),
+        "legacy": False,
+        "panelists": serialize_rows(panelists),
+        "worker_runs": serialize_rows(runs),
+    }
+
+
 def list_table(
     feature_id: str,
     table: str,
@@ -516,6 +578,104 @@ def list_table(
         database_url=database_url,
     )
     return serialize_rows(rows)
+
+
+def _legacy_councils(
+    feature_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    plans = _fetchall(
+        """
+        select id, feature_id, planner_task_id, status, active, council_reports, created_at
+        from engineering_plan_contracts
+        where feature_id = %s and jsonb_array_length(council_reports) > 0
+        order by created_at, id
+        """,
+        (feature_id,),
+        database_url=database_url,
+    )
+    out: list[dict[str, Any]] = []
+    for plan in plans:
+        reports = plan.get("council_reports")
+        if not isinstance(reports, list):
+            continue
+        for idx, report in enumerate(reports):
+            critic = report.get("critic") if isinstance(report, dict) else None
+            out.append(
+                {
+                    "id": f"council_legacy_{plan['id']}_{idx}",
+                    "feature_id": feature_id,
+                    "task_id": plan.get("planner_task_id"),
+                    "role": "planner",
+                    "purpose": "initial_plan" if plan.get("active") else "revise_plan",
+                    "status": "passed" if plan.get("status") == "valid" else "failed",
+                    "iteration_max": None,
+                    "iterations_used": idx + 1,
+                    "critic_verdict": (
+                        critic.get("verdict") if isinstance(critic, dict) else None
+                    ),
+                    "cost_usd_micros": None,
+                    "total_tokens": None,
+                    "created_at": plan.get("created_at"),
+                    "started_at": plan.get("created_at"),
+                    "finished_at": plan.get("created_at"),
+                    "legacy": True,
+                    "plan_contract_id": plan["id"],
+                }
+            )
+    return serialize_rows(out)
+
+
+def _legacy_council_detail(
+    feature_id: str,
+    council_id: str,
+    *,
+    database_url: str | None,
+) -> dict[str, Any] | None:
+    prefix = "council_legacy_"
+    if not council_id.startswith(prefix):
+        return None
+    suffix = council_id.removeprefix(prefix)
+    plan_id, sep, raw_index = suffix.rpartition("_")
+    if not sep:
+        return None
+    try:
+        index = int(raw_index)
+    except ValueError:
+        return None
+    plan = _fetchone(
+        """
+        select id, feature_id, planner_task_id, status, active, council_reports, created_at
+        from engineering_plan_contracts
+        where feature_id = %s and id = %s
+        """,
+        (feature_id, plan_id),
+        database_url=database_url,
+    )
+    if plan is None:
+        return None
+    reports = plan.get("council_reports")
+    if not isinstance(reports, list) or index >= len(reports):
+        return None
+    summary = next(
+        (
+            item
+            for item in _legacy_councils(feature_id, database_url=database_url)
+            if item.get("id") == council_id
+        ),
+        None,
+    )
+    if summary is None:
+        return None
+    report = reports[index]
+    return {
+        **summary,
+        "legacy": True,
+        "report": report,
+        "panelists": [],
+        "worker_runs": [],
+    }
 
 
 def self_repair(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:

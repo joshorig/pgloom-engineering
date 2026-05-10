@@ -37,6 +37,7 @@ class Consolidator:
             timeout_seconds=timeout_seconds,
             parse_response="text",
         )
+        self.last_model_usage_id: int | None = None
 
     def merge(
         self,
@@ -44,16 +45,27 @@ class Consolidator:
         proposals: Sequence[ProposalLike],
         plan_skeleton: DeterministicPlanSkeleton | None = None,
         prior_consolidated: PlanContract | None = None,
+        baseline_plan: PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
         workflow_id: str | None = None,
         task_id: str | None = None,
     ) -> PlanContract:
-        prompt = self._build_prompt(proposals, plan_skeleton, prior_consolidated)
+        prompt = self._build_prompt(
+            proposals,
+            plan_skeleton,
+            prior_consolidated,
+            baseline_plan,
+            replan_from_milestone_id,
+            frozen_prefix_slice_ids,
+        )
         response = self._provider.invoke(
             profile=self._profile,
             prompt=prompt,
             workflow_id=workflow_id,
             task_id=task_id,
         )
+        self.last_model_usage_id = getattr(response, "model_usage_id", None)
         raw = str(getattr(response, "text", ""))
         try:
             payload = extract_json(raw)
@@ -69,6 +81,9 @@ class Consolidator:
         proposals: Sequence[ProposalLike],
         plan_skeleton: DeterministicPlanSkeleton | None,
         prior_consolidated: PlanContract | None = None,
+        baseline_plan: PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
     ) -> str:
         base = Path(__file__).with_name("prompts").joinpath("consolidator.md").read_text(
             encoding="utf-8"
@@ -87,4 +102,38 @@ class Consolidator:
             + json.dumps(payload, indent=2, sort_keys=True)
             + "\n\nPRIOR_CONSOLIDATED_BASELINE:\n"
             + json.dumps(prior_payload, indent=2, sort_keys=True)
+            + "\n\nINHERIT_BASELINE_MODE:\n"
+            + json.dumps(
+                _baseline_payload(
+                    baseline_plan,
+                    replan_from_milestone_id,
+                    frozen_prefix_slice_ids,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
         )
+
+
+def _baseline_payload(
+    baseline_plan: PlanContract | None,
+    replan_from_milestone_id: str | None,
+    frozen_prefix_slice_ids: list[str] | None,
+) -> dict[str, object]:
+    if baseline_plan is None or not replan_from_milestone_id:
+        return {"enabled": False}
+    frozen = set(frozen_prefix_slice_ids or [])
+    return {
+        "enabled": True,
+        "replan_from_milestone_id": replan_from_milestone_id,
+        "frozen_prefix_slice_ids": sorted(frozen),
+        "baseline_frozen_slices": [
+            item.model_dump(mode="json")
+            for item in baseline_plan.task_slices
+            if item.slice_id in frozen
+        ],
+        "instruction": (
+            "The final PlanContract must preserve each baseline_frozen_slices object "
+            "exactly and replace only the requested milestone plus downstream work."
+        ),
+    }

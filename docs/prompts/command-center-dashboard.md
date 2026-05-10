@@ -88,7 +88,8 @@ pgloom_engineering/command_center/
 > (`milestone_id`, `task_slice_id`, handoff `title`/`summary`),
 > `012_command_center_backfill.sql`, `013_task_contract_membership_trigger.sql`,
 > `014_codex_cost_backfill.sql`, `015_worker_run_model_usage_sync.sql`.
-> New schema work in this brief starts at `016_*.sql` and below. The brief
+> The workflow handoff reserves `016_abort_reason.sql`; council schema work
+> in this brief starts at `017_*.sql` and below. The brief
 > assumes the 010-015 surfaces exist — do not redefine them.
 
 Frontend layout (sibling tree, also versioned in the repo):
@@ -454,9 +455,18 @@ Handoff view rows, Validation view rows, and the feature overview's
    small inline timeline.
 
 8. **Artifacts** (cross-cutting gallery): every artifact id referenced by
-   any of the rows above, deduplicated, grouped by kind (prompt, response,
-   log, diff, screenshot, trace, report). Click → opens the artifact in a
-   side drawer or new tab depending on type.
+   any of the rows above, deduplicated, grouped by kind. Recognised kinds:
+   `prompt`, `response`, `log`, `diff`, `screenshot`, `trace`, `report`,
+   `worktree_diff` (the unified-diff artifact orchestrator captures when it
+   tears down a non-persisted worktree — see `outcome.json` /
+   `worktree.diff`), `file_snapshots` (the JSON artifact listing files +
+   sizes + content hashes a worker produced; see `file-snapshots.json`).
+   `worktree_diff` and `file_snapshots` are the *only* surviving evidence
+   for non-persisted worktrees (today: implementer, reviewer,
+   qa.verify.scrutiny, qa.verify.usertest), so they must render as
+   first-class entries with their own viewer (split-diff for `worktree_diff`,
+   file-tree-with-hashes for `file_snapshots`). Click → side drawer or new
+   tab depending on type.
 
 9. **Telemetry roll-up**: same shape as Telemetry view (§8) but scoped to
    this task. Cost by phase / model / validator_type, token breakdown,
@@ -486,12 +496,13 @@ and will be used by future roles (e.g. recovery, design). Command Center
 must therefore treat "council" as a first-class entity, not a planner
 sub-tab.
 
-### Schema (proposed; lives in migration `016_councils.sql`)
+### Schema (proposed; lives in migration `017_councils.sql`)
 
 Today, planner council output is stored as a JSONB blob on
 `engineering_plan_contracts.council_reports`. That worked for one role; it
 does not generalise. Add a normalised set of tables. (Migrations 010-015
-are already shipped — see §2 note. New work starts at 016.)
+are already shipped and `016_abort_reason.sql` is reserved by the workflow
+handoff — see §2 note. Council work starts at 017.)
 
 ```sql
 create table engineering_councils (
@@ -700,7 +711,13 @@ Conversion conventions:
 - DB columns named `*_usd` (numeric) are converted to `*_usd_micros` (bigint)
   at the serializer boundary: `int(round(value * 1_000_000))`.
 - Aggregate endpoints sum micros server-side; never sum the float column then
-  convert.
+  convert. The shipped DB columns `engineering_worker_runs.cost_usd`,
+  `engineering_worker_runs.cumulative_cost_usd`, and `model_usage.cost_usd`
+  are `numeric(12,6)` (USD), not micros. Convert *inside* SQL with
+  `sum((cost_usd * 1000000)::bigint) as cost_usd_micros` — never round-trip
+  through Python floats. The conversion to integer micros is always a
+  multiply-then-cast, never `round()` (the source is already exact at
+  6 decimal places).
 - Frontend formats with a single `formatMicros(n, {precision})` helper in
   `lib/money.ts`. Default display precision: 4 decimals for per-call costs
   (`$0.0123`), 2 decimals for cumulative / aggregate costs (`$8.86`).
@@ -782,3 +799,17 @@ this slice cost too much, and where did the time go?"
    Reviewer councils render through the same view with no reviewer-specific
    code path. Inserting an `engineering_council_panelists` row for an open
    council updates the relevant iteration column live.
+10. Pre-016 plan councils render through the legacy adapter with a
+    "legacy" badge and "unavailable (legacy)" placeholders for
+    per-panelist timing/cost.
+11. Every `engineering_features.state = 'aborted'` transition writes a
+    structured `abort_reason` (one of: `operator_kill`,
+    `supervisor_timeout`, `lifecycle_error`, `external_signal`, `unknown`)
+    plus a free-text `abort_detail`. Command Center surfaces both on the
+    Feature overview header and in the abort row of the worker-runs
+    timeline. This is the diagnostic that resolves the r38-r57 17/20
+    abort-rate opacity.
+12. `Origin`-header allowlist on WS upgrade rejects connections whose
+    Origin is anything other than `http://localhost:<port>` or
+    `http://127.0.0.1:<port>`. `Host`-header allowlist on every HTTP and
+    WS request rejects DNS-rebound names. Test fixtures cover both.

@@ -104,6 +104,14 @@ class PlannerHandler:
                 project_context=project_context,
                 workflow_id=task.get("workflow_id"),
                 task_id=task.get("id"),
+                baseline_plan=payload.get("baseline_plan"),
+                replan_from_milestone_id=payload.get("replan_from_milestone_id"),
+                frozen_prefix_slice_ids=(
+                    payload.get("replan_context", {}).get("frozen_prefix_slice_ids")
+                    if isinstance(payload.get("replan_context"), dict)
+                    else None
+                ),
+                database_url=database_url,
             )
         except PlannerCouncilExhausted as exc:
             _record_token_savior_for_planner_calls(
@@ -196,6 +204,8 @@ class PlannerHandler:
             planner_task_id=task.get("id"),
             database_url=database_url,
             qa_write_paths=qa_write_paths,
+            replaced_plan_contract_id=_replaced_plan_contract_id(payload),
+            replan_from_milestone_id=_replan_from_milestone_id(payload),
         )
         if plan_row["status"] != "valid":
             validation_summary = _plan_validation_error_summary(
@@ -576,11 +586,25 @@ def _apply_replan_supersession(
     if contract.supersedes_plan_id and contract.supersession_rationale:
         return contract
     context = payload.get("replan_context")
-    if not isinstance(context, dict) or context.get("mode") != "corrective_slice":
+    if not isinstance(context, dict):
+        return contract
+    mode = str(context.get("mode") or "")
+    if mode not in {"corrective_slice", "replan_from_milestone"}:
         return contract
     active_plan_id = context.get("active_plan_contract_id")
     if not active_plan_id:
         return contract
+    if mode == "replan_from_milestone":
+        milestone_id = str(context.get("replan_from_milestone_id") or "unknown")
+        reason = str(context.get("reason") or "operator requested milestone replan")
+        return contract.model_copy(
+            update={
+                "supersedes_plan_id": str(active_plan_id),
+                "supersession_rationale": (
+                    f"Operator replan from milestone {milestone_id}: {reason}"
+                ),
+            }
+        )
     blocker_code = str(context.get("blocker_code") or "engineering.blocked")
     blocker_reason = str(context.get("blocker_reason") or "blocked corrective slice")
     return contract.model_copy(
@@ -592,6 +616,22 @@ def _apply_replan_supersession(
             ),
         }
     )
+
+
+def _replaced_plan_contract_id(payload: dict[str, Any]) -> str | None:
+    context = payload.get("replan_context")
+    if isinstance(context, dict) and context.get("active_plan_contract_id"):
+        return str(context["active_plan_contract_id"])
+    return None
+
+
+def _replan_from_milestone_id(payload: dict[str, Any]) -> str | None:
+    context = payload.get("replan_context")
+    if isinstance(context, dict) and context.get("replan_from_milestone_id"):
+        return str(context["replan_from_milestone_id"])
+    if payload.get("replan_from_milestone_id"):
+        return str(payload["replan_from_milestone_id"])
+    return None
 
 
 def _apply_corrective_slice_scope(

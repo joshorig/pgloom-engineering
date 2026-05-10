@@ -20,6 +20,8 @@ REQUIRED_TABLES = {
     "engineering_worker_runs",
     "engineering_operator_interventions",
     "engineering_qa_signoffs",
+    "engineering_councils",
+    "engineering_council_panelists",
 }
 
 

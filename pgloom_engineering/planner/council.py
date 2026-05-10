@@ -9,6 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from pgloom_engineering.contract_store import (
+    create_council_run,
+    finish_council_run,
+    record_council_panelist,
+)
 from pgloom_engineering.contracts import (
     FeatureGoalContract,
     MilestoneContract,
@@ -129,10 +134,26 @@ class PlannerCouncil:
         project_context: ProjectContext,
         workflow_id: str | None = None,
         task_id: str | None = None,
+        baseline_plan: dict[str, Any] | PlanContract | None = None,
+        replan_from_milestone_id: str | None = None,
+        frozen_prefix_slice_ids: list[str] | None = None,
+        database_url: str | None = None,
     ) -> CouncilOutcome:
         iterations: list[CouncilIteration] = []
         invalid_proposals: list[InvalidCouncilProposal] = []
         prior: CouncilIteration | None = None
+        baseline = _baseline_plan_contract(baseline_plan)
+        council_id = _create_planner_council_run(
+            feature_id=workflow_id,
+            task_id=task_id,
+            config=self._config,
+            purpose=(
+                "replan_from_milestone"
+                if replan_from_milestone_id
+                else "initial_plan"
+            ),
+            database_url=database_url,
+        )
         for index in range(1, self._config.max_iterations + 1):
             skeleton = build_deterministic_plan_skeleton(
                 feature_goal,
@@ -147,16 +168,29 @@ class PlannerCouncil:
                 prior_iteration=prior,
                 workflow_id=workflow_id,
                 task_id=task_id,
+                baseline_plan=baseline,
+                replan_from_milestone_id=replan_from_milestone_id,
+                frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+                council_id=council_id,
+                database_url=database_url,
             )
             invalid_proposals.extend(invalid)
             if not proposals:
+                _finish_planner_council_run(
+                    council_id,
+                    status="failed",
+                    iterations_used=len(iterations),
+                    critic_verdict=None,
+                    database_url=database_url,
+                )
                 raise PlannerCouncilExhausted(iterations, invalid_proposals)
-            consolidated = Consolidator(
+            consolidator = Consolidator(
                 provider=self._provider,
                 profile_name=self._config.consolidator_profile,
                 timeout_seconds=self._config.timeout_seconds_per_invocation,
                 command=self._config.command_for(self._config.consolidator_profile),
-            ).merge(
+            )
+            consolidated = consolidator.merge(
                 proposals=proposals,
                 plan_skeleton=skeleton,
                 prior_consolidated=(
@@ -164,8 +198,19 @@ class PlannerCouncil:
                     if prior is not None and self._config.consolidator_scoped_inputs_enabled
                     else None
                 ),
+                baseline_plan=baseline,
+                replan_from_milestone_id=replan_from_milestone_id,
+                frozen_prefix_slice_ids=frozen_prefix_slice_ids,
                 workflow_id=workflow_id,
                 task_id=task_id,
+            )
+            _record_planner_council_panelist(
+                council_id,
+                iteration=index - 1,
+                panelist_kind="consolidator",
+                panelist_ordinal=0,
+                model_usage_id=consolidator.last_model_usage_id,
+                database_url=database_url,
             )
             consolidated = _repair_unachievable_milestones(consolidated)
             validator_errors = validate_plan_contract(
@@ -199,6 +244,17 @@ class PlannerCouncil:
                     rationale="production_grade accepted cleanly; model critic preempted",
                     preempted=True,
                     qa_write_paths=project_context.qa_write_paths,
+                    baseline_plan=baseline,
+                    frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+                )
+                _record_planner_council_panelist(
+                    council_id,
+                    iteration=index - 1,
+                    panelist_kind="critic",
+                    panelist_ordinal=0,
+                    model_usage_id=None,
+                    vote=critic.verdict,
+                    database_url=database_url,
                 )
             else:
                 critic = CriticRunner(
@@ -210,8 +266,20 @@ class PlannerCouncil:
                     plan=consolidated,
                     project_context=project_context,
                     validator_errors=validator_errors,
+                    baseline_plan=baseline,
+                    replan_from_milestone_id=replan_from_milestone_id,
+                    frozen_prefix_slice_ids=frozen_prefix_slice_ids,
                     workflow_id=workflow_id,
                     task_id=task_id,
+                )
+                _record_planner_council_panelist(
+                    council_id,
+                    iteration=index - 1,
+                    panelist_kind="critic",
+                    panelist_ordinal=0,
+                    model_usage_id=critic.model_usage_id,
+                    vote=critic.verdict,
+                    database_url=database_url,
                 )
             iteration = CouncilIteration(
                 iteration=index,
@@ -227,12 +295,26 @@ class PlannerCouncil:
                 final = consolidated.model_copy(
                     update={"council_reports": _council_reports(iterations)}
                 )
+                _finish_planner_council_run(
+                    council_id,
+                    status="passed",
+                    iterations_used=index,
+                    critic_verdict=critic.verdict,
+                    database_url=database_url,
+                )
                 return CouncilOutcome(
                     final=final,
                     iterations=iterations,
                     accepted_at_iteration=index,
                 )
             prior = iteration
+        _finish_planner_council_run(
+            council_id,
+            status="failed",
+            iterations_used=len(iterations),
+            critic_verdict=iterations[-1].critic.verdict if iterations else None,
+            database_url=database_url,
+        )
         raise PlannerCouncilExhausted(iterations, invalid_proposals)
 
     def _collect_proposals(
@@ -245,6 +327,11 @@ class PlannerCouncil:
         prior_iteration: CouncilIteration | None,
         workflow_id: str | None,
         task_id: str | None,
+        baseline_plan: PlanContract | None,
+        replan_from_milestone_id: str | None,
+        frozen_prefix_slice_ids: list[str] | None,
+        council_id: str | None,
+        database_url: str | None,
     ) -> tuple[list[CouncilProposal], list[InvalidCouncilProposal]]:
         panelist_count = self._config.panelist_count_for_iteration(index)
         if panelist_count <= 1:
@@ -257,6 +344,11 @@ class PlannerCouncil:
                 prior_iteration=prior_iteration,
                 workflow_id=workflow_id,
                 task_id=task_id,
+                baseline_plan=baseline_plan,
+                replan_from_milestone_id=replan_from_milestone_id,
+                frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+                council_id=council_id,
+                database_url=database_url,
             )
             return ([proposal] if proposal is not None else [], [invalid] if invalid else [])
         proposals_by_index: dict[int, CouncilProposal] = {}
@@ -273,6 +365,11 @@ class PlannerCouncil:
                     prior_iteration=prior_iteration,
                     workflow_id=workflow_id,
                     task_id=task_id,
+                    baseline_plan=baseline_plan,
+                    replan_from_milestone_id=replan_from_milestone_id,
+                    frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+                    council_id=council_id,
+                    database_url=database_url,
                 ): panelist_index
                 for panelist_index in range(panelist_count)
             }
@@ -298,6 +395,11 @@ class PlannerCouncil:
         prior_iteration: CouncilIteration | None,
         workflow_id: str | None,
         task_id: str | None,
+        baseline_plan: PlanContract | None,
+        replan_from_milestone_id: str | None,
+        frozen_prefix_slice_ids: list[str] | None,
+        council_id: str | None,
+        database_url: str | None,
     ) -> tuple[CouncilProposal | None, InvalidCouncilProposal | None]:
         runner = PanelistRunner(
             provider=self._provider,
@@ -316,6 +418,9 @@ class PlannerCouncil:
                 prior_iteration=prior_iteration,
                 workflow_id=workflow_id,
                 task_id=task_id,
+                baseline_plan=baseline_plan,
+                replan_from_milestone_id=replan_from_milestone_id,
+                frozen_prefix_slice_ids=frozen_prefix_slice_ids,
             )
         except CandidateInvalid as exc:
             panelist_id = f"panelist-{panelist_index}"
@@ -326,6 +431,14 @@ class PlannerCouncil:
                 model_usage_id=getattr(exc, "model_usage_id", None),
             )
         panelist_id = f"panelist-{panelist_index}"
+        _record_planner_council_panelist(
+            council_id,
+            iteration=iteration - 1,
+            panelist_kind="panelist",
+            panelist_ordinal=panelist_index,
+            model_usage_id=usage_id,
+            database_url=database_url,
+        )
         return CouncilProposal(
             panelist_id=panelist_id,
             candidate=candidate,
@@ -345,6 +458,82 @@ def run_council(
         feature_goal=feature_goal,
         project_context=project_context,
     )
+
+
+def _create_planner_council_run(
+    *,
+    feature_id: str | None,
+    task_id: str | None,
+    config: CouncilConfig,
+    purpose: str,
+    database_url: str | None,
+) -> str | None:
+    if not feature_id or database_url is None:
+        return None
+    row = create_council_run(
+        feature_id=str(feature_id),
+        task_id=str(task_id) if task_id else None,
+        role="planner",
+        purpose=purpose,
+        iteration_max=config.max_iterations,
+        database_url=database_url,
+    )
+    return str(row["id"])
+
+
+def _finish_planner_council_run(
+    council_id: str | None,
+    *,
+    status: str,
+    iterations_used: int,
+    critic_verdict: str | None,
+    database_url: str | None,
+) -> None:
+    if council_id is None or database_url is None:
+        return
+    finish_council_run(
+        council_id,
+        status=status,
+        iterations_used=iterations_used,
+        critic_verdict=critic_verdict,
+        database_url=database_url,
+    )
+
+
+def _record_planner_council_panelist(
+    council_id: str | None,
+    *,
+    iteration: int,
+    panelist_kind: str,
+    panelist_ordinal: int,
+    model_usage_id: int | None,
+    vote: str | None = None,
+    database_url: str | None,
+) -> None:
+    if council_id is None or database_url is None:
+        return
+    record_council_panelist(
+        council_id=council_id,
+        iteration=iteration,
+        panelist_kind=panelist_kind,
+        panelist_ordinal=panelist_ordinal,
+        model_usage_id=model_usage_id,
+        vote=vote,
+        database_url=database_url,
+    )
+
+
+def _baseline_plan_contract(value: dict[str, Any] | PlanContract | None) -> PlanContract | None:
+    if value is None:
+        return None
+    if isinstance(value, PlanContract):
+        return value
+    if isinstance(value, dict):
+        try:
+            return PlanContract.model_validate(value)
+        except Exception:
+            return None
+    return None
 
 
 def _council_reports(iterations: list[CouncilIteration]) -> list[dict[str, Any]]:

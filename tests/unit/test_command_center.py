@@ -17,7 +17,10 @@ from pgloom_engineering.command_center.auth import assert_loopback_bind, is_loop
 from pgloom_engineering.command_center.realtime import WebSocketHub
 from pgloom_engineering.command_center.serializers import serialize_row, usd_to_micros
 from pgloom_engineering.contract_store import (
+    create_council_run,
+    finish_council_run,
     finish_worker_run,
+    record_council_panelist,
     record_handoff,
     start_worker_run,
     upsert_task_contract,
@@ -199,6 +202,93 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
     assert stored_artifact["source_command"] == "./gradlew :core:test"
     assert stored_artifact["metadata"]["source_worker_run_id"] == finished["id"]
+
+
+def test_command_center_exposes_council_runs_and_panelists(database_url: str) -> None:
+    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
+    feature = create_feature(
+        workflow_id=workflow["id"],
+        project="demo",
+        database_url=database_url,
+    )
+    task = enqueue_task(
+        workflow_id=workflow["id"],
+        domain="engineering",
+        task_type="engineering.plan",
+        slot="planner",
+        database_url=database_url,
+    )
+    run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="planner",
+        phase="plan",
+        database_url=database_url,
+    )
+    with connect(database_url) as conn, conn.transaction():
+        usage = conn.execute(
+            """
+            insert into model_usage(
+              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
+              metadata
+            )
+            values (%s, %s, 'planner-panelist', 1000, 20, 0, %s)
+            returning id
+            """,
+            (
+                workflow["id"],
+                task["id"],
+                jsonb(
+                    {
+                        "provider": "codex",
+                        "model": "gpt-5.5",
+                        "reasoning_level": "medium",
+                        "cached_input_tokens": 800,
+                        "reasoning_tokens": 5,
+                    }
+                ),
+            ),
+        ).fetchone()
+    assert usage is not None
+    council = create_council_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="planner",
+        purpose="initial_plan",
+        iteration_max=2,
+        database_url=database_url,
+    )
+    panelist = record_council_panelist(
+        council_id=council["id"],
+        iteration=0,
+        panelist_kind="panelist",
+        panelist_ordinal=0,
+        model_usage_id=usage["id"],
+        database_url=database_url,
+    )
+    finished = finish_council_run(
+        council["id"],
+        status="passed",
+        iterations_used=1,
+        critic_verdict="accept",
+        database_url=database_url,
+    )
+
+    assert panelist["model_provider"] == "codex"
+    assert panelist["model"] == "gpt-5.5"
+    assert panelist["worker_run_id"] == run["id"]
+    assert finished["cost_usd_micros"] == 2150
+    rows = store.councils(feature["id"], database_url=database_url)
+    assert rows[0]["id"] == council["id"]
+    assert rows[0]["cost_usd_micros"] == 2150
+    detail = store.council_detail(
+        feature["id"],
+        council["id"],
+        database_url=database_url,
+    )
+    assert detail is not None
+    assert detail["panelists"][0]["model_provider"] == "codex"
+    assert detail["worker_runs"][0]["id"] == run["id"]
 
 
 def test_command_center_exposes_persisted_milestones_handoffs_slots_and_artifacts(
