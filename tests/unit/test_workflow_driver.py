@@ -372,7 +372,7 @@ def test_review_rejected_benchmark_finding_requests_qa_author_repair(
     assert payload["replan_context"]["blocker_code"] == "engineering.review_rejected"
     summary = payload["replan_context"]["summary"]
     assert "QA-owned benchmark/test harness" in summary
-    assert "Do not emit an implementation-only plan" in summary
+    assert "Do not emit an implementation slice" in summary
 
 
 def test_review_rejected_mixed_api_and_test_finding_requests_implementation_repair(

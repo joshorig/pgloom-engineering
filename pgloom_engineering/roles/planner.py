@@ -650,6 +650,13 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     blocker_code = str(context.get("blocker_code") or "")
     qa_owned = _corrective_context_mentions_qa_owned_paths(context)
     if blocker_code == "engineering.review_rejected" and qa_owned:
+        if not _corrective_context_mentions_production_defect(context):
+            return {
+                "engineering.qa.author",
+                "engineering.review",
+                "engineering.qa.verify.scrutiny",
+                "engineering.qa.verify.usertest",
+            }
         return {
             "engineering.qa.author",
             "engineering.implement",
@@ -693,6 +700,25 @@ def _corrective_context_mentions_qa_owned_paths(context: dict[str, Any]) -> bool
         "forbidden qa",
     ]
     return any(signal in context_text for signal in qa_owned_signals)
+
+
+def _corrective_context_mentions_production_defect(context: dict[str, Any]) -> bool:
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    production_signals = [
+        "core/src/main",
+        "store/src/main",
+        "public prefix overload",
+        "required public api",
+        "required byte[]",
+        "not implemented",
+        "api shape",
+        "production code",
+        "production-code",
+    ]
+    return any(signal in context_text for signal in production_signals)
 
 
 def _build_council(

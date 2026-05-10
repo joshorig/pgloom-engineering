@@ -431,10 +431,11 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             return (
                 "Previous reviewer verdict rejected QA-owned benchmark/test harness "
                 "coverage. Replan must emit a narrow QA-author repair slice with "
-                "project-metadata-approved benchmark/test paths, followed by any required "
-                "implementation repair, review, and split validators. Do not emit an "
-                "implementation-only plan that forbids the files named in the reviewer "
-                f"finding. Preserve these reviewer findings: {blocker_reason}{detail}"
+                "project-metadata-approved benchmark/test paths, followed by review and "
+                "split validators. Do not emit an implementation slice unless the reviewer "
+                "finding explicitly names a production source defect under core/src/main "
+                "or store/src/main. Preserve these reviewer findings: "
+                f"{blocker_reason}{detail}"
             )
         return (
             "Previous reviewer verdict required coder repair. Replan must emit a narrow "
@@ -528,11 +529,11 @@ def _review_rejection_mentions_production_surface(context_text: str) -> bool:
         for signal in [
             "core/src/main",
             "store/src/main",
-            "public api",
+            "public prefix overload",
+            "required public api",
+            "required byte[]",
+            "not implemented",
             "api shape",
-            "implementation",
-            "store implementation",
-            "store implementations",
             "production code",
             "production-code",
         ]

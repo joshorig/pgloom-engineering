@@ -338,12 +338,10 @@ def test_apply_corrective_slice_scope_routes_qa_owned_review_rejection_to_qa_aut
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
         "qa-author-repair",
-        "impl-fix",
         "review",
     ]
     assert scoped.task_slices[0].depends_on == []
     assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
-    assert scoped.task_slices[2].depends_on == ["impl-fix"]
 
 
 def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_failure() -> None:
@@ -503,14 +501,12 @@ def test_apply_corrective_slice_scope_routes_review_benchmark_rejection_to_qa_au
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
         "qa-author-repair",
-        "impl-fix",
         "review",
         "qa-scrutiny",
     ]
     assert scoped.task_slices[0].depends_on == []
     assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
-    assert scoped.task_slices[2].depends_on == ["impl-fix"]
-    assert scoped.task_slices[3].depends_on == ["review"]
+    assert scoped.task_slices[2].depends_on == ["review"]
 
 
 def test_apply_corrective_slice_scope_routes_path_violation_to_qa_author() -> None:
