@@ -3,16 +3,21 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pgloom_engineering.command_center import store
 from pgloom_engineering.command_center.auth import (
+    DEV_ORIGINS,
+    HostAllowlistMiddleware,
     LoopbackOnlyMiddleware,
+    assert_allowed_websocket,
     assert_loopback_bind,
     assert_loopback_websocket,
 )
@@ -36,12 +41,22 @@ class CommandCenterSettings(BaseSettings):
     database_url: str | None = None
     start_realtime: bool = True
     local_only: bool = False
+    allowed_hosts: str = ""
+    dev_mode: bool = False
 
     @property
     def effective_database_url(self) -> str | None:
         return self.database_url or os.environ.get("PGLOOM_DATABASE_URL") or _env_value(
             "PGLOOM_DATABASE_URL"
         )
+
+    @property
+    def effective_dev_mode(self) -> bool:
+        return self.dev_mode or os.environ.get("CC_DEV_MODE") == "1"
+
+    @property
+    def host_allowlist(self) -> set[str]:
+        return _csv_values(self.allowed_hosts or os.environ.get("CC_ALLOWED_HOSTS", ""))
 
 
 class InterventionIn(BaseModel):
@@ -75,8 +90,17 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
                 await bridge.stop()
 
     app = FastAPI(title="Command Center", lifespan=lifespan)
+    app.add_middleware(HostAllowlistMiddleware, allowed_hosts=resolved.host_allowlist)
     if resolved.local_only:
         app.add_middleware(LoopbackOnlyMiddleware)
+    if resolved.effective_dev_mode:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=sorted(DEV_ORIGINS),
+            allow_credentials=False,
+            allow_methods=["GET", "POST"],
+            allow_headers=["content-type"],
+        )
     app.state.command_center_settings = resolved
     app.state.command_center_hub = hub
 
@@ -205,6 +229,89 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
             database_url=resolved.effective_database_url,
         )
 
+    @app.get("/api/features/{feature_id}/tasks/{task_id}")
+    def api_task_header(
+        feature_id: str,
+        task_id: str,
+    ) -> dict[str, Any]:
+        task = store.task_header(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        return task
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/runs")
+    def api_task_runs(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_runs(feature_id, task_id, database_url=resolved.effective_database_url)
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/handoffs")
+    def api_task_handoffs(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_handoffs(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/qa")
+    def api_task_qa(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_qa(feature_id, task_id, database_url=resolved.effective_database_url)
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/recovery")
+    def api_task_recovery(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_recovery(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/interventions")
+    def api_task_interventions(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_interventions(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/artifacts")
+    def api_task_artifacts(
+        feature_id: str,
+        task_id: str,
+    ) -> list[dict[str, Any]]:
+        return store.task_artifacts(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+
+    @app.get("/api/features/{feature_id}/tasks/{task_id}/telemetry")
+    def api_task_telemetry(
+        feature_id: str,
+        task_id: str,
+    ) -> dict[str, Any]:
+        return store.task_telemetry(
+            feature_id,
+            task_id,
+            database_url=resolved.effective_database_url,
+        )
+
     @app.get("/api/features/{feature_id}/handoffs")
     def api_handoffs(
         feature_id: str
@@ -266,16 +373,35 @@ def create_app(settings: CommandCenterSettings | None = None) -> FastAPI:
         feature_id: str,
         body: InterventionIn
     ) -> dict[str, Any]:
-        return store.create_intervention(
+        row = store.create_intervention(
             feature_id,
             action_type=body.action_type,
             payload=body.payload,
             actor=body.actor,
             database_url=resolved.effective_database_url,
         )
+        if body.action_type in {"pause_feature", "resume_feature"}:
+            hub.publish(
+                {
+                    "v": 1,
+                    "kind": "feature.update",
+                    "feature_id": feature_id,
+                    "row_id": row.get("id"),
+                    "fields": ["paused"],
+                    "ts": datetime.now(UTC).isoformat(timespec="milliseconds").replace(
+                        "+00:00", "Z"
+                    ),
+                }
+            )
+        return row
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
+        await assert_allowed_websocket(
+            websocket,
+            allowed_hosts=resolved.host_allowlist,
+            dev_mode=resolved.effective_dev_mode,
+        )
         if resolved.local_only:
             await assert_loopback_websocket(websocket)
         await websocket_loop(websocket, hub)
@@ -299,3 +425,7 @@ def _env_value(key: str) -> str | None:
         if name == key:
             return value.strip().strip('"').strip("'")
     return None
+
+
+def _csv_values(value: str) -> set[str]:
+    return {item.strip() for item in value.split(",") if item.strip()}

@@ -145,7 +145,7 @@ def test_engineering_provider_records_codex_jsonl_usage(
     assert row["metadata"]["token_count_source"] == "codex_json_usage"
     assert row["metadata"]["cached_input_tokens"] == 90
     assert row["metadata"]["reasoning_output_tokens"] == 3
-    assert float(row["cost_usd"]) == pytest.approx(0.000545)
+    assert float(row["cost_usd"]) == pytest.approx(0.000455)
     assert row["metadata"]["prompt_estimated_tokens"] > 0
     assert row["metadata"]["prompt_bytes"] == len(b"hello")
     assert row["metadata"]["stdout_bytes"] > 0

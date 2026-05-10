@@ -1,4 +1,4 @@
-import { Activity, Command, GitBranch, LayoutDashboard, Network, Pause, Play, Radio, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { Activity, Command, GitBranch, LayoutDashboard, Network, Pause, Play, Radio, Search, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import type { ReactNode } from "react";
 import { formatMicros, formatSeconds, formatTokens } from "../lib/money";
 
@@ -98,6 +98,7 @@ export function Stat({ k, v, d }: { k: string; v: ReactNode; d?: ReactNode }) {
 export const routeTabs = [
   { id: "", label: "Overview", icon: LayoutDashboard },
   { id: "dag", label: "DAG", icon: Network },
+  { id: "councils", label: "Councils", icon: UsersRound },
   { id: "handoffs", label: "Handoffs", icon: GitBranch },
   { id: "validation", label: "Validation", icon: ShieldCheck },
   { id: "telemetry", label: "Telemetry", icon: Activity },

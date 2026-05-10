@@ -4,7 +4,7 @@ import { useApi, type FeatureRow } from "../api";
 import { CostCell, StatusPill } from "../components/primitives";
 import { formatMicros } from "../lib/money";
 
-type SortKey = "feature_id" | "project" | "branch" | "state" | "runs" | "cost" | "roles" | "blocker" | "created_at";
+type SortKey = "feature_id" | "project" | "branch" | "state" | "abort_reason" | "runs" | "cost" | "roles" | "blocker" | "created_at";
 type SortDir = "asc" | "desc" | null;
 
 const sortable: Array<{ key: SortKey; label: string; align?: "right"; width?: string }> = [
@@ -12,6 +12,7 @@ const sortable: Array<{ key: SortKey; label: string; align?: "right"; width?: st
   { key: "project", label: "project", width: "12%" },
   { key: "branch", label: "branch", width: "16%" },
   { key: "state", label: "state", width: "92px" },
+  { key: "abort_reason", label: "abort_reason", width: "130px" },
   { key: "runs", label: "runs", align: "right", width: "70px" },
   { key: "cost", label: "cost", align: "right", width: "88px" },
   { key: "roles", label: "roles", width: "92px" },
@@ -25,6 +26,11 @@ export function FeaturesList() {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showAbortReason, setShowAbortReason] = useState(false);
+  const visibleColumns = useMemo(
+    () => sortable.filter((col) => showAbortReason || col.key !== "abort_reason"),
+    [showAbortReason]
+  );
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -34,6 +40,7 @@ export function FeaturesList() {
         row.project,
         row.branch,
         row.state,
+        row.abort_reason,
         row.roles_seen,
         row.last_blocker
       ].some((value) => String(value || "").toLowerCase().includes(needle)))
@@ -72,6 +79,7 @@ export function FeaturesList() {
           />
           <span className="cc-chip is-on">state:any<span className="cc-chip-x">×</span></span>
           <span className="cc-chip">role:any</span>
+          <button className={`cc-chip ${showAbortReason ? "is-on" : ""}`} onClick={() => setShowAbortReason((value) => !value)} type="button">abort_reason</button>
           <button className="cc-btn cc-btn-ghost" title="Search command center">
             <Search size={13} />
             <span className="mono cc-dim">⌘K</span>
@@ -97,7 +105,7 @@ export function FeaturesList() {
             <thead>
               <tr>
                 <th style={{ width: 28 }}></th>
-                {sortable.map((col) => (
+                {visibleColumns.map((col) => (
                   <th key={col.key} style={{ width: col.width, textAlign: col.align }}>
                     <button className="cc-sort" onClick={() => setSort(col.key)} type="button">
                       <span>{col.label}</span>
@@ -117,6 +125,7 @@ export function FeaturesList() {
                     <td className="mono cc-dim cc-ellipsis" title={row.project}>{row.project}</td>
                     <td className="mono cc-dim cc-ellipsis" title={row.branch || "-"}>{row.branch || "-"}</td>
                     <td><StatusPill status={row.paused ? "paused" : row.state} /></td>
+                    {showAbortReason && <td className="mono cc-dim cc-ellipsis" title={row.abort_reason || "-"}>{row.abort_reason ? <StatusPill status="blocked" label={row.abort_reason} /> : "-"}</td>}
                     <td className="num" style={{ textAlign: "right" }}>{row.runs || 0}</td>
                     <td style={{ textAlign: "right" }}><CostCell micros={row.cost_usd_micros} precision={2} /></td>
                     <td><RoleBars rolesSeen={row.roles_seen} /></td>
@@ -165,6 +174,7 @@ function valueForSort(row: FeatureRow, key: SortKey) {
     case "runs": return Number(row.runs || 0);
     case "roles": return row.roles_seen || "";
     case "blocker": return row.last_blocker || "";
+    case "abort_reason": return row.abort_reason || "";
     case "created_at": return Date.parse(row.created_at || "") || 0;
     default: return row[key] || "";
   }

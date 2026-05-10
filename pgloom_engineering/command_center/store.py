@@ -23,10 +23,10 @@ case
       coalesce((metadata->>'cached_input_tokens')::integer, 0)
       + coalesce((metadata->>'cache_read_input_tokens')::integer, 0)
     ) * 0.50
-    + output_tokens * 30.0
-    + (
+    + greatest(
+      output_tokens,
       coalesce((metadata->>'reasoning_tokens')::integer, 0)
-      + coalesce((metadata->>'reasoning_output_tokens')::integer, 0)
+        + coalesce((metadata->>'reasoning_output_tokens')::integer, 0)
     ) * 30.0
   ) / 1000000.0
   else cost_usd
@@ -71,6 +71,9 @@ def list_features(*, database_url: str | None, limit: int = 50) -> list[dict[str
             else coalesce(w.state, ef.state)
           end as state,
           coalesce(ef.pr_url, '-') as pr_url,
+          ef.abort_reason,
+          ef.abort_detail,
+          ef.aborted_at,
           ef.created_at,
           ef.updated_at,
           coalesce(r.runs, 0) as runs,
@@ -110,6 +113,9 @@ def get_feature(feature_id: str, *, database_url: str | None) -> dict[str, Any] 
                ef.project,
                ef.branch,
                ef.pr_url,
+               ef.abort_reason,
+               ef.abort_detail,
+               ef.aborted_at,
                ef.state as feature_state,
                w.state as workflow_state,
                case
@@ -578,6 +584,196 @@ def list_table(
         database_url=database_url,
     )
     return serialize_rows(rows)
+
+
+def task_header(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> dict[str, Any] | None:
+    row = _fetchone(
+        """
+        select
+          etc.*,
+          t.state as runtime_state,
+          t.task_type,
+          t.slot,
+          t.lease_owner,
+          t.terminal_reason,
+          t.terminal_detail,
+          epc.version as plan_version,
+          epc.status as plan_status,
+          epc.active as plan_active
+        from engineering_task_contracts etc
+        left join tasks t on t.id = etc.task_id
+        left join engineering_plan_contracts epc on epc.id = etc.plan_contract_id
+        where etc.feature_id = %s and etc.task_id = %s
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_row(row) if row is not None else None
+
+
+def task_runs(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_worker_runs
+        where feature_id = %s and task_id = %s
+        order by coalesce(started_at, created_at), id
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_handoffs(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_handoffs
+        where feature_id = %s and (from_task_id = %s or to_task_id = %s)
+        order by created_at, id
+        """,
+        (feature_id, task_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_qa(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_qa_signoffs
+        where feature_id = %s and task_id = %s
+        order by created_at, id
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_recovery(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_recovery_actions
+        where feature_id = %s and task_id = %s
+        order by created_at, id
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_interventions(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select *
+        from engineering_operator_interventions
+        where feature_id = %s and payload->>'task_id' = %s
+        order by created_at, id
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_artifacts(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select
+          a.id,
+          a.workflow_id as feature_id,
+          a.task_id,
+          a.artifact_type as kind,
+          coalesce(
+            a.metadata->>'name',
+            a.metadata->>'display_name',
+            nullif(regexp_replace(a.uri, '^.*/', ''), ''),
+            a.id
+          ) as name,
+          a.uri as path,
+          a.size_bytes,
+          a.sha256,
+          a.metadata,
+          a.created_at
+        from artifacts a
+        where a.workflow_id = %s and a.task_id = %s
+        order by
+          case a.artifact_type
+            when 'worktree_diff' then 0
+            when 'file_snapshots' then 1
+            else 2
+          end,
+          a.created_at,
+          a.id
+        """,
+        (feature_id, task_id),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def task_telemetry(
+    feature_id: str,
+    task_id: str,
+    *,
+    database_url: str | None,
+) -> dict[str, Any]:
+    rows = task_runs(feature_id, task_id, database_url=database_url)
+    totals = {
+        "runs": len(rows),
+        "input_tokens": sum(int(row.get("input_tokens") or 0) for row in rows),
+        "cached_input_tokens": sum(int(row.get("cached_input_tokens") or 0) for row in rows),
+        "output_tokens": sum(int(row.get("output_tokens") or 0) for row in rows),
+        "reasoning_tokens": sum(int(row.get("reasoning_tokens") or 0) for row in rows),
+        "cost_usd_micros": sum(int(row.get("cost_usd_micros") or 0) for row in rows),
+        "running_seconds": sum(float(row.get("running_seconds") or 0) for row in rows),
+        "queued_seconds": sum(float(row.get("queued_seconds") or 0) for row in rows),
+        "leased_seconds": sum(float(row.get("leased_seconds") or 0) for row in rows),
+        "model_seconds": sum(float(row.get("model_seconds") or 0) for row in rows),
+        "verification_seconds": sum(float(row.get("verification_seconds") or 0) for row in rows),
+        "blocked_seconds": sum(float(row.get("blocked_seconds") or 0) for row in rows),
+    }
+    return totals
 
 
 def _legacy_councils(
