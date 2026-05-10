@@ -190,6 +190,64 @@ def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:
     ]
 
 
+def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct implementer contract output.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair range scan implementation.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["docs/"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review fix.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["docs/"],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        acceptance_test_matrix=["range scans work"],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementer_contract_invalid",
+                "blocked_slice_allowed_paths": [
+                    "store/src/main/java/com/joshorig/ull/lvc/store/mmap/"
+                ],
+                "blocked_slice_forbidden_paths": [
+                    "core/src/main/java/com/joshorig/ull/lvc/metrics/"
+                ],
+            }
+        },
+    )
+
+    implementer = scoped.task_slices[0]
+    reviewer = scoped.task_slices[1]
+    assert implementer.allowed_paths == [
+        "store/src/main/java/com/joshorig/ull/lvc/store/mmap/"
+    ]
+    assert implementer.forbidden_paths == [
+        "core/src/main/java/com/joshorig/ull/lvc/metrics/"
+    ]
+    assert reviewer.allowed_paths == ["core/src/main/java/", "store/src/main/java/"]
+
+
 def test_apply_corrective_slice_scope_keeps_one_best_implementer_slice() -> None:
     plan = PlanContract(
         feature_id="wf_range",

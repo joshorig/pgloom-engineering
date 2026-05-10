@@ -468,7 +468,8 @@ def _apply_corrective_slice_scope(
                     task_slice,
                     dependency_by_type=dependency_by_type,
                     kept_ids=kept_ids,
-                )
+                ),
+                **_corrective_path_scope(task_slice, context),
             }
         )
         for task_slice in kept
@@ -489,6 +490,29 @@ def _apply_corrective_slice_scope(
             "milestones": scoped_milestones,
         }
     )
+
+
+def _corrective_path_scope(
+    task_slice: TaskSliceContract,
+    context: dict[str, Any],
+) -> dict[str, list[str]]:
+    if task_slice.task_type != "engineering.implement":
+        return {}
+    allowed = _context_string_list(context, "blocked_slice_allowed_paths")
+    forbidden = _context_string_list(context, "blocked_slice_forbidden_paths")
+    update: dict[str, list[str]] = {}
+    if allowed:
+        update["allowed_paths"] = allowed
+    if forbidden:
+        update["forbidden_paths"] = forbidden
+    return update
+
+
+def _context_string_list(context: dict[str, Any], key: str) -> list[str]:
+    raw = context.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item)]
 
 
 def _narrow_corrective_slice_chain(

@@ -116,6 +116,7 @@ class EngineeringSettings(BaseSettings):
     implementer_profile: str = "implementer"
     implementer_command: list[str] = Field(default_factory=lambda: ["cat"])
     implementer_invocation_timeout_seconds: float = 600.0
+    implementer_inline_repair_attempts: int = 0
     implementer_codex_model: str = "gpt-5.4"
     implementer_codex_reasoning: str = "medium"
     implementer_claude_model: str = "sonnet"

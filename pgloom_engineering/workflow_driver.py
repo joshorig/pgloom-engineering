@@ -282,6 +282,10 @@ def _replan_payload(
         aggregate,
         str(blocked_task.get("blocker_code") or ""),
     )
+    blocked_contract = _task_contract_for_task(
+        aggregate,
+        str(blocked_task.get("id") or ""),
+    )
     summary = _replan_summary(blocked_task, repeat_count=repeat_count)
     failure_context = _failure_context(blocked_task)
     revised_goal = goal.model_copy(
@@ -312,6 +316,16 @@ def _replan_payload(
             "blocker_code": str(blocked_task.get("blocker_code") or ""),
             "blocker_reason": str(blocked_task.get("blocker_reason") or ""),
             "failure_context": failure_context,
+            "blocked_task_contract": blocked_contract,
+            "blocked_slice_allowed_paths": _contract_string_list(
+                blocked_contract,
+                "allowed_paths",
+            ),
+            "blocked_slice_forbidden_paths": _contract_string_list(
+                blocked_contract,
+                "forbidden_paths",
+            ),
+            "blocked_slice_id": _blocked_slice_id(blocked_contract),
             "attempt": int(blocked_task.get("attempt") or 1),
             "same_blocker_recovery_count": repeat_count,
             "summary": summary,
@@ -344,6 +358,45 @@ def _completed_recovery_count(aggregate: dict[str, Any], blocker_code: str) -> i
             continue
         count += 1
     return count
+
+
+def _task_contract_for_task(
+    aggregate: dict[str, Any],
+    task_id: str,
+) -> dict[str, Any] | None:
+    if not task_id:
+        return None
+    for row in aggregate.get("task_contracts") or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("task_id") or "") != task_id:
+            continue
+        contract = row.get("input_contract")
+        return dict(contract) if isinstance(contract, dict) else None
+    return None
+
+
+def _contract_string_list(
+    contract: dict[str, Any] | None,
+    key: str,
+) -> list[str]:
+    if not isinstance(contract, dict):
+        return []
+    raw = contract.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item)]
+
+
+def _blocked_slice_id(contract: dict[str, Any] | None) -> str | None:
+    if not isinstance(contract, dict):
+        return None
+    inputs = contract.get("inputs")
+    if isinstance(inputs, dict) and inputs.get("task_slice_id"):
+        return str(inputs["task_slice_id"])
+    if contract.get("task_slice_id"):
+        return str(contract["task_slice_id"])
+    return None
 
 
 def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> str:

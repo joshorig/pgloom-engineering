@@ -167,6 +167,7 @@ def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
 def test_implementer_repairs_contract_path_and_verification_failures(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
+    monkeypatch.setenv("PGLOOM_ENGINEERING_IMPLEMENTER_INLINE_REPAIR_ATTEMPTS", "1")
     worktree = _git_repo(tmp_path)
     worktree.joinpath("tests").mkdir()
     worktree.joinpath("tests/test_red.py").write_text(
@@ -199,8 +200,8 @@ def test_implementer_repairs_stale_reported_blockers(
     result = ImplementerHandler(provider=provider).handle(_task())
 
     assert result.status == "done"
-    assert provider.calls == 2
-    assert result.result["repair_attempts"] == 1
+    assert provider.calls == 1
+    assert result.result["repair_attempts"] == 0
     contract = result.result["task_result_contract"]
     assert contract["blockers"] == []
     assert contract["commands_run"][0]["exit_code"] == 0
@@ -221,7 +222,7 @@ def test_implementer_clears_persistent_reported_blockers_when_verification_passe
     result = ImplementerHandler(provider=provider).handle(_task())
 
     assert result.status == "done"
-    assert provider.calls == 3
+    assert provider.calls == 1
     contract = result.result["task_result_contract"]
     assert contract["blockers"] == []
     assert contract["commands_run"][0]["exit_code"] == 0

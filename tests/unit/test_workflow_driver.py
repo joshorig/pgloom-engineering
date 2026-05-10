@@ -810,6 +810,53 @@ def test_replan_payload_carries_active_plan_contract_id() -> None:
     assert payload["replan_context"]["active_plan_contract_id"] == "plan-active-1"
 
 
+def test_replan_payload_carries_blocked_task_path_scope() -> None:
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        {
+            **_aggregate(
+                [
+                    {
+                        "id": "impl-1",
+                        "slot": "implementer",
+                        "task_type": "engineering.implement",
+                        "state": "blocked",
+                        "attempt": 1,
+                        "blocker_code": "engineering.implementer_contract_invalid",
+                    }
+                ]
+            ),
+            "task_contracts": [
+                {
+                    "task_id": "impl-1",
+                    "input_contract": {
+                        "task_type": "engineering.implement",
+                        "allowed_paths": [
+                            "store/src/main/java/com/example/RangeStore.java"
+                        ],
+                        "forbidden_paths": ["core/src/main/java/"],
+                        "inputs": {"task_slice_id": "impl-range"},
+                    },
+                }
+            ],
+        },
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementer_contract_invalid",
+            "blocker_reason": "handler output failed schema validation",
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert context["blocked_slice_allowed_paths"] == [
+        "store/src/main/java/com/example/RangeStore.java"
+    ]
+    assert context["blocked_slice_forbidden_paths"] == ["core/src/main/java/"]
+    assert context["blocked_slice_id"] == "impl-range"
+
+
 def test_replan_payload_carries_implementation_failure_evidence() -> None:
     payload = workflow_driver._replan_payload(  # noqa: SLF001
         "feature-1",

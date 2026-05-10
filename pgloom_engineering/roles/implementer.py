@@ -158,7 +158,10 @@ class ImplementerHandler:
             token_savior_usage_ids.append(usage_id)
 
         repair_attempts = 0
-        max_repair_attempts = 2
+        max_repair_attempts = max(
+            0,
+            int(getattr(settings, "implementer_inline_repair_attempts", 0)),
+        )
         while True:
             touched = _implementation_changed_files(worktree, baseline, project.metadata)
             violations = implementation_path_violations(touched, task_contract)
