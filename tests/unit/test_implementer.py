@@ -223,6 +223,36 @@ def test_implementer_blocks_preexisting_forbidden_dirty_paths(
     ]
 
 
+def test_dirty_scope_path_violations_block_stale_variant_files() -> None:
+    task_contract = _implementer_contract().model_copy(
+        update={
+            "objective": "Implement zero-allocation SINGLE-store ascending scans.",
+            "expected_outputs": ["SINGLE-store range scan implementation"],
+            "allowed_paths": ["store/src/main/java/"],
+            "forbidden_paths": ["tests/"],
+        }
+    )
+    qa_contract = QAAuthorContract(feature_id="feature-1", task_id="qa-1")
+
+    violations = implementer._dirty_scope_path_violations(  # noqa: SLF001
+        [
+            "store/src/main/java/com/example/SingleStore.java",
+            "store/src/main/java/com/example/DoubleStore.java",
+        ],
+        touched=["store/src/main/java/com/example/SingleStore.java"],
+        task_contract=task_contract,
+        qa_contract=qa_contract,
+    )
+
+    assert violations == [
+        {
+            "path": "store/src/main/java/com/example/DoubleStore.java",
+            "reason": "preexisting_out_of_scope_dirty_path",
+            "scope": "single_only",
+        }
+    ]
+
+
 def test_implementer_repairs_contract_path_and_verification_failures(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

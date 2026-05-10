@@ -172,6 +172,12 @@ class ImplementerHandler:
                     task_contract=task_contract,
                     qa_contract=qa_contract,
                 ),
+                *_dirty_scope_path_violations(
+                    relevant_changed_files(changed_files(worktree), project.metadata),
+                    touched=touched,
+                    task_contract=task_contract,
+                    qa_contract=qa_contract,
+                ),
             ]
             verification_results = [
                 run_qa_verification(
@@ -821,6 +827,72 @@ def _dirty_forbidden_path_violations(
                 }
             )
     return violations
+
+
+def _dirty_scope_path_violations(
+    paths: list[str],
+    *,
+    touched: list[str],
+    task_contract: TaskContract,
+    qa_contract: QAAuthorContract,
+) -> list[dict[str, str]]:
+    touched_set = set(touched)
+    qa_paths = _qa_authored_paths(qa_contract)
+    scope = _task_variant_scope(task_contract)
+    if not scope:
+        return []
+    violations: list[dict[str, str]] = []
+    for path in paths:
+        if path in touched_set or _path_in_roots(path, qa_paths):
+            continue
+        if not any(path_matches(path, root) for root in task_contract.allowed_paths):
+            continue
+        conflict = _scope_conflict(path, scope)
+        if conflict:
+            violations.append(
+                {
+                    "path": path,
+                    "reason": "preexisting_out_of_scope_dirty_path",
+                    "scope": conflict,
+                }
+            )
+    return violations
+
+
+def _task_variant_scope(task_contract: TaskContract) -> set[str]:
+    text = " ".join(
+        [
+            task_contract.objective,
+            " ".join(task_contract.expected_outputs),
+            " ".join(_string_list(task_contract.inputs.get("acceptance_assertion_ids"))),
+            " ".join(_string_list(task_contract.inputs.get("grading_criteria"))),
+        ]
+    ).lower()
+    scope: set[str] = set()
+    pairs = {
+        "single": "double",
+        "double": "single",
+        "direct": "mmap",
+        "mmap": "direct",
+    }
+    for include, exclude in pairs.items():
+        if include in text and exclude not in text:
+            scope.add(include)
+    return scope
+
+
+def _scope_conflict(path: str, scope: set[str]) -> str | None:
+    lowered = path.lower()
+    conflicts = {
+        "single": "double",
+        "double": "single",
+        "direct": "mmap",
+        "mmap": "direct",
+    }
+    for scoped, conflicting in conflicts.items():
+        if scoped in scope and conflicting in lowered:
+            return f"{scoped}_only"
+    return None
 
 
 def _qa_authored_paths(qa_contract: QAAuthorContract) -> list[str]:
