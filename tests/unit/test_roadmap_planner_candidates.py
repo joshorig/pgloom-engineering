@@ -398,13 +398,20 @@ def _qa_usertest_slice(slice_id: str, *, depends_on: list[str]) -> TaskSliceCont
     return _slice(
         slice_id,
         "qa",
-        "Run user-test harness or record metadata-authorized skip.",
+        "Run a focused consumer-style CLI/API user-test harness.",
         task_type="engineering.qa.verify.usertest",
         allowed_paths=["tests/", "qa/fixtures/"],
         forbidden_paths=["store/", "sbe-adapters/", "conformance-tests/", "docs/", ".git/"],
         depends_on=depends_on,
         expected_outputs=["QAResultContract"],
-        verification_commands=[["./qa/smoke.sh"]],
+        verification_commands=[
+            [
+                "./gradlew",
+                ":store:test",
+                "--tests",
+                "com.example.RangeQueryUserFlowTest",
+            ]
+        ],
     )
 
 
