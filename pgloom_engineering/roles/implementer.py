@@ -436,6 +436,7 @@ def build_implementer_repair_prompt(
                     "exit_code": item.original.exit_code,
                     "stdout_excerpt": item.stdout_excerpt,
                     "stderr_excerpt": item.stderr_excerpt,
+                    "artifact_hints": _verification_artifact_hints(item, worktree=worktree),
                 }
                 for item in failed_verifications
             ],
@@ -583,6 +584,23 @@ def _verification_blocker_reason(item: Any, *, worktree: Path | None = None) -> 
     return reason[:1200]
 
 
+def _verification_artifact_hints(item: Any, *, worktree: Path) -> dict[str, Any]:
+    original = getattr(item, "original", None)
+    argv = [str(part) for part in getattr(original, "argv", []) or []]
+    hints: dict[str, Any] = {}
+    if any("jmhSmokeCheck" in part for part in argv):
+        diagnostic = _benchmark_smoke_diagnostic(item, worktree=worktree)
+        if diagnostic:
+            hints["benchmark_smoke_diagnostic"] = diagnostic
+        jmh_txt = _read_text_if_exists(worktree / "benchmarks/build/jmh.txt")
+        if jmh_txt:
+            hints["jmh_text_tail"] = _tail_text(jmh_txt, limit=5000)
+        benchmarks = _jmh_result_benchmarks(worktree / "benchmarks/build/jmh.json")
+        if benchmarks:
+            hints["jmh_result_benchmarks"] = benchmarks[:30]
+    return hints
+
+
 def _benchmark_smoke_diagnostic(item: Any, *, worktree: Path | None) -> str:
     original = getattr(item, "original", None)
     argv = [str(part) for part in getattr(original, "argv", []) or []]
@@ -628,6 +646,28 @@ def _read_text_if_exists(path: Path) -> str:
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _tail_text(text: str, *, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return "[truncated]\n" + text[-limit:]
+
+
+def _jmh_result_benchmarks(path: Path) -> list[str]:
+    if not path.is_file():
+        return []
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    benchmarks: list[str] = []
+    for item in parsed:
+        if isinstance(item, dict) and item.get("benchmark"):
+            benchmarks.append(str(item["benchmark"]))
+    return sorted(set(benchmarks))
 
 
 def _commands_run_from_verification_results(results: list[Any]) -> list[dict[str, Any]]:

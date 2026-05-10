@@ -372,6 +372,24 @@ def test_normalize_task_result_payload_accepts_string_checks() -> None:
     }
 
 
+def test_normalize_task_result_payload_accepts_structured_evidence_lists() -> None:
+    payload = {
+        "feature_id": "feature-1",
+        "changed_files": [{"path": "src/App.java"}],
+        "blockers": [{"type": "compile", "message": "compile failed"}],
+        "deviations": [{"type": "note", "message": "kept QA tests unchanged"}],
+    }
+
+    assert normalize_task_result_payload(payload) == {
+        "feature_id": "feature-1",
+        "checks": [],
+        "commands_run": [],
+        "changed_files": ['{"path":"src/App.java"}'],
+        "blockers": ['{"message":"compile failed","type":"compile"}'],
+        "deviations": ['{"message":"kept QA tests unchanged","type":"note"}'],
+    }
+
+
 def test_implementer_repair_prompt_compacts_previous_response(tmp_path: Path) -> None:
     raw_response = json.dumps(
         {
@@ -411,6 +429,63 @@ def test_implementer_repair_prompt_compacts_previous_response(tmp_path: Path) ->
         {"command": ["pytest", "-q"], "exit_code": 1}
     ]
     assert "x" * 100 not in json.dumps(prompt)
+
+
+def test_implementer_repair_prompt_includes_jmh_artifact_hints(tmp_path: Path) -> None:
+    tmp_path.joinpath("benchmarks/build").mkdir(parents=True)
+    tmp_path.joinpath("benchmarks/build/jmh.txt").write_text(
+        "Benchmark  Mode  Cnt  Score\n"
+        "StoreRangeScanBenchmark.ascendingRangeSmoke avgt 1 42.0 ns/op\n",
+        encoding="utf-8",
+    )
+    tmp_path.joinpath("benchmarks/build/jmh.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark": (
+                        "com.joshorig.ull.lvc.bench."
+                        "StoreRangeScanBenchmark.ascendingRangeSmoke"
+                    )
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    failed = SimpleNamespace(
+        original=SimpleNamespace(
+            argv=["./gradlew", ":benchmarks:jmhSmokeCheck"],
+            exit_code=1,
+            stdout="BUILD FAILED",
+            stderr="",
+        ),
+        stdout_excerpt="BUILD FAILED",
+        stderr_excerpt="",
+    )
+
+    prompt = json.loads(
+        build_implementer_repair_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract(),
+            qa_contract=QAAuthorContract(
+                feature_id="feature-1",
+                task_id="qa-1",
+                worktree_path=str(tmp_path),
+            ),
+            worktree=tmp_path,
+            changed_files=["src/App.java"],
+            path_violations=[],
+            failed_verifications=[failed],
+            contract_error=None,
+            raw_response="{}",
+            role_context={},
+        )
+    )
+
+    hints = prompt["failed_verifications"][0]["artifact_hints"]
+    assert "StoreRangeScanBenchmark.ascendingRangeSmoke" in hints["jmh_text_tail"]
+    assert hints["jmh_result_benchmarks"] == [
+        "com.joshorig.ull.lvc.bench.StoreRangeScanBenchmark.ascendingRangeSmoke"
+    ]
 
 
 def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
