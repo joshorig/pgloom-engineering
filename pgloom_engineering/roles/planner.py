@@ -168,6 +168,7 @@ class PlannerHandler:
         contract = _canonicalize_plan_feature_id(contract, task)
         contract = _apply_replan_supersession(contract, payload)
         contract = _apply_corrective_slice_scope(contract, payload)
+        contract = _assign_task_slice_milestones(contract)
         project = _project_from_payload(payload, contract.project, database_url)
         qa_write_paths = (
             _project_metadata_qa_write_paths(project.metadata, project.root)
@@ -490,6 +491,25 @@ def _apply_corrective_slice_scope(
             "milestones": scoped_milestones,
         }
     )
+
+
+def _assign_task_slice_milestones(contract: PlanContract) -> PlanContract:
+    milestone_by_slice: dict[str, str] = {}
+    for milestone in contract.milestones:
+        for slice_id in milestone.slice_ids:
+            milestone_by_slice.setdefault(slice_id, milestone.milestone_id)
+    if not milestone_by_slice:
+        return contract
+    updated_slices = [
+        task_slice.model_copy(
+            update={
+                "milestone_id": task_slice.milestone_id
+                or milestone_by_slice.get(task_slice.slice_id)
+            }
+        )
+        for task_slice in contract.task_slices
+    ]
+    return contract.model_copy(update={"task_slices": updated_slices})
 
 
 def _corrective_path_scope(

@@ -9,6 +9,7 @@ from pgloom_engineering.contracts import (
 from pgloom_engineering.roles.planner import (
     _apply_corrective_slice_scope,
     _apply_replan_supersession,
+    _assign_task_slice_milestones,
     _canonicalize_plan_feature_id,
     _feature_scoped_verification_commands,
 )
@@ -78,6 +79,51 @@ def test_apply_replan_supersession_marks_corrective_plan() -> None:
 
     assert corrected.supersedes_plan_id == "plan_old"
     assert "engineering.qa_verify_failed" in str(corrected.supersession_rationale)
+
+
+def test_assign_task_slice_milestones_from_milestone_membership() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Persist first-class milestone membership.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement range scans.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["tests/"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review range scans.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["tests/"],
+                depends_on=["impl"],
+                expected_outputs=["ReviewVerdictContract"],
+                milestone_id="existing",
+            ),
+        ],
+        acceptance_test_matrix=["range scans work"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Implementation",
+                slice_ids=["impl", "review"],
+            )
+        ],
+    )
+
+    assigned = _assign_task_slice_milestones(plan)
+
+    assert assigned.task_slices[0].milestone_id == "m1"
+    assert assigned.task_slices[1].milestone_id == "existing"
 
 
 def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:
