@@ -298,7 +298,6 @@ def _variant_scope_source(task_slice: object) -> str:
     for attr in [
         "slice_id",
         "objective",
-        "expected_outputs",
     ]:
         value = getattr(task_slice, attr, None)
         if isinstance(value, str):

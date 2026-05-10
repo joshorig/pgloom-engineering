@@ -205,3 +205,59 @@ def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() ->
         and finding.slice_id == "impl-single"
         for finding in report.blocking_findings
     )
+
+
+def test_production_grade_rejects_variant_slice_when_outputs_mention_sibling() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.role not in {"implementer", "reviewer"}
+    ]
+    plan.task_slices.extend(
+        [
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-range-api-single",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement SINGLE range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["SINGLE direct/mmap range scan implementation"],
+                    "verification_commands": [["./gradlew", ":core:test"]],
+                }
+            ),
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-range-double-mmap",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement DOUBLE-store and remaining direct/mmap behavior.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": [
+                        "DOUBLE direct/mmap range scan implementation",
+                        "Updated store documentation for SINGLE and DOUBLE range scans",
+                    ],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest",
+                        ]
+                    ],
+                }
+            ),
+        ]
+    )
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "variant_slice_uses_broad_conformance_gate"
+        and finding.slice_id == "impl-range-double-mmap"
+        for finding in report.blocking_findings
+    )
