@@ -409,7 +409,8 @@ def _range_prefix_behavior_findings(
     range_config = _mapping(conventions.get("range_prefix_behavior"))
     if range_config.get("required") is False:
         return []
-    if "range" not in context or "prefix" not in context:
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "prefix" not in normalized_context:
         return []
     candidate_files = {
         path: text

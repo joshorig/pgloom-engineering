@@ -609,6 +609,29 @@ def test_semantic_review_blocks_missing_range_prefix_behavior() -> None:
     assert findings[0].severity == "blocking"
 
 
+def test_semantic_review_blocks_missing_range_prefix_behavior_case_insensitive_context() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0, 7, visitor);
+                    assertEquals(List.of(1, 2, 4), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans include optional Key-Prefix filtering.",
+        task_text="Write conformance tests for StoreVisitor behavior.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_prefix_behavior_missing"
+    ]
+
+
 def test_semantic_review_accepts_range_prefix_behavior_coverage() -> None:
     findings = review_semantic_quality(
         files={
