@@ -545,6 +545,13 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
             "slice before any implementer slice, then rerun review and validation: "
             f"{blocker_reason}{detail}"
         )
+    if blocker_code == "engineering.handoff_missing":
+        return (
+            "Previous downstream task had no producer handoff. Replan must emit the missing "
+            "upstream producer slice before retrying the blocked downstream role, preserve "
+            "existing QA-authored tests and support artifacts, and rerun review plus split "
+            f"validators only after a valid task_result handoff exists: {blocker_reason}{detail}"
+        )
     if blocker_code == "engineering.invalid_handler_output":
         return (
             "Previous handler result could not be persisted as the expected output contract. "

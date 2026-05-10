@@ -458,6 +458,43 @@ def test_qa_handoff_missing_replans_with_qa_dependency(monkeypatch: Any) -> None
     assert "QA author handoff" in payload["replan_context"]["summary"]
 
 
+def test_generic_handoff_missing_replans_missing_producer(monkeypatch: Any) -> None:
+    enqueued: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 3,
+                    "blocker_code": "engineering.handoff_missing",
+                    "blocker_reason": "review task missing task_result handoff",
+                }
+            ]
+        ),
+        None,
+    )
+
+    assert result is not None
+    payload = enqueued[0]["payload"]
+    assert payload["replan_context"]["blocker_code"] == "engineering.handoff_missing"
+    assert "missing upstream producer slice" in payload["replan_context"]["summary"]
+
+
 def test_blocked_planner_replans_when_council_exhausted(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     recovered: list[dict[str, Any]] = []
@@ -983,6 +1020,7 @@ def _settings() -> SimpleNamespace:
             "engineering.invalid_handler_output",
             "engineering.plan_contract_invalid",
             "engineering.planner_council_exhausted",
+            "engineering.handoff_missing",
             "engineering.qa_handoff_missing",
         ],
         workflow_replan_blocker_codes=[
@@ -1000,6 +1038,7 @@ def _settings() -> SimpleNamespace:
             "engineering.invalid_handler_output",
             "engineering.plan_contract_invalid",
             "engineering.planner_council_exhausted",
+            "engineering.handoff_missing",
             "engineering.qa_handoff_missing",
         ],
     )
