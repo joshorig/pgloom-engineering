@@ -24,6 +24,8 @@ export type FeatureRow = {
 
 export type RunRow = {
   id: number;
+  feature_id?: string;
+  project?: string;
   task_id?: string | null;
   role: string;
   phase: string;
@@ -34,6 +36,7 @@ export type RunRow = {
   model?: string | null;
   input_tokens: number;
   cached_input_tokens: number;
+  cache_creation_tokens?: number;
   output_tokens: number;
   reasoning_tokens: number;
   token_savior_saved_tokens: number;
@@ -49,6 +52,7 @@ export type RunRow = {
 };
 
 export type ModelUsageRow = {
+  project?: string;
   profile_name: string;
   calls: number;
   input_tokens: number;
@@ -60,6 +64,46 @@ export type ModelUsageRow = {
   models?: string;
 };
 
+export type SlotRow = {
+  slot: string;
+  max: number;
+  holding: number;
+  running?: number;
+  leased?: number;
+  queued: number;
+  blocked?: number;
+  lock_count?: number;
+  tasks?: Array<{
+    project?: string | null;
+    workflow_id?: string | null;
+    task_id?: string | null;
+    task_type?: string | null;
+    state?: string | null;
+    lease_owner?: string | null;
+    lease_expires_at?: string | null;
+    updated_at?: string | null;
+  }>;
+  holds?: Array<{
+    resource_key?: string | null;
+    project?: string | null;
+    workflow_id?: string | null;
+    owner_id?: string | null;
+    task_id?: string | null;
+    expires_at?: string | null;
+  }>;
+};
+
+export type TokenSaviorRow = {
+  project?: string;
+  profile_name: string;
+  rows: number;
+  input_tokens_original: number;
+  input_tokens_after_savior: number;
+  tokens_saved: number;
+  reduction_ratio?: number | null;
+  estimated_cost_saved_usd_micros?: number;
+};
+
 export type DagPayload = {
   milestones: Array<{ id: string; label: string; task_ids: string[] }>;
   tasks: Array<{
@@ -68,17 +112,28 @@ export type DagPayload = {
     status: string;
     depends_on: string[];
     milestone_id: string;
+    task_slice_id?: string | null;
     last_run?: RunRow;
   }>;
   edges: Array<{ from: string; to: string; kind: string }>;
 };
 
 export type CCEvent = {
+  v?: number;
   kind: string;
   feature_id?: string;
   row_id?: string | number;
   fields?: string[];
+  ts?: string;
   reason?: string;
+};
+
+export type RealtimeStatus = {
+  channel: string;
+  subscribers: number;
+  max_queue_size: number;
+  start_realtime: boolean;
+  database_configured: boolean;
 };
 
 const fetcher = async <T>(url: string): Promise<T> => {

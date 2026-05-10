@@ -40,6 +40,10 @@ class WebSocketHub:
                 continue
             queue.put_nowait(event)
 
+    @property
+    def subscriber_count(self) -> int:
+        return len(self.queues)
+
 
 class ListenNotifyBridge:
     def __init__(self, database_url: str, hub: WebSocketHub) -> None:

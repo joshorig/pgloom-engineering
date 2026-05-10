@@ -73,6 +73,8 @@
   background: var(--st-pass-soft); border: 1px solid var(--st-pass-soft);
 }
 .cc-fh-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--st-pass); }
+.cc-fh-status.is-reconnecting { color: var(--st-block); background: var(--st-block-soft); border-color: var(--st-block-soft); }
+.cc-fh-status.is-reconnecting i { background: var(--st-block); }
 
 .cc-fh-head {
   display: grid;

@@ -29,6 +29,12 @@ export function TelemetryView({ featureId }: { featureId: string }) {
 
   return (
     <div className="cc-pane cc-scroll" style={{ padding: 14, gap: 14, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="cc-kicker mono">TELEMETRY DETAIL</span>
+        <a className="cc-btn cc-btn-ghost" href={`/feature/${featureId}/telemetry/tokens`}>Feature token economy</a>
+        <a className="cc-btn cc-btn-ghost" href="/telemetry/tokens">Global token economy</a>
+        <a className="cc-btn cc-btn-ghost" href="/telemetry/slots">Global slot occupancy</a>
+      </div>
       <div className="cc-stat-row">
         <Stat k="cumulative cost" v={<CostCell micros={displayCost} precision={2} />} d={<span className="cc-dim">{costSource(total.cost, modelCost)}</span>} />
         <Stat k="cost source" v={displayCost > 0 ? modelCost > total.cost ? "model_usage" : "worker_runs" : "not persisted"} d={<span className="cc-dim">max(worker, model)</span>} />

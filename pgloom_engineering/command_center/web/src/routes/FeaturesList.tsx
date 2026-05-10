@@ -82,6 +82,12 @@ export function FeaturesList() {
           </button>
         </div>
       </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid var(--line)", background: "var(--panel)" }}>
+        <span className="cc-kicker mono">OPERATOR SURFACES</span>
+        <a className="cc-btn cc-btn-ghost" href="/realtime">Realtime</a>
+        <a className="cc-btn cc-btn-ghost" href="/telemetry/slots">Slot occupancy</a>
+        <a className="cc-btn cc-btn-ghost" href="/telemetry/tokens">Token economy</a>
+      </div>
       <div className="cc-flist-tbl">
         {isLoading && <div className="cc-state-title" style={{ padding: 16 }}>Loading features...</div>}
         {error && <div className="cc-state cc-state-fail" style={{ margin: 16 }}>Failed to load features</div>}

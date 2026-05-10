@@ -63,7 +63,13 @@ def list_features(*, database_url: str | None, limit: int = 50) -> list[dict[str
           ef.id as feature_id,
           ef.project,
           coalesce(ef.branch, '-') as branch,
-          ef.state,
+          ef.state as feature_state,
+          w.state as workflow_state,
+          coalesce(s.paused, false) as paused,
+          case
+            when coalesce(s.paused, false) then 'paused'
+            else coalesce(w.state, ef.state)
+          end as state,
           coalesce(ef.pr_url, '-') as pr_url,
           ef.created_at,
           ef.updated_at,
@@ -72,6 +78,8 @@ def list_features(*, database_url: str | None, limit: int = 50) -> list[dict[str
           coalesce(r.roles_seen, '') as roles_seen,
           r.last_blocker
         from engineering_features ef
+        left join workflows w on w.id = ef.id
+        left join engineering_feature_intervention_state s on s.feature_id = ef.id
         left join lateral (
           select count(*) as runs,
                  coalesce(sum(cost_usd), 0) as cost_usd,
@@ -98,7 +106,19 @@ def list_features(*, database_url: str | None, limit: int = 50) -> list[dict[str
 def get_feature(feature_id: str, *, database_url: str | None) -> dict[str, Any] | None:
     row = _fetchone(
         f"""
-        select ef.*,
+        select ef.id,
+               ef.project,
+               ef.branch,
+               ef.pr_url,
+               ef.state as feature_state,
+               w.state as workflow_state,
+               case
+                 when coalesce(s.paused, false) then 'paused'
+                 else coalesce(w.state, ef.state)
+               end as state,
+               ef.metadata,
+               ef.created_at,
+               ef.updated_at,
                coalesce(s.paused, false) as paused,
                coalesce(r.runs, 0) as runs,
                greatest(coalesce(r.cost_usd, 0), coalesce(mu.cost_usd, 0)) as cost_usd,
@@ -110,6 +130,7 @@ def get_feature(feature_id: str, *, database_url: str | None) -> dict[str, Any] 
                coalesce(r.token_savior_saved_tokens, 0) as token_savior_saved_tokens,
                coalesce(r.rtk_saved_tokens, 0) as rtk_saved_tokens
         from engineering_features ef
+        left join workflows w on w.id = ef.id
         left join engineering_feature_intervention_state s on s.feature_id = ef.id
         left join lateral (
           select count(*) as runs,
@@ -151,6 +172,21 @@ def list_runs(feature_id: str, *, database_url: str | None) -> list[dict[str, An
     return serialize_rows(rows)
 
 
+def list_all_runs(*, database_url: str | None, limit: int = 500) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select ewr.*, ef.project
+        from engineering_worker_runs ewr
+        join engineering_features ef on ef.id = ewr.feature_id
+        order by coalesce(ewr.started_at, ewr.created_at) desc, ewr.id desc
+        limit %s
+        """,
+        (limit,),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
 def aggregate_runs(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:
     rows = _fetchall(
         """
@@ -178,6 +214,44 @@ def aggregate_runs(feature_id: str, *, database_url: str | None) -> list[dict[st
     return serialize_rows(rows)
 
 
+def global_model_usage(*, database_url: str | None) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        f"""
+        select ef.project,
+               string_agg(distinct profile_name, ','
+                 order by profile_name) as profile_name,
+               count(*) as calls,
+               sum(input_tokens) as input_tokens,
+               sum(output_tokens) as output_tokens,
+               sum(
+                 coalesce((mu.metadata->>'cached_input_tokens')::integer, 0)
+               ) as cached_input_tokens,
+               sum(coalesce(
+                 (mu.metadata->>'cache_creation_input_tokens')::integer, 0
+               )) as cache_creation_tokens,
+               sum(
+                 coalesce((mu.metadata->>'reasoning_tokens')::integer, 0)
+                 + coalesce((mu.metadata->>'reasoning_output_tokens')::integer, 0)
+               ) as reasoning_tokens,
+               sum({_MODEL_USAGE_COST_SQL.replace("metadata", "mu.metadata")}) as cost_usd,
+               string_agg(distinct coalesce(mu.metadata->>'provider', '-'), ','
+                 order by coalesce(mu.metadata->>'provider', '-')) as providers,
+               string_agg(distinct coalesce(mu.metadata->>'model', '-'), ','
+                 order by coalesce(mu.metadata->>'model', '-')) as models
+        from model_usage mu
+        join engineering_features ef on ef.id = mu.workflow_id
+        group by ef.project,
+                 coalesce(mu.metadata->>'provider', '-'),
+                 coalesce(mu.metadata->>'model', '-')
+        order by ef.project,
+                 coalesce(mu.metadata->>'provider', '-'),
+                 coalesce(mu.metadata->>'model', '-')
+        """,
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
 def model_usage(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:
     rows = _fetchall(
         f"""
@@ -190,7 +264,10 @@ def model_usage(feature_id: str, *, database_url: str | None) -> list[dict[str, 
                sum(coalesce(
                  (metadata->>'cache_creation_input_tokens')::integer, 0
                )) as cache_creation_tokens,
-               sum(coalesce((metadata->>'reasoning_tokens')::integer, 0)) as reasoning_tokens,
+               sum(
+                 coalesce((metadata->>'reasoning_tokens')::integer, 0)
+                 + coalesce((metadata->>'reasoning_output_tokens')::integer, 0)
+               ) as reasoning_tokens,
                sum({_MODEL_USAGE_COST_SQL}) as cost_usd,
                string_agg(distinct coalesce(metadata->>'provider', '-'), ','
                  order by coalesce(metadata->>'provider', '-')) as providers,
@@ -202,6 +279,27 @@ def model_usage(feature_id: str, *, database_url: str | None) -> list[dict[str, 
         order by coalesce(metadata->>'provider', '-'), coalesce(metadata->>'model', '-')
         """,
         (feature_id,),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def global_token_savior(*, database_url: str | None) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        select ef.project,
+               coalesce(etsu.profile_name, '-') as profile_name,
+               count(*) as rows,
+               sum(input_tokens_original) as input_tokens_original,
+               sum(input_tokens_after_savior) as input_tokens_after_savior,
+               sum(tokens_saved) as tokens_saved,
+               avg(reduction_ratio) as reduction_ratio,
+               sum(estimated_cost_saved_usd) as estimated_cost_saved_usd
+        from engineering_token_savior_usage etsu
+        join engineering_features ef on ef.id = etsu.feature_id
+        group by ef.project, coalesce(etsu.profile_name, '-')
+        order by ef.project, coalesce(etsu.profile_name, '-')
+        """,
         database_url=database_url,
     )
     return serialize_rows(rows)
@@ -227,32 +325,148 @@ def token_savior(feature_id: str, *, database_url: str | None) -> list[dict[str,
     return serialize_rows(rows)
 
 
-def slot_state(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:
+def global_slot_state(*, database_url: str | None) -> list[dict[str, Any]]:
     rows = _fetchall(
         """
+        with slot_defs as (
+          select name, concurrency
+          from slots
+          union
+          select distinct slot as name, 1 as concurrency
+          from tasks
+          where slot is not null
+        ),
+        slot_tasks as (
+          select
+            t.id,
+            t.workflow_id,
+            t.state,
+            t.task_type,
+            t.slot,
+            t.lease_owner,
+            t.lease_expires_at,
+            t.updated_at,
+            ef.project
+          from tasks t
+          left join engineering_features ef on ef.id = t.workflow_id
+          where t.slot is not null
+        )
         select
-          'qa-usertest' as slot,
-          coalesce(max(s.concurrency), 1) as max,
-          count(distinct rl.resource_key) filter (where rl.expires_at > now()) as holding,
-          count(distinct t.id) filter (
-            where t.state in ('queued', 'blocked')
-              and t.task_type = 'engineering.qa.verify.usertest'
-          ) as queued,
+          sd.name as slot,
+          greatest(
+            coalesce(max(sd.concurrency), 1),
+            count(distinct st.id) filter (where st.state in ('running', 'leased'))
+          ) as max,
+          count(distinct st.id) filter (where st.state in ('running', 'leased')) as holding,
+          count(distinct st.id) filter (where st.state = 'running') as running,
+          count(distinct st.id) filter (where st.state = 'leased') as leased,
+          count(distinct st.id) filter (where st.state = 'queued') as queued,
+          count(distinct st.id) filter (where st.state = 'blocked') as blocked,
+          count(distinct rl.resource_key) filter (where rl.expires_at > now()) as lock_count,
+          coalesce(jsonb_agg(jsonb_build_object(
+            'project', st.project,
+            'workflow_id', st.workflow_id,
+            'task_id', st.id,
+            'task_type', st.task_type,
+            'state', st.state,
+            'lease_owner', st.lease_owner,
+            'lease_expires_at', st.lease_expires_at,
+            'updated_at', st.updated_at
+          )) filter (
+            where st.id is not null
+              and st.state in ('running', 'leased', 'queued', 'blocked')
+          ), '[]'::jsonb) as tasks,
           coalesce(jsonb_agg(distinct jsonb_build_object(
+            'project', st.project,
+            'workflow_id', st.workflow_id,
             'resource_key', rl.resource_key,
             'owner_id', rl.owner_id,
             'task_id', rl.task_id,
             'expires_at', rl.expires_at
-          )) filter (where rl.resource_key is not null and rl.expires_at > now()), '[]'::jsonb)
-            as holds
-        from engineering_features ef
-        left join slots s on s.name in ('qa-usertest', 'qa.verify.usertest')
-        left join tasks t on t.workflow_id = ef.id
-        left join resource_locks rl on rl.task_id = t.id
-        where ef.id = %s
-        group by ef.id
+          )) filter (
+            where rl.resource_key is not null
+              and rl.expires_at > now()
+          ), '[]'::jsonb) as holds
+        from slot_defs sd
+        left join slot_tasks st on st.slot = sd.name
+        left join resource_locks rl on rl.task_id = st.id
+        group by sd.name
+        order by sd.name
         """,
-        (feature_id,),
+        database_url=database_url,
+    )
+    return serialize_rows(rows)
+
+
+def slot_state(feature_id: str, *, database_url: str | None) -> list[dict[str, Any]]:
+    rows = _fetchall(
+        """
+        with slot_defs as (
+          select name, concurrency
+          from slots
+          union
+          select distinct slot as name, 1 as concurrency
+          from tasks
+          where workflow_id = %s and slot is not null
+        ),
+        slot_tasks as (
+          select
+            t.id,
+            t.workflow_id,
+            t.state,
+            t.task_type,
+            t.slot,
+            t.lease_owner,
+            t.lease_expires_at,
+            t.updated_at,
+            ef.project
+          from tasks t
+          left join engineering_features ef on ef.id = t.workflow_id
+          where t.workflow_id = %s and t.slot is not null
+        )
+        select
+          sd.name as slot,
+          greatest(
+            coalesce(max(sd.concurrency), 1),
+            count(distinct st.id) filter (where st.state in ('running', 'leased'))
+          ) as max,
+          count(distinct st.id) filter (where st.state in ('running', 'leased')) as holding,
+          count(distinct st.id) filter (where st.state = 'running') as running,
+          count(distinct st.id) filter (where st.state = 'leased') as leased,
+          count(distinct st.id) filter (where st.state = 'queued') as queued,
+          count(distinct st.id) filter (where st.state = 'blocked') as blocked,
+          count(distinct rl.resource_key) filter (where rl.expires_at > now()) as lock_count,
+          coalesce(jsonb_agg(jsonb_build_object(
+            'project', st.project,
+            'workflow_id', st.workflow_id,
+            'task_id', st.id,
+            'task_type', st.task_type,
+            'state', st.state,
+            'lease_owner', st.lease_owner,
+            'lease_expires_at', st.lease_expires_at,
+            'updated_at', st.updated_at
+          )) filter (
+            where st.id is not null
+              and st.state in ('running', 'leased', 'queued', 'blocked')
+          ), '[]'::jsonb) as tasks,
+          coalesce(jsonb_agg(distinct jsonb_build_object(
+            'project', st.project,
+            'workflow_id', st.workflow_id,
+            'resource_key', rl.resource_key,
+            'owner_id', rl.owner_id,
+            'task_id', rl.task_id,
+            'expires_at', rl.expires_at
+          )) filter (
+            where rl.resource_key is not null
+              and rl.expires_at > now()
+          ), '[]'::jsonb) as holds
+        from slot_defs sd
+        left join slot_tasks st on st.slot = sd.name
+        left join resource_locks rl on rl.task_id = st.id
+        group by sd.name
+        order by sd.name
+        """,
+        (feature_id, feature_id),
         database_url=database_url,
     )
     return serialize_rows(rows)

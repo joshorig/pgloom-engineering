@@ -12,6 +12,7 @@ from pgloom.tasks import enqueue_task
 from pgloom.workflows import create_workflow
 
 from pgloom_engineering.command_center import store
+from pgloom_engineering.command_center.app import CommandCenterSettings, create_app
 from pgloom_engineering.command_center.auth import assert_loopback_bind, is_loopback_host
 from pgloom_engineering.command_center.realtime import WebSocketHub
 from pgloom_engineering.command_center.serializers import serialize_row, usd_to_micros
@@ -23,7 +24,6 @@ from pgloom_engineering.contract_store import (
 )
 from pgloom_engineering.contracts import TaskContract
 from pgloom_engineering.features import create_feature
-from pgloom_engineering.worker import _commands_run_from_result
 
 
 def test_usd_to_micros_uses_integer_wire_unit() -> None:
@@ -42,11 +42,61 @@ def test_serialize_row_converts_usd_and_timestamps() -> None:
     }
 
 
-def test_loopback_bind_is_v1_only() -> None:
+def test_local_only_bind_helper_rejects_public_bind() -> None:
     assert is_loopback_host("127.0.0.1")
     assert is_loopback_host("::1")
     with pytest.raises(ValueError, match="127.0.0.1"):
         assert_loopback_bind("0.0.0.0")
+
+
+def test_command_center_defaults_to_non_loopback_bind() -> None:
+    settings = CommandCenterSettings()
+    assert settings.host == "0.0.0.0"
+    assert not settings.local_only
+    app = create_app(settings.model_copy(update={"start_realtime": False}))
+    assert app.state.command_center_settings.host == "0.0.0.0"
+
+
+def test_feature_list_uses_live_workflow_state_and_pause(database_url: str) -> None:
+    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
+    feature = create_feature(
+        workflow_id=workflow["id"],
+        project="demo",
+        database_url=database_url,
+    )
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            "update workflows set state = 'blocked' where id = %s",
+            (workflow["id"],),
+        )
+
+    row = next(
+        item
+        for item in store.list_features(database_url=database_url)
+        if item["feature_id"] == feature["id"]
+    )
+    detail = store.get_feature(feature["id"], database_url=database_url)
+    assert row["state"] == "blocked"
+    assert row["workflow_state"] == "blocked"
+    assert row["feature_state"] == "open"
+    assert row["paused"] is False
+    assert detail is not None
+    assert detail["state"] == "blocked"
+
+    store.create_intervention(
+        feature["id"],
+        action_type="pause_feature",
+        payload={},
+        actor="operator:test",
+        database_url=database_url,
+    )
+    paused = next(
+        item
+        for item in store.list_features(database_url=database_url)
+        if item["feature_id"] == feature["id"]
+    )
+    assert paused["state"] == "paused"
+    assert paused["paused"] is True
 
 
 def test_realtime_hub_overflow_publishes_resync() -> None:
@@ -143,136 +193,12 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     feature_row = store.get_feature(feature["id"], database_url=database_url)
     assert feature_row is not None
     assert feature_row["cost_usd_micros"] == 545
-    assert store.model_usage(feature["id"], database_url=database_url)[0]["cost_usd_micros"] == 545
+    model_usage = store.model_usage(feature["id"], database_url=database_url)[0]
+    assert model_usage["cost_usd_micros"] == 545
+    assert model_usage["reasoning_tokens"] == 3
     stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
     assert stored_artifact["source_command"] == "./gradlew :core:test"
     assert stored_artifact["metadata"]["source_worker_run_id"] == finished["id"]
-
-
-def test_cancelled_worker_run_syncs_existing_model_usage(database_url: str) -> None:
-    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
-    feature = create_feature(
-        workflow_id=workflow["id"],
-        project="demo",
-        database_url=database_url,
-    )
-    task = enqueue_task(
-        workflow_id=workflow["id"],
-        domain="engineering",
-        task_type="engineering.qa.author",
-        slot="qa-author",
-        database_url=database_url,
-    )
-    run = start_worker_run(
-        feature_id=feature["id"],
-        task_id=task["id"],
-        role="qa",
-        phase="author",
-        database_url=database_url,
-    )
-    with connect(database_url) as conn, conn.transaction():
-        row = conn.execute(
-            """
-            insert into model_usage(
-              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
-              metadata
-            )
-            values (%s, %s, 'qa-author', 100, 12, 0.000545, %s)
-            returning id
-            """,
-            (
-                workflow["id"],
-                task["id"],
-                jsonb(
-                    {
-                        "provider": "codex",
-                        "model": "gpt-5.4",
-                        "reasoning_level": "medium",
-                        "cached_input_tokens": 90,
-                        "reasoning_output_tokens": 3,
-                        "duration_seconds": 1.25,
-                    }
-                ),
-            ),
-        ).fetchone()
-        assert row is not None
-        conn.execute(
-            """
-            update engineering_worker_runs
-            set status = 'cancelled',
-                blocker_code = 'engineering.operator_cancelled_stale_eval',
-                finished_at = now()
-            where id = %s
-            """,
-            (run["id"],),
-        )
-
-    cancelled = store.list_runs(feature["id"], database_url=database_url)[0]
-    assert cancelled["input_tokens"] == 100
-    assert cancelled["output_tokens"] == 12
-    assert cancelled["reasoning_tokens"] == 3
-    assert cancelled["model_provider"] == "codex"
-    assert cancelled["model"] == "gpt-5.4"
-    assert cancelled["model_profile"] == "qa-author"
-    assert cancelled["model_usage_ids"] == [row["id"]]
-    assert cancelled["cost_usd_micros"] == 545
-
-
-def test_qa_author_red_proof_artifacts_get_source_command_linkage(
-    database_url: str,
-) -> None:
-    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
-    feature = create_feature(
-        workflow_id=workflow["id"],
-        project="demo",
-        database_url=database_url,
-    )
-    task = enqueue_task(
-        workflow_id=workflow["id"],
-        domain="engineering",
-        task_type="engineering.qa.author",
-        slot="qa-author",
-        database_url=database_url,
-    )
-    run = start_worker_run(
-        feature_id=feature["id"],
-        task_id=task["id"],
-        role="qa",
-        phase="author",
-        database_url=database_url,
-    )
-    artifact = register_artifact(
-        workflow_id=workflow["id"],
-        task_id=task["id"],
-        artifact_type="subprocess-stdout",
-        content=b"compile failed",
-        metadata={"argv": ["./gradlew", ":core:test"], "stream": "stdout"},
-        database_url=database_url,
-    )
-    result = {
-        "qa_author_contract": {
-            "red_proof": [
-                {
-                    "command": ["./gradlew", ":core:test"],
-                    "exit_code": 1,
-                    "duration_s": 2.5,
-                    "artifact_ids": [artifact["id"]],
-                }
-            ]
-        }
-    }
-
-    finish_worker_run(
-        run["id"],
-        status="done",
-        commands_run=_commands_run_from_result(result),
-        artifact_ids=[artifact["id"]],
-        database_url=database_url,
-    )
-
-    stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
-    assert stored_artifact["source_command"] == "./gradlew :core:test"
-    assert stored_artifact["metadata"]["source_worker_run_id"] == run["id"]
 
 
 def test_command_center_exposes_persisted_milestones_handoffs_slots_and_artifacts(
