@@ -8,6 +8,7 @@ from typing import Any
 
 from pgloom.harness.subprocess import run_bounded
 
+from pgloom_engineering.config import EngineeringSettings
 from pgloom_engineering.contracts import (
     DesignContract,
     PlanContract,
@@ -52,6 +53,16 @@ class ImplementerProvider:
             ),
             model_usage_id=100 + self.calls,
         )
+
+
+class CommandCapturingImplementerProvider(ImplementerProvider):
+    def __init__(self, worktree: Path) -> None:
+        super().__init__(worktree)
+        self.command: list[str] = []
+
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        self.command = list(profile.command)
+        return super().invoke(profile=profile, prompt=prompt, **kwargs)
 
 
 class RepairingImplementerProvider(ImplementerProvider):
@@ -195,6 +206,45 @@ def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     assert contract["checks"][0]["status"] == "passed"
     assert contract["commands_run"][0]["cmd"][0] == sys.executable
     assert contract["commands_run"][0]["exit_code"] == 0
+
+
+def test_implementer_context_isolation_skips_eager_add_dir_by_default(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    worktree = _git_repo(tmp_path)
+    worktree.joinpath("tests").mkdir()
+    worktree.joinpath("tests/test_red.py").write_text(
+        "def test_red():\n    assert False\n",
+        encoding="utf-8",
+    )
+    context_root = tmp_path / "context-root"
+    provider = CommandCapturingImplementerProvider(worktree)
+
+    _patch_live_contracts(monkeypatch, worktree)
+    monkeypatch.setattr(
+        implementer,
+        "get_settings",
+        lambda: EngineeringSettings(
+            implementer_command=[
+                "codex",
+                "exec",
+                "-C",
+                str(worktree),
+                "--json",
+                "-",
+            ],
+            implementer_model_context_isolation_enabled=True,
+            role_model_context_root=context_root,
+        ),
+    )
+
+    result = ImplementerHandler(provider=provider).handle(_task())
+
+    assert result.status == "done"
+    assert provider.command[provider.command.index("-C") + 1] == str(
+        context_root.resolve()
+    )
+    assert "--add-dir" not in provider.command
 
 
 def test_implementer_blocks_preexisting_forbidden_dirty_paths(
