@@ -14,6 +14,7 @@ from pgloom_engineering.roles.planner import (
     _feature_scoped_verification_commands,
     _normalize_feature_scoped_plan_verification,
     _plan_validation_error_summary,
+    _provider_usage_limit_reason,
 )
 
 
@@ -62,6 +63,26 @@ def test_plan_validation_error_summary_includes_actionable_codes() -> None:
     assert "slice_missing_acceptance_assertion" in summary
     assert "impl must claim" in summary
     assert "acceptance_assertion_unclaimed" in summary
+
+
+def test_provider_usage_limit_reason_detects_codex_quota_output() -> None:
+    reason = _provider_usage_limit_reason(
+        [
+            {
+                "panelist_id": "panelist-0",
+                "raw_response": (
+                    "{\"type\":\"error\",\"message\":\"You've hit your usage limit. "
+                    'Visit https://chatgpt.com/codex/settings/usage to purchase '
+                    'more credits or try again at 7:49 PM."}'
+                ),
+                "parse_error": "missing PlanContract fields",
+            }
+        ]
+    )
+
+    assert reason is not None
+    assert "provider usage limit" in reason
+    assert "panelist-0" in reason
 
 
 def test_apply_replan_supersession_marks_corrective_plan() -> None:

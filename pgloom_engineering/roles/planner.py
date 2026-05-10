@@ -121,6 +121,17 @@ class PlannerHandler:
                 item.model_dump(mode="json") if hasattr(item, "model_dump") else item
                 for item in getattr(exc, "invalid_proposals", [])
             ]
+            provider_limit_reason = _provider_usage_limit_reason(invalid_proposals)
+            if provider_limit_reason:
+                return HandlerResult(
+                    status="blocked",
+                    blocker_code="engineering.provider_usage_limit",
+                    blocker_reason=provider_limit_reason,
+                    result={
+                        "iterations": iterations,
+                        "invalid_proposals": invalid_proposals,
+                    },
+                )
             record_recovery_action(
                 RecoveryDecisionContract(
                     feature_id=str(task.get("workflow_id")),
@@ -356,6 +367,26 @@ def _feature_scoped_verification_commands(
         replacement = _feature_smoke_replacement(command, rules, feature_text)
         scoped.extend(replacement or [command])
     return _drop_redundant_gradle_wildcard_test_filters(_dedupe_commands(scoped))
+
+
+def _provider_usage_limit_reason(invalid_proposals: list[Any]) -> str | None:
+    for proposal in invalid_proposals:
+        if not isinstance(proposal, dict):
+            continue
+        raw_response = str(proposal.get("raw_response") or "")
+        parse_error = str(proposal.get("parse_error") or "")
+        combined = f"{raw_response}\n{parse_error}".lower()
+        if (
+            "usage limit" in combined
+            or "try again at" in combined
+            or "purchase more credits" in combined
+        ):
+            panelist = str(proposal.get("panelist_id") or "planner")
+            return (
+                "planner provider usage limit reached"
+                f" while collecting {panelist}; retry after provider reset"
+            )
+    return None
 
 
 def _normalize_feature_scoped_plan_verification(
