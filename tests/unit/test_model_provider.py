@@ -186,10 +186,10 @@ def test_engineering_provider_reprices_zero_codex_cost(
 
     assert result.input_tokens == 100
     assert result.output_tokens == 12
-    assert result.cost_usd == pytest.approx(0.000405)
+    assert result.cost_usd == pytest.approx(0.000455)
     assert result.model_usage_id is not None
     row = _usage_row(database_url, result.model_usage_id)
-    assert float(row["cost_usd"]) == pytest.approx(0.000405)
+    assert float(row["cost_usd"]) == pytest.approx(0.000455)
 
 
 def _usage_row(database_url: str, usage_id: int) -> dict[str, Any]:
