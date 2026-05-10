@@ -250,7 +250,7 @@ class ImplementerHandler:
                 )
             if failed_verifications:
                 first = failed_verifications[0]
-                blocker_reason = _verification_blocker_reason(first)
+                blocker_reason = _verification_blocker_reason(first, worktree=worktree)
                 return HandlerResult(
                     status="blocked",
                     blocker_code="engineering.implementation_verification_failed",
@@ -535,7 +535,7 @@ def _reported_blockers_error(blockers: list[str]) -> str | None:
     )
 
 
-def _verification_blocker_reason(item: Any) -> str:
+def _verification_blocker_reason(item: Any, *, worktree: Path | None = None) -> str:
     original = getattr(item, "original", None)
     command = " ".join(str(part) for part in getattr(original, "argv", []) or [])
     excerpts = [
@@ -546,6 +546,9 @@ def _verification_blocker_reason(item: Any) -> str:
         )
         if str(value).strip()
     ]
+    benchmark_diagnostic = _benchmark_smoke_diagnostic(item, worktree=worktree)
+    if benchmark_diagnostic:
+        excerpts.insert(0, benchmark_diagnostic)
     details = " | ".join(excerpts)
     reason = "implementer verification commands failed"
     if command:
@@ -553,6 +556,53 @@ def _verification_blocker_reason(item: Any) -> str:
     if details:
         reason += f": {details}"
     return reason[:1200]
+
+
+def _benchmark_smoke_diagnostic(item: Any, *, worktree: Path | None) -> str:
+    original = getattr(item, "original", None)
+    argv = [str(part) for part in getattr(original, "argv", []) or []]
+    if not any("jmhSmokeCheck" in part for part in argv):
+        return ""
+    combined = "\n".join(
+        part
+        for part in [
+            str(getattr(original, "stdout", "") or ""),
+            str(getattr(original, "stderr", "") or ""),
+        ]
+        if part
+    )
+    threshold_lines = _benchmark_threshold_lines(combined)
+    if not threshold_lines and worktree is not None:
+        threshold_lines = _benchmark_threshold_lines(
+            _read_text_if_exists(worktree / "benchmarks/build/jmh.txt")
+        )
+    if not threshold_lines:
+        return ""
+    return "benchmark_smoke_diagnostic: " + " | ".join(threshold_lines[:8])
+
+
+def _benchmark_threshold_lines(text: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        lowered = line.lower()
+        if not line:
+            continue
+        if "above threshold" in lowered or "missing smoke benchmark result" in lowered:
+            lines.append(line)
+            continue
+        if (
+            "storerangescanbenchmark" in lowered
+            and "gc.alloc.rate.norm" in lowered
+        ):
+            lines.append(line)
+    return lines
+
+
+def _read_text_if_exists(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _commands_run_from_verification_results(results: list[Any]) -> list[dict[str, Any]]:

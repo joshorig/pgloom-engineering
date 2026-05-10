@@ -233,6 +233,39 @@ def test_implementer_clears_persistent_reported_blockers_when_verification_passe
     ]
 
 
+def test_implementer_verification_reason_includes_jmh_smoke_diagnostics(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "repo"
+    worktree.joinpath("benchmarks/build").mkdir(parents=True)
+    worktree.joinpath("benchmarks/build/jmh.txt").write_text(
+        "\n".join(
+            [
+                "StoreRangeScanBenchmark.ascendingRangeSmoke:·gc.alloc.rate.norm "
+                "mmap single avgt 0.030 B/op",
+                "StoreRangeScanBenchmark.ascendingRangeSmoke:·gc.alloc.rate.norm "
+                "mmap double avgt 0.046 B/op",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    item = SimpleNamespace(
+        original=SimpleNamespace(
+            argv=["./gradlew", ":benchmarks:jmhSmokeCheck"],
+            stdout="BUILD FAILED",
+            stderr="",
+        ),
+        stdout_excerpt="BUILD FAILED",
+        stderr_excerpt="",
+    )
+
+    reason = implementer._verification_blocker_reason(item, worktree=worktree)  # noqa: SLF001
+
+    assert "benchmark_smoke_diagnostic" in reason
+    assert "0.030 B/op" in reason
+    assert "0.046 B/op" in reason
+
+
 def test_implementation_path_violations_enforce_allowed_and_forbidden_paths() -> None:
     contract = _implementer_contract()
 
