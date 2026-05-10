@@ -416,6 +416,7 @@ test("feature DAG and handoff routes render", async ({ page }) => {
   await go(page, `/feature/${featureId}/handoffs`);
   await expect(page.getByText("HANDOFFS · 1")).toBeVisible();
   await expect(page.getByText("HANDOFF · handoff-1")).toBeVisible();
+  await expect(page.locator(".cc-tasklink")).toHaveCount(4);
 
   await go(page, `/feature/${featureId}/task/t1`);
   await expect(page.getByRole("heading", { name: "impl-implement" })).toBeVisible();
@@ -429,6 +430,7 @@ test("feature DAG and handoff routes render", async ({ page }) => {
 
   await go(page, `/feature/${featureId}/telemetry`);
   await expect(page.getByText("TELEMETRY DETAIL", { exact: false })).toBeVisible();
+  await expect(page.locator(".cc-runs-tbl .cc-tasklink")).toHaveCount(1);
 });
 
 test("global telemetry and realtime pages render", async ({ page }) => {
