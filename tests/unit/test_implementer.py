@@ -747,6 +747,51 @@ def test_corrective_implementer_falls_back_to_feature_qa_author_contract(
     assert found.worktree_path == str(tmp_path)
 
 
+def test_corrective_implementer_skips_task_result_when_finding_qa_contract(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    task_contract = _implementer_contract().model_copy(
+        update={"dependencies": ["impl-previous"]}
+    )
+    qa_contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="qa-1",
+        paths_touched=["tests/test_red.py"],
+        worktree_path=str(tmp_path),
+    )
+
+    def fake_get_task_contract(task_id: str, **kwargs: Any) -> dict[str, Any] | None:
+        del kwargs
+        if task_id == "impl-previous":
+            return {
+                "output_contract": {
+                    "feature_id": "feature-1",
+                    "task_id": "impl-previous",
+                    "changed_files": ["src/App.java"],
+                    "worktree_path": str(tmp_path),
+                }
+            }
+        return None
+
+    monkeypatch.setattr(implementer, "get_task_contract", fake_get_task_contract)
+    monkeypatch.setattr(implementer, "list_task_handoffs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        implementer,
+        "list_task_contracts",
+        lambda *args, **kwargs: [
+            {"output_contract": {"qa_author_contract": qa_contract.model_dump(mode="json")}}
+        ],
+    )
+
+    found = implementer._dependency_qa_contract(  # noqa: SLF001
+        task_contract, database_url=None
+    )
+
+    assert found is not None
+    assert found.task_id == "qa-1"
+    assert found.paths_touched == ["tests/test_red.py"]
+
+
 def _patch_live_contracts(monkeypatch: Any, worktree: Path) -> None:
     plan = _plan()
     task_contract = _implementer_contract()

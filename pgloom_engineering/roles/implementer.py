@@ -1060,7 +1060,21 @@ def _dependency_qa_contract(
 def _qa_contract_from_payload(payload: Any) -> QAAuthorContract | None:
     if not isinstance(payload, dict):
         return None
-    raw = payload.get("qa_author_contract", payload)
+    raw = payload.get("qa_author_contract")
+    if not isinstance(raw, dict):
+        if "task_result_contract" in payload or "changed_files" in payload:
+            return None
+        if not any(
+            key in payload
+            for key in [
+                "tests_added",
+                "red_proof",
+                "matrix_coverage",
+                "paths_touched",
+            ]
+        ):
+            return None
+        raw = payload
     if not isinstance(raw, dict):
         return None
     try:
