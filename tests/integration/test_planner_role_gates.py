@@ -275,7 +275,8 @@ def test_live_planner_records_model_usage_and_token_savior_rows(
         "project:lvc-standard",
         "project:lvc-standard:planning_guardrails",
     ) in memory_keys
-    assert any("./qa/smoke.sh" in row["value"] for row in memory_rows)
+    assert any(":benchmarks:jmhSmokeCheck" in row["value"] for row in memory_rows)
+    assert not any("./qa/smoke.sh" in row["value"] for row in memory_rows)
 
 
 def _setup_planner_task(
