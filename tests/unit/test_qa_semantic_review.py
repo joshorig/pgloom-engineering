@@ -680,6 +680,36 @@ def test_semantic_review_blocks_reflective_range_api_tests() -> None:
     assert findings[0].severity == "blocking"
 
 
+def test_semantic_review_blocks_reflective_range_signature_tests() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            import java.lang.reflect.Method;
+            import java.lang.reflect.Modifier;
+
+            class RangeScanApiTest {
+                @Test
+                void rangeApiShape() throws Exception {
+                    Method[] methods = StoreVisitor.class.getDeclaredMethods();
+                    assertTrue(Modifier.isAbstract(methods[0].getModifiers()));
+                    assertArrayEquals(
+                        new Class<?>[] {int.class, DirectBuffer.class, int.class, int.class},
+                        methods[0].getParameterTypes());
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_test_reflective_api"
+    ]
+    assert findings[0].line is not None
+
+
 def test_semantic_review_accepts_typed_range_api_tests() -> None:
     findings = review_semantic_quality(
         files={

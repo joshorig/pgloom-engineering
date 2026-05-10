@@ -458,7 +458,13 @@ def _range_test_reflective_api_findings(
         return []
     reflective_markers = [
         "Class.forName(",
+        "java.lang.reflect.Method",
+        "java.lang.reflect.Modifier",
+        ".getDeclaredMethod(",
+        ".getDeclaredMethods(",
         ".getMethod(",
+        ".getParameterTypes(",
+        "Modifier.isAbstract(",
         "Method.invoke(",
         "InvocationHandler",
         "Proxy.newProxyInstance(",
