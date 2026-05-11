@@ -165,7 +165,7 @@ orchestration progress.
 
 ## Command Center persistence follow-up
 
-Status: active follow-up.
+Status: landed; keep validating against fresh live runs.
 
 The Command Center should render persisted workflow facts, not inferred or
 speculative UI state. Keep this work below the workflow semantics layer:
@@ -173,26 +173,41 @@ persist values that already exist in worker, model, task, artifact, handoff,
 or validation objects, and avoid changing dispatch or recovery behavior unless
 the change is required to store already-known data.
 
-Required checks for this follow-up:
+Landed behavior to preserve:
 
 - Codex-backed `model_usage` rows must store non-zero cost when token usage is
-  known, and `engineering_worker_runs.cost_usd` must roll that value up.
-- Worker runs should carry `model_provider`, `model`, `model_profile`, and
-  `reasoning_level` from recorded model usage.
-- Worker timing splits should use real queue, lease, model, verification, and
-  blocked durations where those values are available.
-- Task milestone membership should be persisted on task contracts so the DAG
-  can expose milestone progression without reconstructing it from nested
-  payloads.
-- User-test slot state should be exposed from persisted slot, task, and
-  resource-lock rows; do not invent slot occupancy in the UI.
-- Artifact rows should expose kind, display name/path, size, source command,
-  source worker run, and evidence linkage where the producer reported it.
-- Handoffs should persist concise `title` and `summary` display fields at
-  creation time while keeping the full contract/objective intact.
-- Scrutiny and user-test QA signoffs should persist validator type, verdict,
-  result contract, validation evidence, artifact ids, and metadata in the same
-  table shape.
+  known. `engineering_worker_runs.cost_usd` rolls up the same calculated cost.
+- Worker runs carry `model_provider`, `model`, `model_profile`, and
+  `reasoning_level` from recorded model usage when the model provider reports
+  those values.
+- Worker timing splits use persisted queue, lease, model, verification, and
+  blocked durations where those values are available from task, subprocess, or
+  command evidence.
+- Task milestone membership is persisted on task contracts through first-class
+  `milestone_id` and `task_slice_id` columns so the DAG can expose milestone
+  progression without reconstructing it from nested payloads.
+- User-test slot state is exposed from persisted `slots`, `tasks`, and
+  `resource_locks` rows. The UI/API must not invent slot occupancy.
+- Artifact rows expose kind, display name/path, size, source command, source
+  worker run, and evidence linkage where the producer reported it.
+- Handoffs persist concise `title` and `summary` display fields at creation
+  time while keeping the full contract/objective intact.
+- Scrutiny and user-test QA signoffs persist validator type, verdict, result
+  contract, validation evidence, artifact ids, and metadata in the same table
+  shape.
+
+Validation expectations for future changes in this area:
+
+```bash
+set -a; source .env; set +a; uv run pgloom-engineering db migrate
+uv run --extra dev ruff check pgloom_engineering/command_center tests/unit/test_command_center.py
+uv run --extra dev mypy pgloom_engineering/command_center tests/unit/test_command_center.py
+uv run --extra dev pytest tests/unit/test_command_center.py -q
+```
+
+If a future live run shows missing display values, fix the producing
+persistence path first. Keep UI fallbacks as presentation fallbacks only, not as
+the source of truth.
 
 Primary surfaces:
 
