@@ -40,6 +40,7 @@ from pgloom_engineering.planner.context_capsule import (
     upsert_context_capsule,
 )
 from pgloom_engineering.planner.exceptions import PlannerCouncilExhausted
+from pgloom_engineering.planner.production_grade import evaluate_production_grade
 from pgloom_engineering.planner.substance import planner_qa_policy_summary
 from pgloom_engineering.planner.token_savior_context import (
     TokenSaviorContextResult,
@@ -201,6 +202,21 @@ class PlannerHandler:
             contract,
             project_metadata=project_metadata,
         )
+        normalized_quality_errors = _post_normalization_quality_errors(
+            contract,
+            project=project,
+            qa_write_paths=qa_write_paths,
+        )
+        if normalized_quality_errors:
+            return HandlerResult(
+                status="blocked",
+                blocker_code="engineering.plan_contract_invalid",
+                blocker_reason=(
+                    "normalized plan failed production-grade validation: "
+                    + _plan_validation_error_summary(normalized_quality_errors)
+                ),
+                result={"errors": normalized_quality_errors},
+            )
         plan_row = create_plan_contract(
             contract,
             planner_task_id=task.get("id"),
@@ -342,6 +358,29 @@ class PlannerHandler:
                 "planning": "multi_agent",
             }
         )
+
+
+def _post_normalization_quality_errors(
+    contract: PlanContract,
+    *,
+    project: ProjectConfig | None,
+    qa_write_paths: list[str] | None,
+) -> list[dict[str, Any]]:
+    root = project.root if project is not None else None
+    report = evaluate_production_grade(
+        contract,
+        project_root=root,
+        qa_write_paths=qa_write_paths,
+    )
+    return [
+        {
+            "source": "planner.production_grade.post_normalization",
+            "code": finding.code,
+            "message": finding.message,
+            "slice_id": finding.slice_id,
+        }
+        for finding in report.blocking_findings
+    ]
 
 
 def _slot_for_slice(role: str, task_type: str) -> str:

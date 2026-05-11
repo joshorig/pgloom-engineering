@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pgloom_engineering.contracts import (
     DesignContract,
     MilestoneContract,
     PlanContract,
     TaskSliceContract,
 )
+from pgloom_engineering.projects import ProjectConfig
 from pgloom_engineering.roles.planner import (
     _apply_corrective_slice_scope,
     _apply_replan_supersession,
@@ -14,6 +17,7 @@ from pgloom_engineering.roles.planner import (
     _feature_scoped_verification_commands,
     _normalize_feature_scoped_plan_verification,
     _plan_validation_error_summary,
+    _post_normalization_quality_errors,
     _provider_usage_limit_reason,
     _task_replan_context_payload,
 )
@@ -2005,6 +2009,85 @@ def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> 
     assert normalized.milestones[0].validation_contract["required_gates"] == [
         "./gradlew --no-daemon --console=plain :benchmarks:jmhSmokeCheck -Pjmh.smoke=true"
     ]
+
+
+def test_post_normalization_quality_rejects_broadened_variant_command(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "core/src/main/java/example/api").mkdir(parents=True)
+    (tmp_path / "store/src/main/java/example/store").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/api/HotStore.java").write_text(
+        "package example.api; public interface HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "store/src/main/java/example/store/SingleHotStore.java").write_text(
+        "package example.store; import example.api.HotStore; "
+        "final class SingleHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="example-library",
+        problem_statement="Add zero-allocation public API interface HotStore.",
+        design_contract=DesignContract(public_api="HotStore range scan API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-single",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement SINGLE HotStore range scans.",
+                allowed_paths=[
+                    "core/src/main/java/example/api/",
+                    "store/src/main/java/example/store/",
+                ],
+                forbidden_paths=["core/src/test/java/"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":conformance-tests:test",
+                        "--tests",
+                        "example.RangeScanConformanceTest",
+                    ]
+                ],
+            ),
+            TaskSliceContract(
+                slice_id="impl-double",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement DOUBLE HotStore range scans.",
+                allowed_paths=["store/src/main/java/example/store/"],
+                forbidden_paths=["core/src/test/java/"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":conformance-tests:test",
+                        "--tests",
+                        "example.RangeScanConformanceTest",
+                    ]
+                ],
+            ),
+        ],
+        acceptance_test_matrix=["SINGLE and DOUBLE range scans pass."],
+    )
+
+    errors = _post_normalization_quality_errors(
+        plan,
+        project=ProjectConfig(
+            name="example-library",
+            root=tmp_path,
+            base_branch="main",
+            metadata={},
+        ),
+        qa_write_paths=[],
+    )
+
+    assert any(
+        error["code"] == "variant_slice_uses_broad_conformance_gate"
+        for error in errors
+    )
 
 
 def test_feature_scoped_verification_commands_keep_unmatched_smoke_gate() -> None:
