@@ -19,7 +19,10 @@ from pgloom_engineering.contracts import (
 )
 from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
 from pgloom_engineering.planner import council as council_module
-from pgloom_engineering.planner.council import _repair_unachievable_milestones
+from pgloom_engineering.planner.council import (
+    _normalize_project_feature_smoke_commands,
+    _repair_unachievable_milestones,
+)
 from pgloom_engineering.planner.critic import (
     RUBRIC_CHECKS,
     CriticRunner,
@@ -390,6 +393,61 @@ def test_critic_rejects_feature_qa_scrutiny_without_lint_build_or_feature_tests(
         finding.code == "qa_verify_missing_feature_validation"
         for finding in qa_verify.findings
     )
+
+
+def test_council_normalizes_project_feature_smoke_commands_before_critic() -> None:
+    plan = _plan_contract()
+    scrutiny = next(
+        item for item in plan.task_slices if item.task_type == "engineering.qa.verify.scrutiny"
+    )
+    scrutiny.objective = "Run RangeScanBenchmark smoke, API tests, and conformance tests."
+    scrutiny.verification_commands = [
+        ["./gradlew", ":core:compileJava", ":store:compileJava"],
+        ["./gradlew", ":core:test", "--tests", "com.example.RangeScanApiTest"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck", "-PjmhSmoke=true"],
+    ]
+
+    normalized = _normalize_project_feature_smoke_commands(
+        plan,
+        project_context=ProjectContext(
+            project_root=Path("."),
+            qa_policy_summary={
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["range", "RangeScanBenchmark"],
+                        "replaces": [":benchmarks:jmhSmokeCheck", "./qa/smoke.sh"],
+                        "commands": [
+                            ["./gradlew", ":core:compileJava", ":store:compileJava"],
+                            ["./gradlew", ":core:checkstyleMain", ":store:checkstyleMain"],
+                            [
+                                "./gradlew",
+                                ":core:test",
+                                "--tests",
+                                "com.example.RangeScanApiTest",
+                            ],
+                            [
+                                "./gradlew",
+                                ":benchmarks:jmhSmokeCheck",
+                                "-Pjmh.smoke=true",
+                            ],
+                        ],
+                    }
+                ]
+            },
+        ),
+    )
+
+    normalized_scrutiny = next(
+        item
+        for item in normalized.task_slices
+        if item.task_type == "engineering.qa.verify.scrutiny"
+    )
+    assert normalized_scrutiny.verification_commands == [
+        ["./gradlew", ":core:compileJava", ":store:compileJava"],
+        ["./gradlew", ":core:test", "--tests", "com.example.RangeScanApiTest"],
+        ["./gradlew", ":core:checkstyleMain", ":store:checkstyleMain"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+    ]
 
 
 def test_critic_rejects_feature_qa_scrutiny_broad_smoke_script() -> None:

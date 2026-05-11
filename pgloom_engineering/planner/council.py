@@ -18,6 +18,7 @@ from pgloom_engineering.contracts import (
     FeatureGoalContract,
     MilestoneContract,
     PlanContract,
+    TaskSliceContract,
     validate_plan_contract,
 )
 from pgloom_engineering.planner.consolidator import Consolidator
@@ -213,6 +214,10 @@ class PlannerCouncil:
                 database_url=database_url,
             )
             consolidated = _repair_unachievable_milestones(consolidated)
+            consolidated = _normalize_project_feature_smoke_commands(
+                consolidated,
+                project_context=project_context,
+            )
             validator_errors = validate_plan_contract(
                 consolidated,
                 qa_write_paths=project_context.qa_write_paths,
@@ -634,6 +639,173 @@ def _has_unachievable_milestone(
         ):
             return True
     return False
+
+
+def _normalize_project_feature_smoke_commands(
+    plan: PlanContract,
+    *,
+    project_context: ProjectContext,
+) -> PlanContract:
+    rules = project_context.qa_policy_summary.get("feature_smoke_commands")
+    if not isinstance(rules, list) or not rules:
+        return plan
+    task_slices: list[TaskSliceContract] = []
+    changed = False
+    for task_slice in plan.task_slices:
+        commands = _normalize_slice_feature_smoke_commands(
+            task_slice.verification_commands,
+            plan=plan,
+            task_objective=task_slice.objective,
+            task_type=task_slice.task_type,
+            rules=rules,
+        )
+        if commands == task_slice.verification_commands:
+            task_slices.append(task_slice)
+            continue
+        changed = True
+        task_slices.append(task_slice.model_copy(update={"verification_commands": commands}))
+    if not changed:
+        return plan
+    return plan.model_copy(update={"task_slices": task_slices})
+
+
+def _normalize_slice_feature_smoke_commands(
+    commands: list[list[str]],
+    *,
+    plan: PlanContract,
+    task_objective: str,
+    task_type: str,
+    rules: list[Any],
+) -> list[list[str]]:
+    feature_text = " ".join(
+        [
+            plan.problem_statement,
+            task_objective,
+            " ".join(plan.acceptance_assertions),
+            " ".join(plan.acceptance_test_matrix),
+            " ".join(plan.design_contract.acceptance_tests),
+        ]
+    ).lower()
+    normalized: list[list[str]] = []
+    matched_rule_commands: list[list[str]] = []
+    for command in commands:
+        replacement = _feature_smoke_replacement(command, rules, feature_text)
+        if replacement:
+            normalized.extend(replacement)
+            matched_rule_commands.extend(replacement)
+        else:
+            normalized.append(command)
+    if task_type == "engineering.qa.verify.scrutiny" and not matched_rule_commands:
+        for rule in rules:
+            if _feature_smoke_rule_matches(rule, feature_text):
+                matched_rule_commands.extend(_feature_smoke_rule_commands(rule))
+    return _drop_redundant_gradle_wildcard_test_filters(
+        _dedupe_commands([*normalized, *matched_rule_commands])
+    )
+
+
+def _feature_smoke_replacement(
+    command: list[str],
+    rules: list[Any],
+    feature_text: str,
+) -> list[list[str]]:
+    command_text = " ".join(command)
+    for rule in rules:
+        if not _feature_smoke_rule_matches(rule, feature_text):
+            continue
+        replaces = [str(item) for item in rule.get("replaces", []) if isinstance(item, str)]
+        if replaces and not any(item in command_text for item in replaces):
+            continue
+        parsed = _feature_smoke_rule_commands(rule)
+        if parsed:
+            return parsed
+    return []
+
+
+def _feature_smoke_rule_matches(rule: Any, feature_text: str) -> bool:
+    if not isinstance(rule, dict):
+        return False
+    match_terms = [
+        str(term).lower()
+        for term in rule.get("match_terms", [])
+        if isinstance(term, str)
+    ]
+    return not match_terms or any(term in feature_text for term in match_terms)
+
+
+def _feature_smoke_rule_commands(rule: Any) -> list[list[str]]:
+    if not isinstance(rule, dict):
+        return []
+    raw_commands = rule.get("commands")
+    if not isinstance(raw_commands, list):
+        return []
+    return [
+        [str(part) for part in item]
+        for item in raw_commands
+        if isinstance(item, list) and item
+    ]
+
+
+def _dedupe_commands(commands: list[list[str]]) -> list[list[str]]:
+    seen: set[tuple[str, ...]] = set()
+    deduped: list[list[str]] = []
+    for command in commands:
+        key = tuple(command)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(command)
+    return deduped
+
+
+def _drop_redundant_gradle_wildcard_test_filters(
+    commands: list[list[str]],
+) -> list[list[str]]:
+    exact_test_tasks = {
+        _gradle_test_task_key(command)
+        for command in commands
+        if _gradle_test_filter(command) and "*" not in (_gradle_test_filter(command) or "")
+    }
+    if not exact_test_tasks:
+        return commands
+    filtered: list[list[str]] = []
+    for command in commands:
+        test_filter = _gradle_test_filter(command)
+        if (
+            test_filter
+            and "*" in test_filter
+            and _gradle_test_task_key(command) in exact_test_tasks
+        ):
+            continue
+        filtered.append(command)
+    return filtered
+
+
+def _gradle_test_filter(command: list[str]) -> str | None:
+    try:
+        index = command.index("--tests")
+    except ValueError:
+        return None
+    if index + 1 >= len(command):
+        return None
+    value = command[index + 1]
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _gradle_test_task_key(command: list[str]) -> tuple[str, ...] | None:
+    if not command:
+        return None
+    executable = Path(command[0]).name
+    if executable not in {"gradle", "gradlew"} and command[0] != "./gradlew":
+        return None
+    task_parts: list[str] = []
+    for part in command[1:]:
+        if part == "--tests":
+            break
+        if part.startswith("-"):
+            continue
+        task_parts.append(part)
+    return tuple(task_parts) if task_parts else None
 
 
 def _truncate_raw(value: str) -> str:
