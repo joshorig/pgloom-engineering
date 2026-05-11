@@ -712,6 +712,9 @@ def _normalize_project_feature_smoke_commands(
     task_slices: list[TaskSliceContract] = []
     changed = False
     for task_slice in plan.task_slices:
+        if task_slice.task_type != "engineering.qa.verify.scrutiny":
+            task_slices.append(task_slice)
+            continue
         commands = _normalize_slice_feature_smoke_commands(
             task_slice.verification_commands,
             plan=plan,

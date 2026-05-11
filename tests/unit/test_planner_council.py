@@ -451,6 +451,46 @@ def test_council_normalizes_project_feature_smoke_commands_before_critic() -> No
     ]
 
 
+def test_council_does_not_expand_feature_smoke_commands_on_implementers() -> None:
+    plan = _plan_contract()
+    implementer = next(
+        item for item in plan.task_slices if item.task_type == "engineering.implement"
+    )
+    implementer.objective = "Repair RangeScanBenchmark readiness in production code."
+    implementer.verification_commands = [
+        ["./gradlew", ":store:compileJava"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck"],
+    ]
+
+    normalized = _normalize_project_feature_smoke_commands(
+        plan,
+        project_context=ProjectContext(
+            project_root=Path("."),
+            qa_policy_summary={
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["range", "RangeScanBenchmark"],
+                        "replaces": [":benchmarks:jmhSmokeCheck"],
+                        "commands": [
+                            ["./gradlew", ":core:compileJava", ":store:compileJava"],
+                            ["./gradlew", ":core:checkstyleMain", ":store:checkstyleMain"],
+                            ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+                        ],
+                    }
+                ]
+            },
+        ),
+    )
+    normalized_impl = next(
+        item for item in normalized.task_slices if item.task_type == "engineering.implement"
+    )
+
+    assert normalized_impl.verification_commands == [
+        ["./gradlew", ":store:compileJava"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck"],
+    ]
+
+
 def test_council_promotes_slice_assertion_claims_to_plan_and_milestone() -> None:
     plan = _plan_contract()
     implementer = next(
