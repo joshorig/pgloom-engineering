@@ -414,14 +414,7 @@ def _qa_usertest_slice(slice_id: str, *, depends_on: list[str]) -> TaskSliceCont
         forbidden_paths=["store/", "sbe-adapters/", "conformance-tests/", "docs/", ".git/"],
         depends_on=depends_on,
         expected_outputs=["QAResultContract"],
-        verification_commands=[
-            [
-                "./gradlew",
-                ":store:test",
-                "--tests",
-                "com.example.RangeQueryUserFlowTest",
-            ]
-        ],
+        verification_commands=[["bash", "qa/fixtures/launch-range-query-consumer.sh"]],
     )
 
 

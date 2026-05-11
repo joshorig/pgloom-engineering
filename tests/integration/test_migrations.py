@@ -151,7 +151,9 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
     assert updated["state"] == "review"
     assert updated["metadata"] == {"ticket": "A", "owner": "devmini"}
 
-    assert get_feature(feature["id"], database_url=database_url)["pr_url"].endswith("/pull/1")
+    persisted = get_feature(feature["id"], database_url=database_url)
+    assert persisted is not None
+    assert persisted["pr_url"].endswith("/pull/1")
     assert [row["id"] for row in list_features(project="pgloom", database_url=database_url)] == [
         feature["id"]
     ]
@@ -633,7 +635,7 @@ def _plan_contract(feature_id: str) -> PlanContract:
                 forbidden_paths=["pgloom"],
                 depends_on=["slice-2"],
                 expected_outputs=["QAResultContract"],
-                verification_commands=[["pytest"]],
+                verification_commands=[["python", "-m", "pgloom_engineering", "feature", "show"]],
             ),
         ],
         acceptance_test_matrix=["pytest covers contract persistence and dispatch"],
