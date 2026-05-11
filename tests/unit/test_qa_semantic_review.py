@@ -1784,3 +1784,51 @@ def test_semantic_review_accepts_range_regression_guards() -> None:
         for finding in findings
         if finding.code == "qa_semantic_range_regression_guards_missing"
     ]
+
+
+def test_semantic_review_accepts_empty_out_of_range_scan_guard() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                private static final int SLOT_COUNT = 4096;
+                private static final int PAYLOAD_SIZE = 8;
+                private static final byte[] ZERO_ENDING_PAYLOAD =
+                    payload(0x70, 0x11, 0x22, 0x33, 0x44, 0x55, 0x00, 0x00);
+
+                @Test
+                void invalidOrOutOfRangeSlotIdsDoNotAliasValidPopulatedSlots() {
+                    write(store, 1, payload(0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48));
+                    assertTrue(invokeAscending(store, -8, -1).isEmpty());
+                    assertTrue(invokeAscending(store, SLOT_COUNT, SLOT_COUNT + 8).isEmpty());
+                    assertTrue(
+                        invokeAscending(store, SLOT_COUNT + 1, SLOT_COUNT + 1, 0x0A, 4)
+                            .isEmpty());
+                }
+
+                @Test
+                void zeroEndingPayloadsRoundTripAtFixedPayloadSize() {
+                    write(store, 4, ZERO_ENDING_PAYLOAD);
+                    List<VisitedEntry> entries = invokeAscending(store, 4, 4);
+                    assertEquals(PAYLOAD_SIZE, entries.get(0).payload().length);
+                    assertArrayEquals(ZERO_ENDING_PAYLOAD, entries.get(0).payload());
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans must support prefix filters.",
+        task_text="Write conformance tests for range behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_regression_guards": {"required": True},
+                }
+            }
+        },
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_regression_guards_missing"
+    ]

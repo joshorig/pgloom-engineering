@@ -795,6 +795,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_range_key_prefix_not_payload_prefix",
         "qa_semantic_range_key_prefix_too_narrow",
+        "qa_semantic_range_regression_guards_missing",
         "qa_semantic_build_file_string_assertion",
     }
     codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
@@ -892,6 +893,14 @@ def build_qa_quality_repair_prompt(
                     "CiSmokeBenchmark allocation thresholds unchanged. Add only "
                     "feature-specific RangeScanBenchmark thresholds or wiring needed "
                     "for the new benchmark smoke gate."
+                ),
+                (
+                    "For range regression guard findings, add or repair behavioral "
+                    "tests that prove invalid or out-of-range slot ids do not alias "
+                    "valid populated slots and that payloads ending in zero bytes "
+                    "round-trip at the fixed payload size. Assertions that an "
+                    "out-of-range scan is empty are acceptable when they use the "
+                    "public range API and a populated valid slot fixture."
                 ),
                 (
                     "For benchmark visitor signature mismatches, update StoreVisitor "

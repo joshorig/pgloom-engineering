@@ -921,6 +921,7 @@ def _range_regression_guard_findings(
         and any(
             marker in combined
             for marker in [
+                "assertTrue",
                 "assertThrows",
                 "IndexOutOfBoundsException",
                 "IllegalArgumentException",
