@@ -74,6 +74,52 @@ def normalize_qa_author_payload(payload: object) -> object:
     return payload
 
 
+def normalize_qa_author_contract_paths(
+    contract: QAAuthorContract,
+    *,
+    worktree: Path,
+) -> QAAuthorContract:
+    return contract.model_copy(
+        update={
+            "tests_added": _normalize_contract_path_list(
+                contract.tests_added,
+                worktree=worktree,
+            ),
+            "paths_touched": _normalize_contract_path_list(
+                contract.paths_touched,
+                worktree=worktree,
+            ),
+            "matrix_coverage": {
+                criterion: _normalize_contract_path_list(evidence, worktree=worktree)
+                for criterion, evidence in contract.matrix_coverage.items()
+            },
+        }
+    )
+
+
+def _normalize_contract_path_list(paths: list[str], *, worktree: Path) -> list[str]:
+    normalized: list[str] = []
+    worktree_resolved = worktree.resolve()
+    for raw_path in paths:
+        if not isinstance(raw_path, str):
+            continue
+        path = raw_path.strip()
+        if not path:
+            continue
+        try:
+            candidate = Path(path)
+            if candidate.is_absolute():
+                path = candidate.resolve().relative_to(worktree_resolved).as_posix()
+        except ValueError:
+            continue
+        except OSError:
+            continue
+        path = path.replace("\\", "/").lstrip("./")
+        if path and path not in normalized:
+            normalized.append(path)
+    return normalized
+
+
 def infer_tests_added_from_paths(paths: list[str]) -> list[str]:
     return [
         path

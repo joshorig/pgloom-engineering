@@ -20,6 +20,7 @@ from pgloom_engineering.qa_author_runtime import (
     build_qa_quality_repair_prompt,
     infer_tests_added_from_paths,
     isolate_codex_worktree_context,
+    normalize_qa_author_contract_paths,
     normalize_qa_author_payload,
     path_violations,
     red_proof_verification_commands,
@@ -124,6 +125,35 @@ def test_qa_author_runtime_normalizes_wrapped_contract_payload() -> None:
 
     assert normalize_qa_author_payload(wrapped) == {"feature_id": "feature-1"}
     assert normalize_qa_author_payload({"feature_id": "feature-1"}) == {"feature_id": "feature-1"}
+
+
+def test_qa_author_runtime_normalizes_contract_paths_relative_to_worktree(
+    tmp_path: Path,
+) -> None:
+    contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="task-1",
+        tests_added=[
+            str(tmp_path / "tests/test_feature.py"),
+            "/outside/repo/test_feature.py",
+        ],
+        paths_touched=[
+            str(tmp_path / "tests/test_feature.py"),
+            "./tests/test_feature.py",
+        ],
+        matrix_coverage={
+            "criterion": [
+                str(tmp_path / "tests/test_feature.py"),
+                "/outside/repo/test_feature.py",
+            ]
+        },
+    )
+
+    normalized = normalize_qa_author_contract_paths(contract, worktree=tmp_path)
+
+    assert normalized.tests_added == ["tests/test_feature.py"]
+    assert normalized.paths_touched == ["tests/test_feature.py"]
+    assert normalized.matrix_coverage == {"criterion": ["tests/test_feature.py"]}
 
 
 def test_qa_author_runtime_path_and_command_helpers_are_shared() -> None:

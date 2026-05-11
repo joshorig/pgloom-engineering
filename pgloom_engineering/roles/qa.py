@@ -41,6 +41,7 @@ from pgloom_engineering.qa_author_runtime import (
     command_for_worktree,
     infer_tests_added_from_paths,
     isolate_codex_worktree_context,
+    normalize_qa_author_contract_paths,
     normalize_qa_author_payload,
     path_violations,
     qa_code_repairable,
@@ -548,6 +549,10 @@ class QAHandler:
             try:
                 contract = QAAuthorContract.model_validate(
                     normalize_qa_author_payload(extract_json(response.text))
+                )
+                contract = normalize_qa_author_contract_paths(
+                    contract,
+                    worktree=handle.worktree,
                 )
             except Exception as exc:
                 touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
