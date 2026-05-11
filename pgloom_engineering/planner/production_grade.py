@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Literal
@@ -49,6 +50,7 @@ def evaluate_production_grade(
     findings.extend(_variant_scope_verification_findings(plan))
     findings.extend(_small_feature_surface_findings(plan))
     findings.extend(_broad_implementation_source_root_findings(plan))
+    findings.extend(_hot_path_implementation_surface_findings(plan, root))
     blocking = [finding for finding in findings if finding.severity == "blocking"]
     advisory = [finding for finding in findings if finding.severity == "advisory"]
     score = max(0, 100 - len(blocking) * 25 - len(advisory) * 5)
@@ -267,6 +269,135 @@ def _broad_implementation_source_root_findings(plan: PlanContract) -> list[Produ
             )
         )
     return findings
+
+
+def _hot_path_implementation_surface_findings(
+    plan: PlanContract,
+    project_root: Path | None,
+) -> list[ProductionFinding]:
+    if project_root is None or not project_root.exists():
+        return []
+    contract_names = _hot_path_shared_api_contract_names(plan)
+    if not contract_names:
+        return []
+    implementation_paths = _java_implementation_paths(project_root, contract_names)
+    if not implementation_paths:
+        return []
+    implementer_allowed = [
+        path
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.implement"
+        for path in task_slice.allowed_paths
+    ]
+    missing = [
+        path
+        for path in implementation_paths
+        if not any(_path_overlaps(path, allowed) for allowed in implementer_allowed)
+    ]
+    if not missing:
+        return []
+    return [
+        ProductionFinding(
+            severity="blocking",
+            code="hot_path_implementation_surface_missing",
+            message=(
+                "Hot-path shared API plan omits implementation/delegating source "
+                "paths that implement the changed contract: "
+                + ", ".join(missing[:8])
+            ),
+        )
+    ]
+
+
+def _hot_path_shared_api_contract_names(plan: PlanContract) -> set[str]:
+    text = _semantic_plan_text(plan)
+    lowered = text.lower()
+    hot_path_terms = (
+        "zero-allocation",
+        "zero allocation",
+        "hot-path",
+        "hot path",
+        "allocation gate",
+        "alloc gate",
+    )
+    shared_api_terms = (
+        "interface",
+        "shared api",
+        "public api",
+        "api contract",
+        "api addition",
+    )
+    if not any(term in lowered for term in hot_path_terms) or not any(
+        term in lowered for term in shared_api_terms
+    ):
+        return set()
+    excluded_suffixes = (
+        "Test",
+        "Tests",
+        "Benchmark",
+        "Benchmarks",
+        "Report",
+        "Contract",
+        "Evidence",
+    )
+    names = set(re.findall(r"\b[A-Z][A-Za-z0-9_]{2,}\b", text))
+    return {
+        name
+        for name in names
+        if not name.endswith(excluded_suffixes)
+        and name
+        not in {
+            "API",
+            "JMH",
+            "QA",
+            "SINGLE",
+            "DOUBLE",
+        }
+    }
+
+
+def _java_implementation_paths(
+    project_root: Path,
+    contract_names: set[str],
+) -> list[str]:
+    paths: list[str] = []
+    for source in project_root.rglob("*.java"):
+        relative = source.relative_to(project_root).as_posix()
+        if "/src/main/java/" not in relative:
+            continue
+        try:
+            text = source.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for clause in re.findall(r"\bimplements\s+([^{]+)", text):
+            implemented = set(re.findall(r"\b[A-Z][A-Za-z0-9_]*\b", clause))
+            if implemented & contract_names:
+                paths.append(relative)
+                break
+    return list(dict.fromkeys(paths))
+
+
+def _semantic_plan_text(plan: PlanContract) -> str:
+    parts: list[str] = [
+        plan.problem_statement,
+        plan.design_contract.public_api,
+        plan.design_contract.ownership_boundaries,
+        plan.design_contract.concurrency_protocol,
+        plan.design_contract.persistence_protocol,
+        " ".join(plan.design_contract.acceptance_tests),
+        " ".join(plan.acceptance_test_matrix),
+        " ".join(plan.risk_register),
+    ]
+    for task_slice in plan.task_slices:
+        parts.extend(
+            [
+                task_slice.objective,
+                " ".join(task_slice.expected_outputs),
+                " ".join(task_slice.grading_criteria),
+                json.dumps(task_slice.validation_strategy, sort_keys=True),
+            ]
+        )
+    return " ".join(part for part in parts if part)
 
 
 def _is_module_source_root(path: str) -> bool:

@@ -35,6 +35,7 @@ from pgloom_engineering.planner.critic import (
 from pgloom_engineering.planner.exceptions import CandidateInvalid, PlannerCouncilExhausted
 from pgloom_engineering.planner.panelist import PanelistRunner
 from pgloom_engineering.planner.plan_skeleton import build_deterministic_plan_skeleton
+from pgloom_engineering.planner.production_grade import evaluate_production_grade
 from pgloom_engineering.planner.repair_brief import build_repair_brief
 from pgloom_engineering.roles.planner import (
     _adaptive_panelist_count,
@@ -919,6 +920,97 @@ def test_critic_accepts_hot_path_shared_api_with_wrapper_coverage() -> None:
     assert not any(
         finding.code == "hot_path_wrapper_coverage_missing"
         for finding in hot_path.findings
+    )
+
+
+def test_production_grade_requires_hot_path_implementation_surfaces(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "core/src/main/java/example/api").mkdir(parents=True)
+    (tmp_path / "store/src/main/java/example/store").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/metrics").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/api/HotStore.java").write_text(
+        "package example.api; public interface HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "store/src/main/java/example/store/DirectHotStore.java").write_text(
+        "package example.store; import example.api.HotStore; "
+        "final class DirectHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "core/src/main/java/example/metrics/InstrumentedHotStore.java").write_text(
+        "package example.metrics; import example.api.HotStore; "
+        "final class InstrumentedHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    plan = _plan_contract().model_copy(
+        update={
+            "problem_statement": (
+                "Add a zero-allocation public API interface HotStore for hot-path scans."
+            )
+        }
+    )
+    implementer = next(
+        item for item in plan.task_slices if item.task_type == "engineering.implement"
+    )
+    implementer.objective = "Implement HotStore in direct store implementations."
+    implementer.allowed_paths = [
+        "core/src/main/java/example/api/",
+        "store/src/main/java/example/store/",
+    ]
+
+    report = evaluate_production_grade(plan, project_root=tmp_path, qa_write_paths=[])
+
+    assert any(
+        finding.code == "hot_path_implementation_surface_missing"
+        and "core/src/main/java/example/metrics/InstrumentedHotStore.java"
+        in finding.message
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_accepts_hot_path_implementation_surfaces(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "core/src/main/java/example/api").mkdir(parents=True)
+    (tmp_path / "store/src/main/java/example/store").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/metrics").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/api/HotStore.java").write_text(
+        "package example.api; public interface HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "store/src/main/java/example/store/DirectHotStore.java").write_text(
+        "package example.store; import example.api.HotStore; "
+        "final class DirectHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "core/src/main/java/example/metrics/InstrumentedHotStore.java").write_text(
+        "package example.metrics; import example.api.HotStore; "
+        "final class InstrumentedHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    plan = _plan_contract().model_copy(
+        update={
+            "problem_statement": (
+                "Add a zero-allocation public API interface HotStore for hot-path scans."
+            )
+        }
+    )
+    implementer = next(
+        item for item in plan.task_slices if item.task_type == "engineering.implement"
+    )
+    implementer.objective = "Implement HotStore in direct and instrumented stores."
+    implementer.allowed_paths = [
+        "core/src/main/java/example/api/",
+        "store/src/main/java/example/store/",
+        "core/src/main/java/example/metrics/",
+    ]
+
+    report = evaluate_production_grade(plan, project_root=tmp_path, qa_write_paths=[])
+
+    assert not any(
+        finding.code == "hot_path_implementation_surface_missing"
+        for finding in report.blocking_findings
     )
 
 
