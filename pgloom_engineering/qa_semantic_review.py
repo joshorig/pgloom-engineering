@@ -967,16 +967,17 @@ def _range_regression_guard_findings(
                 "collision",
             ]
         )
-        and any(
-            marker in combined
-            for marker in [
-                "assertTrue",
-                "assertThrows",
-                "IndexOutOfBoundsException",
-                "IllegalArgumentException",
-                "assertNotEquals",
-            ]
-        )
+        or _has_numeric_slot_bounds_guard(combined)
+    ) and any(
+        marker in combined
+        for marker in [
+            "assertTrue",
+            "assertThrows",
+            "IndexOutOfBoundsException",
+            "IllegalArgumentException",
+            "assertNotEquals",
+            "assertEquals",
+        ]
     )
     has_payload_length_guard = any(
         marker in compact
@@ -1017,6 +1018,35 @@ def _range_regression_guard_findings(
             details={"missing_regression_guards": missing},
         )
     ]
+
+
+def _has_numeric_slot_bounds_guard(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    lower = compact.lower()
+    high_bound_markers = [
+        "slot_count",
+        "slotcount",
+        "invalid_high_slot",
+        "invalidhighslot",
+    ]
+    low_bound_markers = [
+        "(-1",
+        ",-1",
+        "invalid_negative_slot",
+        "invalidnegativeslot",
+    ]
+    range_markers = [
+        "ascendingrange(",
+        "descendingrange(",
+        "invokeascending(",
+        "invokedescending(",
+        "writebuffer(",
+    ]
+    return (
+        any(marker in lower for marker in range_markers)
+        and any(marker in lower for marker in high_bound_markers)
+        and any(marker in lower for marker in low_bound_markers)
+    )
 
 
 def _range_benchmark_smoke_threshold_findings(

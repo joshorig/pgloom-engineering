@@ -1921,3 +1921,52 @@ def test_semantic_review_accepts_empty_out_of_range_scan_guard() -> None:
         for finding in findings
         if finding.code == "qa_semantic_range_regression_guards_missing"
     ]
+
+
+def test_semantic_review_accepts_numeric_slot_bound_guard_without_magic_words() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                private static final int SLOT_COUNT = 256;
+                private static final int PAYLOAD_SIZE = 8;
+
+                @Test
+                void rangeScanSemanticsPreserveExistingStoreContracts() {
+                    write(store, 0, payloadFor(0));
+                    write(store, SLOT_COUNT - 1, payloadFor(SLOT_COUNT - 1));
+
+                    assertThrows(IllegalArgumentException.class,
+                        () -> write(store, -1, payloadFor(0x71)));
+                    assertThrows(IllegalArgumentException.class,
+                        () -> write(store, SLOT_COUNT, payloadFor(0x72)));
+
+                    assertVisitedKeys(invokeAscending(store, -1, -1));
+                    assertVisitedKeys(invokeDescending(store, -1, -1));
+                    assertVisitedKeys(invokeAscending(store, SLOT_COUNT, SLOT_COUNT));
+                    assertVisitedKeys(invokeDescending(store, SLOT_COUNT, SLOT_COUNT));
+
+                    byte[] payload = payloadFor(7);
+                    assertEquals(PAYLOAD_SIZE, payload.length);
+                    assertEquals(0, payload[PAYLOAD_SIZE - 1]);
+                    assertArrayEquals(payload, invokeAscending(store, 7, 7).get(0).payload());
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans must support prefix filters.",
+        task_text="Write conformance tests for range behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_regression_guards": {"required": True},
+                }
+            }
+        },
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_regression_guards_missing"
+    ]
