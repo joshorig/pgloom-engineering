@@ -884,10 +884,36 @@ def _replan_summary(
             f"rubric requirements, and preserve these planner details: {blocker_reason}{detail}"
         )
     if blocker_code == "engineering.plan_contract_invalid":
+        if "variant_slice_uses_broad_conformance_gate" in failure_context:
+            return (
+                "Previous planner output failed post-normalization production-grade "
+                "validation because a variant-scoped implementer slice used a broad "
+                "conformance/test gate. Replan must preserve the feature scope and "
+                "repair only the invalid verification shape: either merge the variant "
+                "implementation work into one implementer slice that may run the broad "
+                "feature conformance command, or keep variant slices and give each "
+                "variant slice method/class filters that prove only that slice's "
+                "SINGLE/DOUBLE/direct/mmap responsibility. Do not emit broad class-level "
+                "variant conformance commands from variant-scoped implementer slices. "
+                f"Preserve these validation details: {blocker_reason}{detail}"
+            )
+        if "hot_path_implementation_surface_missing" in failure_context:
+            return (
+                "Previous planner output failed post-normalization production-grade "
+                "validation because hot-path shared API implementation/delegating "
+                "source paths were omitted. Replan must preserve the feature scope and "
+                "add the exact source paths named in the validation evidence to the "
+                "implementer/reviewer coverage without dropping sibling concrete "
+                "implementations or variants. Do not satisfy this by mentioning generic "
+                "wrappers only; task allowed_paths/objectives must include the named "
+                f"production paths. Preserve these validation details: {blocker_reason}{detail}"
+            )
         return (
-            "Previous planner output failed PlanContract validation. Replan must preserve "
-            "the schema and validation errors as inputs, repair only the invalid contract "
-            f"shape, and keep the feature scope stable: {blocker_reason}{detail}"
+            "Previous planner output failed PlanContract or post-normalization "
+            "production-grade validation. Replan must preserve the schema and validation "
+            "errors as inputs, repair only the invalid contract shape, keep the feature "
+            "scope stable, and avoid changing unrelated slices: "
+            f"{blocker_reason}{detail}"
         )
     if blocker_code == "engineering.qa_handoff_missing":
         return (
@@ -997,24 +1023,39 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
     if isinstance(findings, list):
         rendered_findings: list[str] = []
         for finding in findings[:20]:
-            if not isinstance(finding, dict):
-                continue
-            code = str(finding.get("code") or "").strip()
-            path = str(finding.get("file") or finding.get("path") or "").strip()
-            line = finding.get("line")
-            message = str(finding.get("message") or "").strip()
-            location = path
-            if path and line is not None:
-                location = f"{path}:{line}"
-            parts = [part for part in (code, location, message) if part]
-            if parts:
-                rendered_findings.append(" - ".join(parts))
+            rendered = _compact_validation_item(finding)
+            if rendered:
+                rendered_findings.append(rendered)
         if rendered_findings:
             excerpts.append(f"findings={'; '.join(rendered_findings)}")
+    errors = result.get("errors")
+    if isinstance(errors, list):
+        rendered_errors = [
+            rendered
+            for item in errors[:20]
+            if (rendered := _compact_validation_item(item))
+        ]
+        if rendered_errors:
+            excerpts.append(f"errors={'; '.join(rendered_errors)}")
     contract_excerpts = _result_contract_excerpts(result)
     if contract_excerpts:
         excerpts.extend(contract_excerpts)
     return " | ".join(excerpts)[:3000]
+
+
+def _compact_validation_item(item: object) -> str:
+    if not isinstance(item, dict):
+        return ""
+    code = str(item.get("code") or "").strip()
+    path = str(item.get("file") or item.get("path") or "").strip()
+    slice_id = str(item.get("slice_id") or "").strip()
+    line = item.get("line")
+    message = str(item.get("message") or "").strip()
+    location = path or slice_id
+    if path and line is not None:
+        location = f"{path}:{line}"
+    parts = [part for part in (code, location, message) if part]
+    return " - ".join(parts)
 
 
 def _result_contract_excerpts(result: dict[str, Any]) -> list[str]:

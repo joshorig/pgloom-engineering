@@ -634,7 +634,55 @@ def test_plan_contract_invalid_replans_immediately(monkeypatch: Any) -> None:
     assert result is not None
     payload = enqueued[0]["payload"]
     assert payload["replan_context"]["blocker_code"] == "engineering.plan_contract_invalid"
-    assert "PlanContract validation" in payload["replan_context"]["summary"]
+    assert "PlanContract or post-normalization production-grade validation" in payload[
+        "replan_context"
+    ]["summary"]
+
+
+def test_plan_contract_invalid_variant_gate_replan_is_narrow() -> None:
+    summary = workflow_driver._replan_summary(  # noqa: SLF001
+        {
+            "blocker_code": "engineering.plan_contract_invalid",
+            "blocker_reason": "normalized plan failed production-grade validation",
+            "result": {
+                "errors": [
+                    {
+                        "code": "variant_slice_uses_broad_conformance_gate",
+                        "slice_id": "impl-single",
+                        "message": "Variant-scoped implementer slice uses a broad gate.",
+                    }
+                ]
+            },
+        }
+    )
+
+    assert "repair only the invalid verification shape" in summary
+    assert "merge the variant implementation work" in summary
+    assert "method/class filters" in summary
+
+
+def test_plan_contract_invalid_hot_path_surface_replan_names_paths() -> None:
+    summary = workflow_driver._replan_summary(  # noqa: SLF001
+        {
+            "blocker_code": "engineering.plan_contract_invalid",
+            "blocker_reason": "normalized plan failed production-grade validation",
+            "result": {
+                "errors": [
+                    {
+                        "code": "hot_path_implementation_surface_missing",
+                        "message": (
+                            "Hot-path shared API plan omits implementation paths: "
+                            "core/src/main/java/example/metrics/InstrumentedStore.java"
+                        ),
+                    }
+                ]
+            },
+        }
+    )
+
+    assert "add the exact source paths named" in summary
+    assert "without dropping sibling concrete implementations" in summary
+    assert "core/src/main/java/example/metrics/InstrumentedStore.java" in summary
 
 
 def test_implementation_reported_blockers_replans_immediately(monkeypatch: Any) -> None:
