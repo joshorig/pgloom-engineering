@@ -887,11 +887,6 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
         for finding in findings
         if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
     ] == []
-    assert [
-        finding
-        for finding in findings
-        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
-    ] == []
 
 
 def test_semantic_review_blocks_payload_prefix_when_key_prefix_required() -> None:
