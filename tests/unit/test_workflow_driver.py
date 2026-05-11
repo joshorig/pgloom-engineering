@@ -1103,6 +1103,8 @@ def test_replan_payload_routes_repeated_benchmark_gate_to_harness_repair() -> No
     )
     assert context["benchmark_allocation_diagnosis"]["threshold_b_op"] == 0.005
     assert context["benchmark_allocation_diagnosis"]["recommended_owner"] == "diagnostic"
+    assert context["benchmark_allocation_diagnosis"]["diagnostic_required"] is True
+    assert context["benchmark_allocation_diagnosis"]["source_allocation_known"] is False
     assert "Repeated implementer verification failure" in context["summary"]
     assert "material benchmark-smoke allocation failure" in context["summary"]
     assert "exactly one narrow implementation slice" in context["summary"]
@@ -1155,7 +1157,9 @@ def test_replan_payload_classifies_material_benchmark_gate_as_implementation_wor
     assert context["benchmark_gate_classification"] == "material_allocation"
     diagnosis = context["benchmark_allocation_diagnosis"]
     assert diagnosis["classification"] == "material_allocation"
-    assert diagnosis["recommended_owner"] == "diagnostic"
+    assert diagnosis["recommended_owner"] == "implementer"
+    assert diagnosis["diagnostic_required"] is False
+    assert diagnosis["source_allocation_known"] is True
     assert diagnosis["failing_benchmarks"] == [
         {
             "benchmark": "RangeScanBenchmark.ascendingScan",
@@ -1220,7 +1224,8 @@ def test_replan_payload_requires_diagnostic_after_repeated_material_allocations(
     diagnosis = context["benchmark_allocation_diagnosis"]
     assert diagnosis["classification"] == "material_allocation"
     assert diagnosis["diagnostic_required"] is True
-    assert diagnosis["recommended_owner"] == "implementer"
+    assert diagnosis["recommended_owner"] == "diagnostic"
+    assert diagnosis["source_allocation_known"] is False
     assert diagnosis["max_b_op"] == 4.174
     assert diagnosis["failing_benchmarks"][0]["benchmark"] == (
         "RangeScanBenchmark.ascendingRange"

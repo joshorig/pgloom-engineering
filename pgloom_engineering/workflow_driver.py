@@ -1154,6 +1154,15 @@ def _benchmark_allocation_diagnosis(
     threshold = _benchmark_threshold_b_op(text)
     failures = _benchmark_allocation_failures(text, threshold=threshold)
     max_b_op = max((item["b_op"] for item in failures), default=None)
+    source_allocation_known = _benchmark_context_mentions_source_allocation(text.lower())
+    diagnostic_required = bool(
+        classification == "material_allocation" and not source_allocation_known
+    )
+    recommended_owner = _benchmark_diagnosis_owner(classification, failures)
+    if diagnostic_required:
+        recommended_owner = "diagnostic"
+    elif classification == "material_allocation" and source_allocation_known:
+        recommended_owner = "implementer"
     diagnosis: dict[str, Any] = {
         "contract_type": "AllocationDiagnosisContract",
         "classification": classification,
@@ -1161,17 +1170,17 @@ def _benchmark_allocation_diagnosis(
         "max_b_op": max_b_op,
         "failing_benchmarks": failures[:20],
         "repeat_count": repeat_count,
-        "recommended_owner": _benchmark_diagnosis_owner(classification, failures),
-        "diagnostic_required": bool(
-            classification == "material_allocation" and repeat_count >= 2
-        ),
+        "recommended_owner": recommended_owner,
+        "source_allocation_known": source_allocation_known,
+        "diagnostic_required": diagnostic_required,
         "evidence_source": "workflow_driver.failure_context",
     }
     if classification == "material_allocation":
         diagnosis["repair_directive"] = (
-            "Do not relax thresholds or route to QA-author unless the next diagnostic "
+            "Do not relax thresholds or route to QA-author unless diagnostic evidence "
             "proves a harness defect. Identify the allocation source for the listed "
-            "benchmark/mode/variant tuples before another broad implementation repair."
+            "benchmark/mode/variant tuples before another implementation repair unless "
+            "the failure evidence already names a concrete hot-path allocation source."
         )
     elif classification == "qa_harness":
         diagnosis["repair_directive"] = (

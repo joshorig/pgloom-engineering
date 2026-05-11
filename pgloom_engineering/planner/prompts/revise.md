@@ -23,8 +23,9 @@ Deterministic validator and critic checks are authoritative. In particular:
   the QA-author slice is instructed to create. Do not keep the same broad
   conformance class command on multiple variant slices.
 - If `replan_context.benchmark_allocation_diagnosis` is present, consume it as
-  authoritative evidence. Do not issue another generic implementer repair for a
-  repeated JMH allocation failure. When `diagnostic_required` is true, emit a
+  authoritative evidence. Do not issue a generic implementer repair for a JMH
+  allocation failure before the allocation source is known. When
+  `diagnostic_required` is true, emit a
   diagnostic QA-scrutiny/performance slice that profiles only the named failing
   benchmark(s) and produces an AllocationDiagnosisContract before further code
   repair. When the diagnosis clearly names material production allocation, emit
