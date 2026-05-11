@@ -887,6 +887,11 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
         for finding in findings
         if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
     ] == []
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
+    ] == []
 
 
 def test_semantic_review_blocks_payload_prefix_when_key_prefix_required() -> None:
@@ -957,6 +962,59 @@ def test_semantic_review_accepts_explicit_logical_key_prefix_coverage() -> None:
                     writeLogicalKey(lvc, "CD-001", payloadTwo);
                     assertVisitedKeys(List.of("AB-001"),
                         collectAscendingByKeyPrefix(lvc, 0, 15, keyBytes("AB")));
+                }
+            }
+            """,
+        },
+        plan_text="R-003 requires optional key-prefix filtering for range scans.",
+        task_text="Write QA tests for ascendingRange prefix behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_prefix_behavior": {
+                        "required": True,
+                        "key_prefix_filter_required": True,
+                    }
+                }
+            }
+        },
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_key_prefix_not_payload_prefix"
+    ] == []
+
+
+def test_semantic_review_accepts_integer_key_prefix_constants() -> None:
+    conformance_path = (
+        "changed-files/conformance-tests/src/test/java/com/example/"
+        "RangeScanConformanceTest.java"
+    )
+    findings = review_semantic_quality(
+        files={
+            conformance_path: """
+            class RangeScanConformanceTest {
+                private static final int PREFIX_VALUE = 0x12;
+                private static final int PREFIX_BITS = 8;
+                private static final int PREFIX_RANGE_START = 0x1200;
+                private static final int PREFIX_RANGE_END = 0x34FF;
+
+                void prefixFilterMatchesAndRejectsNonMatches() {
+                    seedPrefixFixture(store);
+                    assertEquals(List.of(entry(0x1201), entry(0x12A2)),
+                        ascending(store, PREFIX_RANGE_START, PREFIX_RANGE_END,
+                            PREFIX_VALUE, PREFIX_BITS));
+                    assertEquals(List.of(),
+                        ascending(store, PREFIX_RANGE_START, PREFIX_RANGE_END,
+                            0x56, PREFIX_BITS));
+                }
+
+                private static void seedPrefixFixture(LvcStore store) {
+                    write(store, 0x1201);
+                    write(store, 0x12A2);
+                    write(store, 0x2201);
                 }
             }
             """,
