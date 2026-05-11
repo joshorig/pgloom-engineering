@@ -1035,7 +1035,7 @@ def test_semantic_review_accepts_integer_key_prefix_constants() -> None:
     ] == []
 
 
-def test_semantic_review_accepts_key_bytes_prefix_with_payload_assertions() -> None:
+def test_semantic_review_blocks_full_key_prefix_that_matches_one_slot() -> None:
     conformance_path = (
         "changed-files/conformance-tests/src/test/java/com/example/"
         "RangeScanConformanceTest.java"
@@ -1086,10 +1086,75 @@ def test_semantic_review_accepts_key_bytes_prefix_with_payload_assertions() -> N
         },
     )
 
+    narrow = [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_key_prefix_too_narrow"
+    ]
+    assert len(narrow) == 1
+    assert narrow[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_key_bytes_partial_prefix_with_payload_assertions() -> None:
+    conformance_path = (
+        "changed-files/conformance-tests/src/test/java/com/example/"
+        "RangeScanConformanceTest.java"
+    )
+    findings = review_semantic_quality(
+        files={
+            conformance_path: """
+            class RangeScanConformanceTest {
+                private static final byte[] PREFIX_MATCHES_TWO_KEYS =
+                    prefixBytesForSlot(0x1201, Integer.BYTES - 1);
+
+                void prefixFilterMatchesAndRejectsKeys() {
+                    seedStore(store);
+                    assertEntriesEqual(
+                        List.of(entry(0x1201), entry(0x1202)),
+                        visitAscending(store, 0x1200, 0x12FF, PREFIX_MATCHES_TWO_KEYS));
+                }
+
+                private static byte[] payloadFor(int slot) {
+                    byte[] payload = new byte[16];
+                    payload[0] = (byte) 0x51;
+                    payload[1] = (byte) (0x20 + slot);
+                    return payload;
+                }
+
+                private static byte[] prefixBytesForSlot(int slot, int prefixLength) {
+                    byte[] keyBytes = ByteBuffer.allocate(Integer.BYTES)
+                        .order(ByteOrder.BIG_ENDIAN)
+                        .putInt(slot)
+                        .array();
+                    byte[] prefix = new byte[prefixLength];
+                    System.arraycopy(keyBytes, 0, prefix, 0, prefixLength);
+                    return prefix;
+                }
+            }
+            """,
+        },
+        plan_text="R-003 requires optional key-prefix filtering for range scans.",
+        task_text="Write QA tests for ascendingRange prefix behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_prefix_behavior": {
+                        "required": True,
+                        "key_prefix_filter_required": True,
+                    }
+                }
+            }
+        },
+    )
+
     assert [
         finding
         for finding in findings
-        if finding.code == "qa_semantic_range_key_prefix_not_payload_prefix"
+        if finding.code
+        in {
+            "qa_semantic_range_key_prefix_not_payload_prefix",
+            "qa_semantic_range_key_prefix_too_narrow",
+        }
     ] == []
 
 

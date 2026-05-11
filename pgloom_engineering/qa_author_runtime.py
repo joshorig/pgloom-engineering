@@ -775,6 +775,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_range_test_reflective_api",
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_range_key_prefix_not_payload_prefix",
+        "qa_semantic_range_key_prefix_too_narrow",
         "qa_semantic_build_file_string_assertion",
     }
     codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}
@@ -856,7 +857,10 @@ def build_qa_quality_repair_prompt(
                     "or a keyBytes/logical-key helper, and keep payload bytes deliberately "
                     "unrelated to those prefix values. Do not satisfy key-prefix acceptance "
                     "by writing matching bytes into payload[0..] and asserting payload "
-                    "prefix filtering."
+                    "prefix filtering. Include a partial-prefix or logical-key fixture "
+                    "where one prefix matches multiple populated keys and a different "
+                    "prefix matches none; a full-key prefix that matches one slot is too "
+                    "narrow for R-003."
                 ),
                 (
                     "For existing smoke threshold findings, keep unrelated "

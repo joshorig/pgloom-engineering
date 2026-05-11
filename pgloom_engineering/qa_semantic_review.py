@@ -690,6 +690,8 @@ def _range_key_prefix_semantics_findings(
             "descendingrange",
             "collectascending",
             "collectdescending",
+            "visitascending",
+            "visitdescending",
         ]
     )
     if not has_prefix_range_exercise:
@@ -718,6 +720,25 @@ def _range_key_prefix_semantics_findings(
     )
     payload_prefix_seed = _payload_prefix_seed_signal(combined)
     if has_key_prefix_signal:
+        if not _key_prefix_multi_match_signal(combined):
+            first_path = next(iter(candidate_files))
+            return [
+                SemanticFinding(
+                    code="qa_semantic_range_key_prefix_too_narrow",
+                    severity="blocking",
+                    message=(
+                        "R-003 key-prefix QA is too narrow: a full-key prefix that matches "
+                        "one slot does not prove prefix filtering. Add a partial-prefix or "
+                        "logical-key fixture where one prefix matches multiple populated keys "
+                        "and a different prefix matches none."
+                    ),
+                    file=first_path,
+                    line=_first_line_containing_any(
+                        candidate_files[first_path],
+                        ["PREFIX_BITS", "prefixBytesForSlot", "ascendingRange", "prefix"],
+                    ),
+                )
+            ]
         return []
     first_path = next(iter(candidate_files))
     return [
@@ -737,6 +758,21 @@ def _range_key_prefix_semantics_findings(
             details={"payload_prefix_seed_detected": payload_prefix_seed},
         )
     ]
+
+
+def _key_prefix_multi_match_signal(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text.lower())
+    if any(marker in text.lower() for marker in ["logical key", "logical-key"]):
+        return True
+    if "logicalkey" in compact or "genericlvc" in compact:
+        return True
+    if "prefix_bits" in compact or "prefixbits" in compact:
+        return True
+    if re.search(r"prefixbytesforslot\([^,]+,\s*integer\.bytes-[1-9]", compact):
+        return True
+    if re.search(r"newbyte\[[123]\]", compact):
+        return True
+    return False
 
 
 def _payload_prefix_seed_signal(text: str) -> bool:
