@@ -716,6 +716,8 @@ def _task_replan_context_payload(payload: dict[str, Any]) -> dict[str, Any] | No
         "attempt",
         "same_blocker_recovery_count",
         "summary",
+        "benchmark_gate_classification",
+        "benchmark_allocation_diagnosis",
     ]
     compact = {
         key: _compact_replan_context_value(context.get(key))
@@ -730,6 +732,18 @@ def _compact_replan_context_value(value: Any) -> Any:
         return value[:3000]
     if isinstance(value, int | float | bool):
         return value
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_replan_context_value(item)
+            for key, item in value.items()
+            if item not in (None, "", [])
+        }
+    if isinstance(value, list):
+        return [
+            _compact_replan_context_value(item)
+            for item in value[:20]
+            if item not in (None, "", [])
+        ]
     return str(value)[:3000]
 
 
@@ -892,6 +906,16 @@ def _narrow_corrective_slice_chain(
     task_slices: list[TaskSliceContract],
     context: dict[str, Any],
 ) -> list[TaskSliceContract]:
+    if _allocation_diagnostic_required(context):
+        candidates = [
+            task_slice
+            for task_slice in task_slices
+            if task_slice.task_type == "engineering.qa.verify.scrutiny"
+        ]
+        if candidates:
+            selected = _best_corrective_slice(candidates, context)
+            return [selected.model_copy(update={"depends_on": []})]
+
     primary_types = ["engineering.implement"]
     blocker_code = str(context.get("blocker_code") or "")
     benchmark_classification = (
@@ -1038,6 +1062,8 @@ def _corrective_dependencies(
 
 
 def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
+    if _allocation_diagnostic_required(context):
+        return {"engineering.qa.verify.scrutiny"}
     if str(context.get("blocker_code") or "") == "engineering.qa_semantic_quality_failed":
         return {
             "engineering.qa.author",
@@ -1120,6 +1146,13 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
             "engineering.qa.verify.usertest",
         }
     return allowed
+
+
+def _allocation_diagnostic_required(context: dict[str, Any]) -> bool:
+    diagnosis = context.get("benchmark_allocation_diagnosis")
+    if not isinstance(diagnosis, dict):
+        return False
+    return bool(diagnosis.get("diagnostic_required"))
 
 
 def _implementation_verification_failure_mentions_qa_defect(

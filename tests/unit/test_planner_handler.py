@@ -180,6 +180,19 @@ def test_task_replan_context_payload_compacts_corrective_evidence() -> None:
             "failure_context": "x" * 4000,
             "blocked_slice_id": "impl",
             "same_blocker_recovery_count": 1,
+            "benchmark_gate_classification": "material_allocation",
+            "benchmark_allocation_diagnosis": {
+                "classification": "material_allocation",
+                "diagnostic_required": True,
+                "failing_benchmarks": [
+                    {
+                        "benchmark": "RangeScanBenchmark.ascendingScan",
+                        "b_op": 0.031,
+                        "threshold_b_op": 0.005,
+                    }
+                ],
+                "repair_directive": "y" * 4000,
+            },
             "summary": "repair the rejected range behavior",
             "blocked_task_contract": {"large": "omitted"},
         }
@@ -193,6 +206,13 @@ def test_task_replan_context_payload_compacts_corrective_evidence() -> None:
     assert context["blocked_slice_id"] == "impl"
     assert context["same_blocker_recovery_count"] == 1
     assert len(context["failure_context"]) == 3000
+    assert context["benchmark_gate_classification"] == "material_allocation"
+    assert context["benchmark_allocation_diagnosis"]["diagnostic_required"] is True
+    assert (
+        context["benchmark_allocation_diagnosis"]["failing_benchmarks"][0]["benchmark"]
+        == "RangeScanBenchmark.ascendingScan"
+    )
+    assert len(context["benchmark_allocation_diagnosis"]["repair_directive"]) == 3000
     assert "blocked_task_contract" not in context
 
 
@@ -1130,6 +1150,121 @@ def test_apply_corrective_slice_scope_routes_material_benchmark_gate_to_implemen
         "review",
         "qa-scrutiny",
     ]
+
+
+def test_apply_corrective_slice_scope_requires_benchmark_allocation_diagnostic() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Diagnose repeated material benchmark allocation failure.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["benchmark allocation source is diagnosed"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author-repair",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair benchmark smoke allocation gate.",
+                allowed_paths=["benchmarks/src/jmh/java/", "benchmarks/build.gradle"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix RangeScanBenchmark allocation in the store hot path.",
+                allowed_paths=["core/src/main/java/com/joshorig/ull/lvc/api/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["qa-author-repair"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review benchmark repair.",
+                allowed_paths=["core/src/main/java/com/joshorig/ull/lvc/api/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny-diagnostic",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective=(
+                    "Profile RangeScanBenchmark.ascendingScan and emit an "
+                    "AllocationDiagnosisContract naming the allocation source."
+                ),
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                depends_on=["review"],
+                expected_outputs=["AllocationDiagnosisContract", "QAResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Confirm no user-test action is needed for the library diagnostic.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                depends_on=["qa-scrutiny-diagnostic"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Diagnose",
+                slice_ids=[
+                    "qa-author-repair",
+                    "impl-fix",
+                    "review",
+                    "qa-scrutiny-diagnostic",
+                    "qa-usertest",
+                ],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "same_blocker_recovery_count": 2,
+                "benchmark_gate_classification": "material_allocation",
+                "benchmark_allocation_diagnosis": {
+                    "classification": "material_allocation",
+                    "diagnostic_required": True,
+                    "failing_benchmarks": [
+                        {
+                            "benchmark": "RangeScanBenchmark.ascendingScan",
+                            "b_op": 0.031,
+                            "threshold_b_op": 0.005,
+                        }
+                    ],
+                },
+                "failure_context": (
+                    "RangeScanBenchmark.ascendingScan allocated 0.031 B/op above "
+                    "0.005 B/op threshold during :benchmarks:jmhSmokeCheck"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "qa-scrutiny-diagnostic"
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[0].expected_outputs == [
+        "AllocationDiagnosisContract",
+        "QAResultContract",
+    ]
+    assert scoped.milestones[0].slice_ids == ["qa-scrutiny-diagnostic"]
 
 
 def test_apply_corrective_slice_scope_routes_review_benchmark_rejection_to_qa_author() -> None:
