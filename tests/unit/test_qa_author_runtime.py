@@ -45,6 +45,7 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
     )
 
     assert payload["role"] == "qa.author"
+    assert payload["worktree"] == "."
     assert payload["plan"]["feature_id"] == "feature-1"
     assert payload["task_contract"]["task_type"] == "engineering.qa.author"
     assert payload["qa_context_capsule"]["contract"] == "qa_context_capsule.v1"

@@ -38,7 +38,9 @@ class EngineeringSettings(BaseSettings):
     role_context_capsule_version: str = "role-context-capsule.v1"
     role_model_context_isolation_enabled: bool = False
     qa_author_model_context_isolation_enabled: bool = False
+    qa_author_model_context_add_dir_enabled: bool = True
     qa_validation_model_context_isolation_enabled: bool = False
+    qa_validation_model_context_add_dir_enabled: bool = True
     implementer_model_context_isolation_enabled: bool = False
     implementer_model_context_add_dir_enabled: bool = False
     reviewer_model_context_isolation_enabled: bool = False

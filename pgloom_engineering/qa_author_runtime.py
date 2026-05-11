@@ -280,6 +280,7 @@ def build_qa_author_prompt(
                 "shows compile/import/syntax errors unrelated to a missing expected public API, "
                 "repair the tests before returning the QAAuthorContract."
             ),
+            "Use the absolute worktree path in the payload for all file edits and commands.",
             (
                 "If deterministic_test_skeleton has benchmark cases, parameterize generated "
                 "benchmark coverage over every required variant."
@@ -298,6 +299,7 @@ def build_qa_author_prompt(
         ],
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
         "project_authorized_test_support_paths": _metadata_test_support_paths(qa_metadata),
+        "worktree": str(project_root),
         "role_context": role_context or {},
         "route_coverage_requirements": route_requirements,
         "benchmark_requirements": benchmark_requirements,

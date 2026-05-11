@@ -316,6 +316,9 @@ class QAHandler:
                             False,
                         )
                     ),
+                    add_dir_enabled=bool(
+                        getattr(settings, "qa_validation_model_context_add_dir_enabled", True)
+                    ),
                 ),
                 qa_env(project.metadata, project_root=project.root),
             ),
@@ -490,6 +493,9 @@ class QAHandler:
                             "qa_author_model_context_isolation_enabled",
                             False,
                         )
+                    ),
+                    add_dir_enabled=bool(
+                        getattr(settings, "qa_author_model_context_add_dir_enabled", True)
                     ),
                 ),
                 qa_env(project.metadata, project_root=project.root),
