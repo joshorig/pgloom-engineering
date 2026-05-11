@@ -74,6 +74,9 @@ the project's feature smoke gate and must avoid allocating benchmark fixtures,
 reflection proxies, boxed callbacks, or target reset work inside the measured
 operation. Full regression/JMH sweeps are periodic project gates, not
 per-feature QA scrutiny blockers.
+For hot-path interface/shared API changes, the plan must cover concrete
+implementations and discoverable wrappers/decorators/adapters that implement the
+same contract, so common wrapper paths do not inherit allocating defaults.
 
 ### check_behavioral_coverage_not_inventory_only
 Endpoint, route, prefix, filter, query, and benchmark acceptance must be proven

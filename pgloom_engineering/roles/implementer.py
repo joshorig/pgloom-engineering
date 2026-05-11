@@ -402,6 +402,13 @@ def build_implementer_prompt(
                     "payload lengths for fixed-size non-meta stores, and do not infer payload "
                     "length by trimming trailing zero bytes."
                 ),
+                (
+                    "When adding hot-path methods to an interface or shared API, inspect "
+                    "the concrete implementations plus wrappers, decorators, metrics "
+                    "adapters, and other delegating implementations named by symbol search. "
+                    "Do not leave a wrapper on an allocating default method when the "
+                    "underlying implementation has a non-allocating override."
+                ),
                 "Return only a TaskResultContract JSON object.",
             ],
             "worktree": str(worktree),
@@ -480,6 +487,12 @@ def build_implementer_repair_prompt(
                     "acceptance of invalid/out-of-range slots, no partial payload writes for "
                     "fixed-size non-meta stores, and no trailing-zero trimming to infer "
                     "payload length."
+                ),
+                (
+                    "For hot-path API repairs, check concrete implementations and any "
+                    "wrappers/decorators/adapters that implement the same interface. "
+                    "Forwarding wrappers should delegate to the optimized implementation "
+                    "instead of inheriting an allocating default path."
                 ),
                 "Return only a valid TaskResultContract JSON object.",
             ],

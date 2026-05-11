@@ -189,6 +189,11 @@ Rules:
   not collapse all implementation into one broad slice. Prefer 2-4 smaller
   implementer slices split by API/core surface and backend/variant surface so
   implementer sessions read less context and reviewers get narrower diffs.
+- For hot-path interface or shared API additions, include wrappers,
+  decorators, metrics adapters, and other delegating implementations in the
+  implementation/review/QA coverage strategy when symbol discovery shows they
+  implement the same contract. Do not plan only for concrete base
+  implementations if common wrappers could inherit an allocating default path.
 - If implementer slices are split by variant/backend such as SINGLE vs DOUBLE
   or direct vs mmap, each variant-scoped slice must use slice-specific
   verification commands. Prefer concrete Gradle `--tests Class.method` filters

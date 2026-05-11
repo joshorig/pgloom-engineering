@@ -189,6 +189,12 @@ def build_reviewer_prompt(
                     "and ready for QA verification."
                 ),
                 (
+                    "For hot-path interface/API additions, inspect implementers and "
+                    "delegating wrappers/decorators/adapters discovered by symbol search. "
+                    "Reject implementations that optimize only concrete classes while "
+                    "common wrappers inherit an allocating or semantically weaker default."
+                ),
+                (
                     "Do not block solely because QA-owned commands such as "
                     "qa/smoke.sh, browser replay, or benchmark-smoke gates have "
                     "not run yet when the plan includes downstream QA scrutiny or "

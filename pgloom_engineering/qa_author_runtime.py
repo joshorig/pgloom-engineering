@@ -978,6 +978,13 @@ def build_qa_quality_repair_prompt(
                     "bridge callbacks."
                 ),
                 (
+                    "For hot-path interface or shared API additions, author tests and "
+                    "benchmark coverage that include discoverable wrappers, decorators, "
+                    "metrics adapters, or delegating implementations where they are part "
+                    "of the public usage path. Do not prove only concrete base classes if "
+                    "a wrapper could inherit an allocating default method."
+                ),
+                (
                     "For build/script string assertion findings, remove the generated test "
                     "that reads build files or QA scripts. Deterministic orchestration validates "
                     "QA gate wiring; model-authored tests must prove product behavior."

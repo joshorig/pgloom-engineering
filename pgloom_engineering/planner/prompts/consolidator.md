@@ -57,6 +57,11 @@ Rules:
   backends/variants, prefer 2-4 smaller implementer slices over one broad
   implementer slice; this preserves quality and avoids excessive model context
   replay. Merge redundant QA/review work.
+- For hot-path interface or shared API additions, preserve coverage for
+  wrappers, decorators, metrics adapters, and other delegating implementations
+  that implement the same contract when they are discoverable by symbol search.
+  A plan that optimizes only concrete base implementations can still violate the
+  feature if common wrappers inherit an allocating default path.
 - If implementer slices are split by variant/backend such as SINGLE vs DOUBLE
   or direct vs mmap, each variant-scoped slice must use slice-specific
   verification commands. Prefer concrete Gradle `--tests Class.method` filters
