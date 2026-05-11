@@ -1758,6 +1758,91 @@ def test_qa_verify_finds_feature_qa_author_worktree_after_reviewer_dependency(
     assert result.status == "done"
 
 
+def test_qa_verify_prefers_latest_feature_worktree_after_corrective_recovery(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    repo = _git_repo(tmp_path)
+    stale_worktree = tmp_path / "stale-worktree"
+    stale_worktree.mkdir()
+    stale_worktree.joinpath("marker.txt").write_text("stale\n", encoding="utf-8")
+    repaired_worktree = tmp_path / "repaired-worktree"
+    repaired_worktree.mkdir()
+    repaired_worktree.joinpath("marker.txt").write_text("repaired\n", encoding="utf-8")
+    plan = _plan()
+    task_contract = _task_contract().model_copy(
+        update={
+            "task_type": "engineering.qa.verify.scrutiny",
+            "dependencies": ["review-task-1"],
+            "expected_outputs": ["QAResultContract"],
+            "verification_commands": [
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; "
+                    "assert Path('marker.txt').read_text() == 'repaired\\n'",
+                ]
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr("pgloom_engineering.roles.qa.list_task_handoffs", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_contracts",
+        lambda *args, **kwargs: [
+            {
+                "output_contract": {
+                    "qa_author_contract": {
+                        "feature_id": "feature-1",
+                        "task_id": "qa-author-task-1",
+                        "worktree_path": str(stale_worktree),
+                    }
+                }
+            },
+            {
+                "output_contract": {
+                    "worktree_path": str(repaired_worktree),
+                    "task_id": "implementer-task-2",
+                    "changed_files": ["core/src/main/java/Example.java"],
+                }
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(root=repo, base_branch="main", metadata={}),
+    )
+
+    result = QAHandler().handle(
+        {
+            "id": "verify-task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.verify.scrutiny",
+            "payload": {},
+        }
+    )
+
+    assert result.status == "done"
+
+
 def test_legacy_qa_task_type_is_blocked() -> None:
     result = QAHandler().handle(
         {

@@ -919,7 +919,7 @@ def _qa_verify_worktree(
         task_rows = list_task_contracts(task_contract.feature_id, database_url=database_url)
     except Exception:
         task_rows = []
-    for row in task_rows:
+    for row in reversed(task_rows):
         dependency_path = _worktree_path_from_payload(row.get("output_contract"))
         if dependency_path is not None:
             return dependency_path
