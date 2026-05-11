@@ -59,6 +59,7 @@ def review_semantic_quality(
     findings.extend(_range_test_null_receiver_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_range_key_prefix_semantics_findings(files, context, conventions))
+    findings.extend(_range_regression_guard_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
 
@@ -880,6 +881,92 @@ def _payload_prefix_seed_signal(text: str) -> bool:
             "buffer.getbyte(offset+i)!=prefix[i]",
         ]
     )
+
+
+def _range_regression_guard_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    guard_config = _mapping(conventions.get("range_regression_guards"))
+    if guard_config.get("required") is not True:
+        return []
+    normalized_context = context.lower()
+    if "r-003" not in normalized_context and "range" not in normalized_context:
+        return []
+    candidate_files = {
+        path: text
+        for path, text in files.items()
+        if path.endswith(".java") and "test" in path.lower()
+    }
+    if not candidate_files:
+        return []
+    combined = "\n".join(candidate_files.values())
+    normalized = "".join(char.lower() if char.isalnum() else " " for char in combined)
+    compact = normalized.replace(" ", "")
+    has_slot_bounds_guard = (
+        any(
+            marker in compact
+            for marker in [
+                "outofrange",
+                "outofbounds",
+                "slotbounds",
+                "slotbound",
+                "invalidslot",
+                "noalias",
+                "aliasing",
+                "collision",
+            ]
+        )
+        and any(
+            marker in combined
+            for marker in [
+                "assertThrows",
+                "IndexOutOfBoundsException",
+                "IllegalArgumentException",
+                "assertNotEquals",
+            ]
+        )
+    )
+    has_payload_length_guard = any(
+        marker in compact
+        for marker in [
+            "trailingzero",
+            "trailingzeros",
+            "fixedpayload",
+            "fixedpayloadsize",
+            "payloadsize",
+            "zerobyte",
+            "zerobytes",
+        ]
+    )
+    if has_slot_bounds_guard and has_payload_length_guard:
+        return []
+    first_path = next(iter(candidate_files))
+    missing = []
+    if not has_slot_bounds_guard:
+        missing.append("slot bounds/no-aliasing")
+    if not has_payload_length_guard:
+        missing.append("fixed payload length/trailing-zero")
+    return [
+        SemanticFinding(
+            code="qa_semantic_range_regression_guards_missing",
+            severity="blocking",
+            message=(
+                "R-003 range QA must guard existing store semantics while adding range "
+                "scans. Add tests for out-of-range slot bounds or no logical-key aliasing "
+                "and for fixed payload length with trailing zero bytes. Missing: "
+                + ", ".join(missing)
+                + "."
+            ),
+            file=first_path,
+            line=_first_line_containing_any(
+                candidate_files[first_path],
+                ["ascendingRange", "descendingRange", "writeBuffer", "readStableView"],
+            ),
+            details={"missing_regression_guards": missing},
+        )
+    ]
 
 
 def _range_benchmark_smoke_threshold_findings(

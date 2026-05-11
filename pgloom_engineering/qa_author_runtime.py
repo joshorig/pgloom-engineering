@@ -268,6 +268,12 @@ def build_qa_author_prompt(
                 "mistaken for payload-prefix filtering."
             ),
             (
+                "For R-003 range scans, preserve existing fixed-slot store semantics. Add "
+                "regression guards proving invalid or out-of-range slot ids do not alias "
+                "valid populated slots, and proving fixed-size payloads that end in zero "
+                "bytes round-trip without length trimming."
+            ),
+            (
                 "For range-scan or public API acceptance, compile tests and benchmarks "
                 "against the typed public API directly. Do not use Class.forName, "
                 "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "

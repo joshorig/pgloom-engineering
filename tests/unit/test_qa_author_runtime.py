@@ -66,6 +66,11 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         for instruction in payload["instructions"]
     )
     assert any(
+        "invalid or out-of-range slot ids do not alias" in instruction
+        and "fixed-size payloads that end in zero bytes" in instruction
+        for instruction in payload["instructions"]
+    )
+    assert any(
         "matrix_coverage must include every exact string" in instruction
         for instruction in payload["instructions"]
     )

@@ -145,6 +145,8 @@ projects:
           range_prefix_behavior:
             required: true
             key_prefix_filter_required: true
+          range_regression_guards:
+            required: true
         preferred_test_skeletons:
           r003_range_scan:
             public_api_shape:
@@ -160,6 +162,8 @@ projects:
               - descending range visits populated keys in reverse key order
               - prefix match uses PREFIX_VALUE, PREFIX_BITS, PREFIX_RANGE_START, and PREFIX_RANGE_END against logical integer keys
               - prefix miss uses NON_MATCHING_PREFIX_VALUE and asserts no visitor calls
+              - out-of-range slot ids still reject or do not alias existing populated slots
+              - payloads ending in zero bytes still round-trip at the fixed payload size
               - SINGLE and DOUBLE variants both run against direct and mmap stores where available
             benchmark_shape:
               - RangeScanBenchmark must exercise ascending, descending, and prefix-filtered public StoreVisitor scans
@@ -169,10 +173,14 @@ projects:
               - StoreVisitor.visit instead of StoreVisitor.onEntry
               - prefix tests that only prove overload presence
               - payload-prefix filtering in place of logical-key prefix filtering
+              - key % slotCount or other modulo aliasing for logical range keys
+              - trimming trailing zero bytes to infer payload length
         behavior_coverage_rules:
           - R-003 QA must compile against the typed public API directly; do not use reflection or null receivers for API checks.
           - R-003 prefix tests must include both matching and non-matching prefixes against logical integer keys.
           - R-003 benchmark smoke must cover ascending, descending, and prefix-filtered visitor scans.
+          - R-003 tests must guard existing fixed-slot semantics: invalid/out-of-range slots must not alias valid slots.
+          - R-003 tests must guard fixed payload semantics with a payload that ends in zero bytes.
 
   - name: trade-research-platform
     root: /Volumes/devssd/repos/apps/trade-research-platform

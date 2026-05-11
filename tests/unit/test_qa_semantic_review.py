@@ -1711,3 +1711,76 @@ def test_semantic_review_accepts_camel_case_matching_prefix_variables() -> None:
         for finding in findings
         if finding.code == "qa_semantic_range_prefix_behavior_missing"
     ]
+
+
+def test_semantic_review_blocks_missing_range_regression_guards() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0, 7, 0x10, 4, visitor);
+                    assertEntriesEqual("matching-prefix", expected, visited);
+                    store.ascendingRange(0, 7, 0x30, 4, visitor);
+                    assertEntriesEqual("non-matching-prefix", List.of(), visited);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans must support prefix filters.",
+        task_text="Write conformance tests for range behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_regression_guards": {"required": True},
+                }
+            }
+        },
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_range_regression_guards_missing"
+    ] == ["qa_semantic_range_regression_guards_missing"]
+
+
+def test_semantic_review_accepts_range_regression_guards() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                @Test
+                void rangeScanSemanticsPreserveExistingStoreContracts() {
+                    assertThrows(
+                        IndexOutOfBoundsException.class,
+                        () -> store.writeBuffer(SLOT_COUNT + 1, 7L, payload));
+                    assertNotEquals("no-alias", readKey(1), readKey(SLOT_COUNT + 1));
+
+                    byte[] trailingZeroPayload = new byte[] {1, 2, 0, 0};
+                    store.writeBuffer(1, 8L, trailingZeroPayload);
+                    assertArrayEquals(
+                        "fixed payload size",
+                        trailingZeroPayload,
+                        readStableView(store, 1, payloadSize));
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans must support prefix filters.",
+        task_text="Write conformance tests for range behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_regression_guards": {"required": True},
+                }
+            }
+        },
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_regression_guards_missing"
+    ]

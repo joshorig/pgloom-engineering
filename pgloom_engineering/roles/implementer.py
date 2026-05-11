@@ -385,6 +385,13 @@ def build_implementer_prompt(
                     "./gradlew check, ./qa/smoke.sh, ./qa/regression.sh, or full JMH sweeps "
                     "unless that exact command is listed in the TaskContract."
                 ),
+                (
+                    "Preserve existing storage invariants while implementing new access "
+                    "patterns: do not wrap raw slot ids modulo slotCount, do not widen point "
+                    "APIs to accept invalid or out-of-range slots, do not accept partial "
+                    "payload lengths for fixed-size non-meta stores, and do not infer payload "
+                    "length by trimming trailing zero bytes."
+                ),
                 "Return only a TaskResultContract JSON object.",
             ],
             "worktree": str(worktree),
@@ -456,6 +463,13 @@ def build_implementer_repair_prompt(
                     "project gates such as ./gradlew test, ./gradlew check, ./qa/smoke.sh, "
                     "./qa/regression.sh, or full JMH sweeps unless that exact command is "
                     "listed in the TaskContract."
+                ),
+                (
+                    "When repairing range, visitor, or read/write behavior, preserve existing "
+                    "storage invariants: no modulo wrapping of raw slot ids, no point-API "
+                    "acceptance of invalid/out-of-range slots, no partial payload writes for "
+                    "fixed-size non-meta stores, and no trailing-zero trimming to infer "
+                    "payload length."
                 ),
                 "Return only a valid TaskResultContract JSON object.",
             ],

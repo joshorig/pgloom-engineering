@@ -858,6 +858,30 @@ def test_implementer_prompt_forbids_extra_broad_project_gates(tmp_path: Path) ->
     assert "./qa/regression.sh" in instructions
 
 
+def test_implementer_prompt_preserves_store_invariants(tmp_path: Path) -> None:
+    prompt = json.loads(
+        build_implementer_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract(),
+            qa_contract=QAAuthorContract(
+                feature_id="feature-1",
+                task_id="qa-1",
+                worktree_path=str(tmp_path),
+            ),
+            worktree=tmp_path,
+            project_metadata={},
+            task_id="impl-1",
+            role_context={},
+        )
+    )
+
+    instructions = " ".join(prompt["instructions"])
+    assert "do not wrap raw slot ids modulo slotCount" in instructions
+    assert "do not widen point APIs" in instructions
+    assert "do not accept partial payload lengths" in instructions
+    assert "trimming trailing zero bytes" in instructions
+
+
 def test_implementer_repair_prompt_forbids_extra_broad_project_gates(
     tmp_path: Path,
 ) -> None:
@@ -884,6 +908,33 @@ def test_implementer_repair_prompt_forbids_extra_broad_project_gates(
     assert "Rerun only the TaskContract verification_commands" in instructions
     assert "./gradlew check" in instructions
     assert "full JMH sweeps" in instructions
+
+
+def test_implementer_repair_prompt_preserves_store_invariants(tmp_path: Path) -> None:
+    prompt = json.loads(
+        build_implementer_repair_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract(),
+            qa_contract=QAAuthorContract(
+                feature_id="feature-1",
+                task_id="qa-1",
+                worktree_path=str(tmp_path),
+            ),
+            worktree=tmp_path,
+            changed_files=["store/src/main/java/example/Store.java"],
+            path_violations=[],
+            failed_verifications=[],
+            contract_error=None,
+            raw_response="{}",
+            role_context={},
+        )
+    )
+
+    instructions = " ".join(prompt["instructions"])
+    assert "no modulo wrapping of raw slot ids" in instructions
+    assert "invalid/out-of-range slots" in instructions
+    assert "no partial payload writes" in instructions
+    assert "no trailing-zero trimming" in instructions
 
 
 def test_implementer_context_capsule_compacts_large_recall_text(tmp_path: Path) -> None:
