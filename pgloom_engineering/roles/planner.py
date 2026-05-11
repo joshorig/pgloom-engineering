@@ -492,19 +492,46 @@ def _feature_smoke_replacement(
         ]
         if match_terms and not any(term in feature_text for term in match_terms):
             continue
+        raw_commands = rule.get("commands")
+        parsed = (
+            [
+                [str(part) for part in item]
+                for item in raw_commands
+                if isinstance(item, list) and item
+            ]
+            if isinstance(raw_commands, list)
+            else []
+        )
+        class_filter_replacement = _feature_smoke_class_filter_replacement(
+            command,
+            parsed,
+        )
+        if class_filter_replacement:
+            return class_filter_replacement
         replaces = [str(item) for item in rule.get("replaces", []) if isinstance(item, str)]
         if replaces and not any(item in command_text for item in replaces):
             continue
-        raw_commands = rule.get("commands")
-        if not isinstance(raw_commands, list):
-            continue
-        parsed = [
-            [str(part) for part in item]
-            for item in raw_commands
-            if isinstance(item, list) and item
-        ]
         if parsed:
             return parsed
+    return []
+
+
+def _feature_smoke_class_filter_replacement(
+    command: list[str],
+    configured_commands: list[list[str]],
+) -> list[list[str]]:
+    test_filter = _gradle_test_filter(command)
+    task_key = _gradle_test_task_key(command)
+    if not test_filter or not task_key or not _looks_like_method_test_filter(test_filter):
+        return []
+    for configured in configured_commands:
+        configured_filter = _gradle_test_filter(configured)
+        if not configured_filter or _looks_like_method_test_filter(configured_filter):
+            continue
+        if _gradle_test_task_key(configured) != task_key:
+            continue
+        if test_filter.startswith(f"{configured_filter}."):
+            return [configured]
     return []
 
 

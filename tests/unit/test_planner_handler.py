@@ -1422,6 +1422,101 @@ def test_feature_scoped_verification_commands_drop_redundant_class_test_filter()
     ]
 
 
+def test_feature_scoped_verification_commands_replace_invented_method_with_project_gate() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["RangeScanBenchmark smoke"]),
+        affected_surfaces=["store/"],
+        task_slices=[],
+        acceptance_test_matrix=["double store range behavior"],
+    )
+
+    commands = _feature_scoped_verification_commands(
+        [
+            [
+                "./gradlew",
+                ":conformance-tests:test",
+                "--tests",
+                (
+                    "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest."
+                    "doubleStoreAscendingAndDescendingRanges"
+                ),
+            ],
+            [
+                "./gradlew",
+                "--no-daemon",
+                "--console=plain",
+                ":benchmarks:jmhSmokeCheck",
+                "-Pjmh.smoke=true",
+                "-Pjmh.iterations=1",
+                "-Pjmh.warmupIterations=1",
+                "-Pjmh.forks=1",
+                "-Pjmh.timeOnIteration=100ms",
+            ],
+        ],
+        plan=plan,
+        task_objective="Repair the range benchmark smoke failure.",
+        project_metadata={
+            "qa": {
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["range", "StoreVisitor"],
+                        "replaces": [
+                            "./qa/smoke.sh",
+                            "./gradlew check",
+                            ":benchmarks:jmhSmokeCheck",
+                        ],
+                        "commands": [
+                            [
+                                "./gradlew",
+                                ":conformance-tests:test",
+                                "--tests",
+                                (
+                                    "com.joshorig.ull.lvc.conformance."
+                                    "RangeScanConformanceTest"
+                                ),
+                            ],
+                            [
+                                "./gradlew",
+                                "--no-daemon",
+                                "--console=plain",
+                                ":benchmarks:jmhSmokeCheck",
+                                "-Pjmh.smoke=true",
+                                "-Pjmh.iterations=1",
+                                "-Pjmh.warmupIterations=1",
+                                "-Pjmh.forks=1",
+                                "-Pjmh.timeOnIteration=100ms",
+                            ],
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+
+    assert commands == [
+        [
+            "./gradlew",
+            ":conformance-tests:test",
+            "--tests",
+            "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest",
+        ],
+        [
+            "./gradlew",
+            "--no-daemon",
+            "--console=plain",
+            ":benchmarks:jmhSmokeCheck",
+            "-Pjmh.smoke=true",
+            "-Pjmh.iterations=1",
+            "-Pjmh.warmupIterations=1",
+            "-Pjmh.forks=1",
+            "-Pjmh.timeOnIteration=100ms",
+        ],
+    ]
+
+
 def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:
     plan = PlanContract(
         feature_id="wf_range",
