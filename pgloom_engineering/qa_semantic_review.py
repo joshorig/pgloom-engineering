@@ -707,6 +707,11 @@ def _range_key_prefix_semantics_findings(
             "logical-key",
             "key bytes",
             "keybytes",
+            "prefix_range_start",
+            "prefix_range_end",
+            "prefix_value",
+            "prefix_bits",
+            "prefixbits",
         ]
     )
     payload_prefix_seed = _payload_prefix_seed_signal(combined)
@@ -771,11 +776,20 @@ def _range_benchmark_smoke_threshold_findings(
             and "range scan" not in text.lower()
         ) or "jmhSmokeCheck" not in text:
             continue
-        for match in re.finditer(
-            r"allocBytesPerOp\s*:\s*[^,\n]*\?:\s*([0-9]+(?:\.[0-9]+)?)d?",
-            text,
-        ):
-            threshold = float(match.group(1))
+        current_benchmark = ""
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            key_match = re.search(r"['\"]([^'\"]*Benchmark\.[^'\"]+)['\"]\s*:", line)
+            if key_match:
+                current_benchmark = key_match.group(1)
+            threshold_match = re.search(
+                r"allocBytesPerOp\s*:\s*[^,\n]*\?:\s*([0-9]+(?:\.[0-9]+)?)d?",
+                line,
+            )
+            if threshold_match is None:
+                continue
+            if current_benchmark and "rangescan" not in current_benchmark.lower():
+                continue
+            threshold = float(threshold_match.group(1))
             if threshold >= minimum:
                 continue
             findings.append(
@@ -789,8 +803,9 @@ def _range_benchmark_smoke_threshold_findings(
                         "feature validation."
                     ),
                     file=path,
-                    line=text[: match.start()].count("\n") + 1,
+                    line=line_no,
                     details={
+                        "benchmark": current_benchmark,
                         "threshold_bytes_per_op": threshold,
                         "minimum_threshold_bytes_per_op": minimum,
                     },
