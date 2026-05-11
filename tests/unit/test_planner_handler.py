@@ -521,6 +521,87 @@ def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> N
     assert reviewer.allowed_paths == ["core/src/main/java/", "store/src/main/java/"]
 
 
+def test_apply_corrective_slice_scope_restores_core_paths_for_api_compile_failure() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct range API implementation.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-range-api-stores",
+                role="implementer",
+                task_type="engineering.implement",
+                objective=(
+                    "Implement StoreVisitor range scan behavior across core/src/main/java "
+                    "and store/src/main/java."
+                ),
+                allowed_paths=[
+                    "store/src/main/java/com/joshorig/ull/lvc/store/",
+                    "docs/Stores.md",
+                ],
+                forbidden_paths=[
+                    "core/src/test/java/",
+                    "core/src/main/java/",
+                    "benchmarks/build.gradle",
+                ],
+                expected_outputs=["StoreVisitorApiImplementation"],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":core:test",
+                        "--tests",
+                        "com.joshorig.ull.lvc.api.RangeScanApiTest",
+                    ]
+                ],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review range API repair.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["impl-range-api-stores"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        acceptance_test_matrix=["Range API tests compile."],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "blocked_task_contract": {
+                    "task_type": "engineering.implement",
+                },
+                "blocked_slice_allowed_paths": [
+                    "store/src/main/java/com/joshorig/ull/lvc/store/",
+                    "docs/Stores.md",
+                ],
+                "blocked_slice_forbidden_paths": [
+                    "core/src/test/java/",
+                    "core/src/main/java/",
+                    "benchmarks/build.gradle",
+                ],
+                "failure_context": (
+                    "RangeScanApiTest.java:111: error: cannot find symbol "
+                    "class StoreVisitor; store.ascendingRange(0, 7, visitor)"
+                ),
+            }
+        },
+    )
+
+    implementer = scoped.task_slices[0]
+    assert "core/src/main/java/" in implementer.allowed_paths
+    assert "core/src/main/java/" not in implementer.forbidden_paths
+    assert "core/src/test/java/" in implementer.forbidden_paths
+
+
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",

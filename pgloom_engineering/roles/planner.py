@@ -818,6 +818,13 @@ def _corrective_path_scope(
         return {}
     allowed = _context_string_list(context, "blocked_slice_allowed_paths")
     forbidden = _context_string_list(context, "blocked_slice_forbidden_paths")
+    if _corrective_context_mentions_core_api_compile_failure(context):
+        allowed = _dedupe_path_list([*allowed, "core/src/main/java/"])
+        forbidden = [
+            path
+            for path in forbidden
+            if not _paths_overlap(path, "core/src/main/java/")
+        ]
     update: dict[str, list[str]] = {}
     if allowed:
         update["allowed_paths"] = allowed
@@ -831,6 +838,16 @@ def _context_string_list(context: dict[str, Any], key: str) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [str(item) for item in raw if str(item)]
+
+
+def _dedupe_path_list(paths: list[str]) -> list[str]:
+    return list(dict.fromkeys(path for path in paths if path))
+
+
+def _paths_overlap(left: str, right: str) -> bool:
+    left_norm = left.rstrip("/") + "/"
+    right_norm = right.rstrip("/") + "/"
+    return left_norm.startswith(right_norm) or right_norm.startswith(left_norm)
 
 
 def _narrow_corrective_slice_chain(
@@ -1107,6 +1124,26 @@ def _corrective_context_mentions_benchmark_gate_failure(context: dict[str, Any])
             "allocated",
             "b/op",
             "allocation threshold",
+        )
+    )
+
+
+def _corrective_context_mentions_core_api_compile_failure(context: dict[str, Any]) -> bool:
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    if "cannot find symbol" not in context_text:
+        return False
+    if "core/src/test" not in context_text and "rangescanapitest" not in context_text:
+        return False
+    return any(
+        signal in context_text
+        for signal in (
+            "storevisitor",
+            "lvcstore",
+            "ascendingrange",
+            "descendingrange",
         )
     )
 
