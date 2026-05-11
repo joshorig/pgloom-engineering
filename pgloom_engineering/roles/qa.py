@@ -1238,6 +1238,8 @@ def _qa_verify_failure_excerpt(item: Any) -> str:
         "allocated",
         "above threshold",
         "missing",
+        "no matching benchmarks",
+        "miss-spelled regexp",
         "cannot find symbol",
     ]
     diagnostic_lines = [

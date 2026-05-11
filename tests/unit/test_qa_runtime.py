@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from pgloom.harness.subprocess import SubprocessResult
 
@@ -23,6 +24,7 @@ from pgloom_engineering.qa_runtime import (
     validate_required_qa_gates,
     verification_infra_error,
 )
+from pgloom_engineering.roles.qa import _qa_verify_failure_excerpt
 
 
 def test_qa_env_uses_project_metadata_and_expands_path() -> None:
@@ -37,6 +39,24 @@ def test_qa_env_uses_project_metadata_and_expands_path() -> None:
 
     assert env["JAVA_HOME"] == "/tmp/jdk"
     assert env["PATH"].split(os.pathsep)[:2] == ["/tmp/jdk/bin", "/custom/bin"]
+
+
+def test_qa_verify_failure_excerpt_preserves_jmh_no_matching_benchmark() -> None:
+    item = SimpleNamespace(
+        stdout_excerpt=(
+            "> Task :benchmarks:jmh FAILED\n"
+            "14 actionable tasks: 4 executed, 10 up-to-date"
+        ),
+        stderr_excerpt=(
+            "No matching benchmarks. Miss-spelled regexp?\n"
+            "Execution failed for task ':benchmarks:jmh'."
+        ),
+    )
+
+    excerpt = _qa_verify_failure_excerpt(item)
+
+    assert "No matching benchmarks" in excerpt
+    assert "Miss-spelled regexp" in excerpt
 
 
 def test_run_qa_verification_returns_canonical_red_proof(tmp_path: Path) -> None:
