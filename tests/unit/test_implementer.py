@@ -426,6 +426,81 @@ def test_preexisting_forbidden_check_exempts_qa_authored_paths() -> None:
     )
 
 
+def test_preexisting_forbidden_check_exempts_dependency_changed_paths() -> None:
+    task_contract = _implementer_contract().model_copy(
+        update={
+            "forbidden_paths": [
+                "core/src/main/java/",
+                "tests/",
+            ]
+        }
+    )
+    qa_contract = QAAuthorContract(feature_id="feature-1", task_id="qa-1")
+
+    assert (
+        _dirty_forbidden_path_violations(
+            [
+                "core/src/main/java/example/api/PublicApi.java",
+                "tests/leak.py",
+            ],
+            touched=[],
+            dependency_changed=[
+                "core/src/main/java/example/api/PublicApi.java",
+            ],
+            task_contract=task_contract,
+            qa_contract=qa_contract,
+        )
+        == [
+            {
+                "path": "tests/leak.py",
+                "reason": "preexisting_forbidden_dirty_path",
+            }
+        ]
+    )
+
+
+def test_dependency_changed_files_reads_transitive_task_outputs(monkeypatch: Any) -> None:
+    task_contract = _implementer_contract().model_copy(
+        update={"dependencies": ["impl-double"]}
+    )
+
+    def fake_get_task_contract(task_id: str, **kwargs: Any) -> dict[str, Any] | None:
+        del kwargs
+        if task_id == "impl-double":
+            return {
+                "input_contract": _implementer_contract()
+                .model_copy(update={"dependencies": ["impl-api"]})
+                .model_dump(mode="json"),
+                "output_contract": {
+                    "changed_files": [
+                        "store/src/main/java/example/DoubleStore.java",
+                    ]
+                },
+            }
+        if task_id == "impl-api":
+            return {
+                "input_contract": _implementer_contract()
+                .model_copy(update={"dependencies": []})
+                .model_dump(mode="json"),
+                "output_contract": {
+                    "changed_files": [
+                        "core/src/main/java/example/api/PublicApi.java",
+                    ]
+                },
+            }
+        return None
+
+    monkeypatch.setattr(implementer, "get_task_contract", fake_get_task_contract)
+
+    assert implementer._dependency_changed_files(  # noqa: SLF001
+        task_contract,
+        database_url=None,
+    ) == [
+        "store/src/main/java/example/DoubleStore.java",
+        "core/src/main/java/example/api/PublicApi.java",
+    ]
+
+
 def test_implementer_repairs_contract_path_and_verification_failures(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

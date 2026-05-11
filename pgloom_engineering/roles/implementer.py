@@ -133,6 +133,10 @@ class ImplementerHandler:
         )
         baseline = _changed_file_snapshot(worktree, project.metadata)
         baseline_contents = _changed_file_contents(worktree, project.metadata)
+        dependency_changed = _dependency_changed_files(
+            task_contract,
+            database_url=database_url,
+        )
         prompt = build_implementer_prompt(
             plan=plan,
             task_contract=task_contract,
@@ -176,6 +180,7 @@ class ImplementerHandler:
                 *_dirty_forbidden_path_violations(
                     relevant_changed_files(changed_files(worktree), project.metadata),
                     touched=touched,
+                    dependency_changed=dependency_changed,
                     task_contract=task_contract,
                     qa_contract=qa_contract,
                 ),
@@ -1199,14 +1204,20 @@ def _dirty_forbidden_path_violations(
     paths: list[str],
     *,
     touched: list[str],
+    dependency_changed: list[str] | None = None,
     task_contract: TaskContract,
     qa_contract: QAAuthorContract,
 ) -> list[dict[str, str]]:
     touched_set = set(touched)
+    dependency_changed_set = set(dependency_changed or [])
     qa_paths = _qa_authored_paths(qa_contract)
     violations: list[dict[str, str]] = []
     for path in paths:
-        if path in touched_set or _path_in_roots(path, qa_paths):
+        if (
+            path in touched_set
+            or path in dependency_changed_set
+            or _path_in_roots(path, qa_paths)
+        ):
             continue
         if any(path_matches(path, root) for root in task_contract.forbidden_paths):
             violations.append(
@@ -1216,6 +1227,48 @@ def _dirty_forbidden_path_violations(
                 }
             )
     return violations
+
+
+def _dependency_changed_files(
+    task_contract: TaskContract,
+    *,
+    database_url: str | None,
+) -> list[str]:
+    seen: set[str] = set()
+    changed: list[str] = []
+
+    def visit(task_id: str) -> None:
+        if task_id in seen:
+            return
+        seen.add(task_id)
+        row = get_task_contract(task_id, database_url=database_url)
+        if not row:
+            return
+        for path in _task_result_changed_files(row.get("output_contract")):
+            if path not in changed:
+                changed.append(path)
+        raw_contract = row.get("input_contract")
+        if not isinstance(raw_contract, dict):
+            return
+        try:
+            dependency_contract = TaskContract.model_validate(raw_contract)
+        except Exception:
+            return
+        for dependency_id in dependency_contract.dependencies:
+            visit(dependency_id)
+
+    for dependency_id in task_contract.dependencies:
+        visit(dependency_id)
+    return changed
+
+
+def _task_result_changed_files(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    raw = payload.get("changed_files")
+    if raw is None and isinstance(payload.get("task_result_contract"), dict):
+        raw = payload["task_result_contract"].get("changed_files")
+    return _string_list(raw)
 
 
 def _dirty_scope_path_violations(
