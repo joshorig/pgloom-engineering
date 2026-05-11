@@ -610,7 +610,15 @@ def _range_prefix_behavior_findings(
     if not candidate_files:
         return []
     combined = "\n".join(candidate_files.values()).lower()
-    has_range_call = "ascendingrange" in combined or "descendingrange" in combined
+    has_range_call = any(
+        marker in combined
+        for marker in [
+            "ascendingrange",
+            "descendingrange",
+            "ascendingentries",
+            "descendingentries",
+        ]
+    )
     has_matching_prefix = any(
         marker in combined
         for marker in [
@@ -620,6 +628,9 @@ def _range_prefix_behavior_findings(
             "matching prefix",
             "match prefix",
             "matching-prefix",
+            "prefixfiltermatches",
+            "prefix value",
+            "prefix_value",
         ]
     )
     has_nonmatching_prefix = any(
