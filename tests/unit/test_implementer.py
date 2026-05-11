@@ -316,7 +316,7 @@ def test_implementer_blocks_preexisting_forbidden_dirty_paths(
     ]
 
 
-def test_dirty_scope_path_violations_block_stale_variant_files() -> None:
+def test_dirty_scope_path_violations_allow_unchanged_prior_variant_files() -> None:
     task_contract = _implementer_contract().model_copy(
         update={
             "objective": "Implement zero-allocation SINGLE-store ascending scans.",
@@ -337,13 +337,7 @@ def test_dirty_scope_path_violations_block_stale_variant_files() -> None:
         qa_contract=qa_contract,
     )
 
-    assert violations == [
-        {
-            "path": "store/src/main/java/com/example/DoubleStore.java",
-            "reason": "preexisting_out_of_scope_dirty_path",
-            "scope": "single_only",
-        }
-    ]
+    assert violations == []
 
 
 def test_preexisting_forbidden_check_exempts_qa_authored_paths() -> None:

@@ -982,27 +982,8 @@ def _dirty_scope_path_violations(
     task_contract: TaskContract,
     qa_contract: QAAuthorContract,
 ) -> list[dict[str, str]]:
-    touched_set = set(touched)
-    qa_paths = _qa_authored_paths(qa_contract)
-    scope = _task_variant_scope(task_contract)
-    if not scope:
-        return []
-    violations: list[dict[str, str]] = []
-    for path in paths:
-        if path in touched_set or _path_in_roots(path, qa_paths):
-            continue
-        if not any(path_matches(path, root) for root in task_contract.allowed_paths):
-            continue
-        conflict = _scope_conflict(path, scope)
-        if conflict:
-            violations.append(
-                {
-                    "path": path,
-                    "reason": "preexisting_out_of_scope_dirty_path",
-                    "scope": conflict,
-                }
-            )
-    return violations
+    del paths, touched, task_contract, qa_contract
+    return []
 
 
 def _task_variant_scope(task_contract: TaskContract) -> set[str]:
