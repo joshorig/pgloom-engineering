@@ -156,16 +156,18 @@ def add_configured_gate_matrix_coverage(
     for criterion in plan.acceptance_test_matrix:
         if matrix.get(criterion) or not _criterion_is_configured_gate(criterion):
             continue
-        evidence = [
-            str(command[0])
-            for item in configured_gates
-            if isinstance(command := item.get("command"), list) and command
-        ]
-        if not evidence and task_contract is not None:
+        evidence = []
+        if task_contract is not None:
             evidence = [
                 " ".join(command)
                 for command in verification_commands(task_contract)
                 if _command_is_gate(command)
+            ]
+        if not evidence:
+            evidence = [
+                str(command[0])
+                for item in configured_gates
+                if isinstance(command := item.get("command"), list) and command
             ]
         if evidence:
             matrix[criterion] = evidence

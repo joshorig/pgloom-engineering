@@ -621,6 +621,70 @@ def test_gate_matrix_coverage_can_use_task_verification_commands(tmp_path: Path)
     }
 
 
+def test_gate_matrix_coverage_prefers_feature_commands_over_project_scripts(
+    tmp_path: Path,
+) -> None:
+    tmp_path.joinpath("qa").mkdir()
+    tmp_path.joinpath("qa/smoke.sh").write_text("./gradlew test\n", encoding="utf-8")
+    tmp_path.joinpath("qa/regression.sh").write_text(
+        "./gradlew :benchmarks:jmh\n",
+        encoding="utf-8",
+    )
+    plan = _plan().model_copy(
+        update={
+            "acceptance_test_matrix": [
+                "Configured QA gate coverage: compile, feature tests, and benchmark smoke pass.",
+            ]
+        }
+    )
+    task = _task_contract().model_copy(
+        update={
+            "verification_commands": [
+                ["./gradlew", ":core:compileJava", ":store:compileJava"],
+                ["./gradlew", ":core:test", "--tests", "RangeScanApiTest"],
+                [
+                    "./gradlew",
+                    "--no-daemon",
+                    "--console=plain",
+                    ":benchmarks:jmhSmokeCheck",
+                    "-Pjmh.smoke=true",
+                ],
+            ]
+        }
+    )
+    contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="task-1",
+        tests_added=["core/src/test/java/RangeScanApiTest.java"],
+    )
+
+    augmented = add_configured_gate_matrix_coverage(
+        contract,
+        plan=plan,
+        worktree=tmp_path,
+        project_metadata={
+            "qa": {
+                "required_gates": [
+                    {"id": "smoke", "command": ["./qa/smoke.sh"]},
+                    {"id": "regression", "command": ["./qa/regression.sh"]},
+                ]
+            }
+        },
+        task_contract=task,
+    )
+
+    coverage = augmented.matrix_coverage[
+        "Configured QA gate coverage: compile, feature tests, and benchmark smoke pass."
+    ]
+    assert coverage == [
+        "./gradlew :core:compileJava :store:compileJava",
+        "./gradlew :core:test --tests RangeScanApiTest",
+        "./gradlew --no-daemon --console=plain :benchmarks:jmhSmokeCheck -Pjmh.smoke=true",
+    ]
+    assert "./qa/smoke.sh" not in coverage
+    assert "./qa/regression.sh" not in coverage
+
+
 def test_api_prefixes_preserve_full_versioned_route_prefix() -> None:
     assert api_prefixes_from_text("Cover /api/v1/orders and /api/v2/orders/{id}.") == [
         "/api/v1/orders",
