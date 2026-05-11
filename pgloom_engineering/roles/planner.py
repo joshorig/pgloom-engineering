@@ -24,6 +24,7 @@ from pgloom_engineering.contracts import (
     RecoveryDecisionContract,
     TaskContract,
     TaskSliceContract,
+    canonical_acceptance_assertion_id,
 )
 from pgloom_engineering.features import attach_task
 from pgloom_engineering.model_provider import EngineeringCLIModelProvider
@@ -721,7 +722,11 @@ def _apply_corrective_slice_scope(
             update={
                 "slice_ids": [
                     slice_id for slice_id in milestone.slice_ids if slice_id in kept_ids
-                ]
+                ],
+                "acceptance_assertions": _corrective_claimed_assertions(
+                    milestone.acceptance_assertions,
+                    scoped_slices,
+                ),
             }
         )
         for milestone in contract.milestones
@@ -730,8 +735,28 @@ def _apply_corrective_slice_scope(
         update={
             "task_slices": scoped_slices,
             "milestones": scoped_milestones,
+            "acceptance_assertions": _corrective_claimed_assertions(
+                contract.acceptance_assertions,
+                scoped_slices,
+            ),
         }
     )
+
+
+def _corrective_claimed_assertions(
+    assertions: list[str],
+    task_slices: list[TaskSliceContract],
+) -> list[str]:
+    claimed = {
+        canonical_acceptance_assertion_id(assertion)
+        for task_slice in task_slices
+        for assertion in task_slice.acceptance_assertion_ids
+    }
+    return [
+        assertion
+        for assertion in assertions
+        if canonical_acceptance_assertion_id(assertion) in claimed
+    ]
 
 
 def _assign_task_slice_milestones(contract: PlanContract) -> PlanContract:

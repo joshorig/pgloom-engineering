@@ -294,6 +294,7 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                 allowed_paths=["core/src/test/java/"],
                 forbidden_paths=["core/src/main/java/"],
                 expected_outputs=["QAAuthorContract"],
+                acceptance_assertion_ids=["assertion-no-forbidden-scope"],
             ),
             TaskSliceContract(
                 slice_id="impl-fix",
@@ -304,6 +305,7 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                 forbidden_paths=["core/src/test/java/"],
                 depends_on=["qa-author"],
                 expected_outputs=["TaskResultContract"],
+                acceptance_assertion_ids=["descending empty intersections are safe"],
             ),
             TaskSliceContract(
                 slice_id="review",
@@ -314,6 +316,7 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                 forbidden_paths=["core/src/test/java/"],
                 depends_on=["impl-fix"],
                 expected_outputs=["ReviewVerdictContract"],
+                acceptance_assertion_ids=["descending empty intersections are safe"],
             ),
             TaskSliceContract(
                 slice_id="qa-scrutiny",
@@ -324,6 +327,7 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                 forbidden_paths=["store/src/main/java/"],
                 depends_on=["review"],
                 expected_outputs=["QAResultContract"],
+                acceptance_assertion_ids=["descending empty intersections are safe"],
             ),
             TaskSliceContract(
                 slice_id="qa-usertest",
@@ -334,9 +338,14 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                 forbidden_paths=["store/src/main/java/"],
                 depends_on=["qa-scrutiny"],
                 expected_outputs=["QAResultContract"],
+                acceptance_assertion_ids=["descending empty intersections are safe"],
             ),
         ],
         acceptance_test_matrix=["descending empty intersections are safe"],
+        acceptance_assertions=[
+            "descending empty intersections are safe",
+            "assertion-no-forbidden-scope",
+        ],
         milestones=[
             MilestoneContract(
                 milestone_id="m1",
@@ -347,6 +356,10 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
                     "review",
                     "qa-scrutiny",
                     "qa-usertest",
+                ],
+                acceptance_assertions=[
+                    "descending empty intersections are safe",
+                    "assertion-no-forbidden-scope",
                 ],
             )
         ],
@@ -373,6 +386,10 @@ def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
         "qa-usertest",
     ]
     assert scoped.task_slices[0].depends_on == []
+    assert scoped.acceptance_assertions == ["descending empty intersections are safe"]
+    assert scoped.milestones[0].acceptance_assertions == [
+        "descending empty intersections are safe"
+    ]
 
 
 def test_apply_corrective_slice_scope_keeps_feature_test_failure_on_implementer() -> None:
