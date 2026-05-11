@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -904,7 +905,7 @@ def _hot_path_findings(
                 "Benchmark plan uses reflection proxy/InvocationHandler in a hot measured path.",
             )
         ]
-    if _hot_path_shared_api_requires_wrapper_coverage(text):
+    if _hot_path_shared_api_requires_wrapper_coverage(plan):
         return [
             _finding(
                 definition,
@@ -937,7 +938,8 @@ def _hot_path_findings(
     ]
 
 
-def _hot_path_shared_api_requires_wrapper_coverage(text: str) -> bool:
+def _hot_path_shared_api_requires_wrapper_coverage(plan: PlanContract) -> bool:
+    text = _plan_semantic_text(plan).lower()
     hot_path_terms = (
         "zero-allocation",
         "zero allocation",
@@ -966,8 +968,33 @@ def _hot_path_shared_api_requires_wrapper_coverage(text: str) -> bool:
     return (
         any(term in text for term in hot_path_terms)
         and any(term in text for term in shared_api_terms)
-        and not any(term in text for term in wrapper_terms)
+        and not any(
+            re.search(rf"\b{re.escape(term)}\b", text) for term in wrapper_terms
+        )
     )
+
+
+def _plan_semantic_text(plan: PlanContract) -> str:
+    parts: list[str] = [
+        plan.problem_statement,
+        plan.design_contract.public_api,
+        plan.design_contract.ownership_boundaries,
+        plan.design_contract.concurrency_protocol,
+        plan.design_contract.persistence_protocol,
+        " ".join(plan.design_contract.acceptance_tests),
+        " ".join(plan.acceptance_test_matrix),
+        " ".join(plan.risk_register),
+    ]
+    for task_slice in plan.task_slices:
+        parts.extend(
+            [
+                task_slice.objective,
+                " ".join(task_slice.expected_outputs),
+                " ".join(task_slice.grading_criteria),
+                json.dumps(task_slice.validation_strategy, sort_keys=True),
+            ]
+        )
+    return " ".join(part for part in parts if part)
 
 
 def _inventory_only_findings(
