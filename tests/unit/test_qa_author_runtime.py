@@ -60,6 +60,11 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         for instruction in payload["instructions"]
     )
     assert any(
+        "PREFIX_VALUE" in instruction
+        and "payload bytes deliberately unrelated" in instruction
+        for instruction in payload["instructions"]
+    )
+    assert any(
         "matrix_coverage must include every exact string" in instruction
         for instruction in payload["instructions"]
     )

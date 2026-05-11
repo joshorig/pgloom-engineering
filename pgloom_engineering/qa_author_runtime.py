@@ -252,6 +252,13 @@ def build_qa_author_prompt(
                 "do not satisfy acceptance."
             ),
             (
+                "For R-003 key-prefix range scans, make key-prefix proof explicit. Prefer "
+                "named constants such as PREFIX_VALUE, PREFIX_BITS, PREFIX_RANGE_START, "
+                "and PREFIX_RANGE_END, or a keyBytes/logical-key mapping helper. Keep "
+                "payload bytes deliberately unrelated to the prefix so the test cannot be "
+                "mistaken for payload-prefix filtering."
+            ),
+            (
                 "For range-scan or public API acceptance, compile tests and benchmarks "
                 "against the typed public API directly. Do not use Class.forName, "
                 "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "
@@ -844,7 +851,10 @@ def build_qa_quality_repair_prompt(
                 ),
                 (
                     "For key-prefix findings, prove prefix semantics against logical keys "
-                    "or an explicit key-mapping API. Do not satisfy key-prefix acceptance "
+                    "or an explicit key-mapping API. Prefer named constants such as "
+                    "PREFIX_VALUE, PREFIX_BITS, PREFIX_RANGE_START, and PREFIX_RANGE_END, "
+                    "or a keyBytes/logical-key helper, and keep payload bytes deliberately "
+                    "unrelated to those prefix values. Do not satisfy key-prefix acceptance "
                     "by writing matching bytes into payload[0..] and asserting payload "
                     "prefix filtering."
                 ),
