@@ -1413,19 +1413,10 @@ def _grade_workflow_state(aggregate: dict[str, Any]) -> dict[str, Any]:
             "missing",
             _finding("blocking", "workflow_no_tasks", "No workflow tasks found."),
         )
-    incomplete_states = {
-        "queued",
-        "leased",
-        "running",
-        "blocked",
-        "retry",
-        "awaiting_approval",
-        "failed",
-    }
     findings: list[dict[str, str]] = []
     for task in tasks:
         state = str(task.get("state") or "")
-        if state not in incomplete_states:
+        if state == "done":
             continue
         task_id = str(task.get("id") or "")
         task_type = str(task.get("task_type") or "")
@@ -1958,7 +1949,22 @@ def _score(
         for row in worker_runs
         if row.get("status") == "done"
     }
+    non_done_tasks = [
+        {
+            "id": str(row.get("id") or ""),
+            "task_type": str(row.get("task_type") or ""),
+            "state": str(row.get("state") or ""),
+            "blocker_code": str(row.get("blocker_code") or ""),
+        }
+        for row in aggregate.get("tasks") or []
+        if isinstance(row, dict) and str(row.get("state") or "") != "done"
+    ]
     return [
+        {
+            "name": "all workflow tasks done",
+            "passed": not non_done_tasks,
+            "actual": non_done_tasks,
+        },
         {
             "name": "expected task types completed",
             "passed": expected.issubset(completed),

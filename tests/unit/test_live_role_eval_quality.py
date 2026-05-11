@@ -13,6 +13,7 @@ from pgloom_engineering.live_role_eval import (
     _grade_workflow_state,
     _patched_env,
     _role_command,
+    _score,
 )
 from tests.unit.test_planner_council import _plan_contract
 
@@ -216,6 +217,11 @@ def test_live_role_grade_rejects_unfinished_workflow_tasks() -> None:
                     "task_type": "engineering.review",
                     "state": "abandoned",
                 },
+                {
+                    "id": "usertest-1",
+                    "task_type": "engineering.qa.verify.usertest",
+                    "state": "cancelled",
+                },
             ]
         }
     )
@@ -229,6 +235,58 @@ def test_live_role_grade_rejects_unfinished_workflow_tasks() -> None:
                 "engineering.implement task impl-1 is blocked "
                 "(engineering.implementation_verification_failed)."
             ),
+        },
+        {
+            "severity": "blocking",
+            "code": "workflow_task_not_complete",
+            "message": "engineering.review task review-1 is abandoned.",
+        },
+        {
+            "severity": "blocking",
+            "code": "workflow_task_not_complete",
+            "message": "engineering.qa.verify.usertest task usertest-1 is cancelled.",
+        },
+    ]
+
+
+def test_live_role_score_fails_cancelled_workflow_tasks() -> None:
+    checks = _score(
+        role="orchestration",
+        aggregate={
+            "tasks": [
+                {
+                    "id": "plan-1",
+                    "task_type": "engineering.plan",
+                    "state": "done",
+                },
+                {
+                    "id": "qa-1",
+                    "task_type": "engineering.qa.author",
+                    "state": "cancelled",
+                },
+            ],
+            "worker_runs": [
+                {"status": "done", "metadata": {"task_type": "engineering.plan"}},
+            ],
+            "handoffs": [{"handoff_type": "plan_to_task"}],
+            "task_contracts": [],
+        },
+        output_evidence={
+            "changed_files": ["core/src/test/java/RangeScanApiTest.java"],
+            "telemetry": {"worker_run_summary": {"runs": [{"role": "planner"}]}},
+            "artifacts": [{"artifact_type": "command_log"}],
+        },
+    )
+
+    by_name = {check["name"]: check for check in checks}
+
+    assert by_name["all workflow tasks done"]["passed"] is False
+    assert by_name["all workflow tasks done"]["actual"] == [
+        {
+            "id": "qa-1",
+            "task_type": "engineering.qa.author",
+            "state": "cancelled",
+            "blocker_code": "",
         }
     ]
 
