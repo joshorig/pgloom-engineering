@@ -1347,6 +1347,55 @@ def test_replan_payload_classifies_benchmark_harness_error_as_qa_harness() -> No
     assert "QA-owned benchmark" in context["summary"]
 
 
+def test_replan_payload_classifies_no_matching_jmh_as_qa_harness() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-scrutiny-1",
+                "slot": "qa-scrutiny",
+                "task_type": "engineering.qa.verify.scrutiny",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.qa_verify_failed",
+            }
+        ]
+    )
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "qa-scrutiny-1",
+            "attempt": 1,
+            "blocker_code": "engineering.qa_verify_failed",
+            "blocker_reason": (
+                "qa.verify command failed: ./gradlew :benchmarks:jmhSmokeCheck "
+                "exited 1: No matching benchmarks. Miss-spelled regexp?"
+            ),
+            "result": {
+                "qa_result_contract": {
+                    "verdict": "fail",
+                    "validator_type": "scrutiny",
+                    "findings": [
+                        (
+                            "qa.verify command failed: ./gradlew "
+                            ":benchmarks:jmhSmokeCheck exited 1: "
+                            "No matching benchmarks. Miss-spelled regexp?"
+                        )
+                    ],
+                },
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert context["benchmark_gate_classification"] == "qa_harness"
+    assert context["benchmark_allocation_diagnosis"]["recommended_owner"] == "qa-author"
+    assert "No matching benchmarks" in context["failure_context"]
+    assert "QA-test repair" in context["summary"]
+
+
 def test_replan_payload_carries_implementation_artifact_hints() -> None:
     payload = workflow_driver._replan_payload(  # noqa: SLF001
         "feature-1",

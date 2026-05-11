@@ -1114,6 +1114,8 @@ def _benchmark_gate_classification(
         signal in text
         for signal in (
             "missing smoke benchmark result",
+            "no matching benchmarks",
+            "miss-spelled regexp",
             "wrongmethodtypeexception",
             "classnotfoundexception",
             "invalid benchmark",
