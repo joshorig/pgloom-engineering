@@ -918,6 +918,7 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     if str(context.get("blocker_code") or "") == "engineering.qa_semantic_quality_failed":
         return {
             "engineering.qa.author",
+            "engineering.implement",
             "engineering.review",
             "engineering.qa.verify.scrutiny",
             "engineering.qa.verify.usertest",
@@ -942,6 +943,7 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
         if not _corrective_context_mentions_production_defect(context):
             return {
                 "engineering.qa.author",
+                "engineering.implement",
                 "engineering.review",
                 "engineering.qa.verify.scrutiny",
                 "engineering.qa.verify.usertest",
@@ -965,6 +967,7 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     ):
         return {
             "engineering.qa.author",
+            "engineering.implement",
             "engineering.review",
             "engineering.qa.verify.scrutiny",
             "engineering.qa.verify.usertest",
@@ -972,6 +975,7 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     if qa_owned:
         return {
             "engineering.qa.author",
+            "engineering.implement",
             "engineering.review",
             "engineering.qa.verify.scrutiny",
             "engineering.qa.verify.usertest",
