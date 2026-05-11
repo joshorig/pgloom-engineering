@@ -4,10 +4,15 @@ import json
 
 
 def extract_json(text: str) -> object:
+    codex_message = _extract_codex_agent_message_text(text)
+    if codex_message is not None:
+        return extract_json(codex_message)
     stripped = text.strip()
     if stripped:
         try:
-            return json.loads(stripped)
+            parsed = json.loads(stripped)
+            if not _is_transport_event(parsed):
+                return parsed
         except json.JSONDecodeError:
             pass
     fenced = _extract_fenced_json(text)
@@ -15,7 +20,10 @@ def extract_json(text: str) -> object:
         return json.loads(fenced)
     for span in reversed(_balanced_json_spans(text)):
         try:
-            return json.loads(span)
+            parsed = json.loads(span)
+            if _is_transport_event(parsed):
+                continue
+            return parsed
         except json.JSONDecodeError:
             continue
     raise ValueError("no JSON object found in model response")
@@ -33,6 +41,30 @@ def _extract_fenced_json(text: str) -> str | None:
     if end < 0:
         return None
     return text[body_start + 1 : end].strip()
+
+
+def _extract_codex_agent_message_text(text: str) -> str | None:
+    result: str | None = None
+    for line in text.splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        item = payload.get("item")
+        if not isinstance(item, dict):
+            continue
+        if payload.get("type") != "item.completed" or item.get("type") != "agent_message":
+            continue
+        message = item.get("text")
+        if isinstance(message, str):
+            result = message
+    return result
+
+
+def _is_transport_event(value: object) -> bool:
+    return isinstance(value, dict) and isinstance(value.get("type"), str)
 
 
 def _balanced_json_spans(text: str) -> list[str]:
