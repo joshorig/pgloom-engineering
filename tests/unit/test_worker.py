@@ -88,10 +88,14 @@ def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch
             },
         ],
     )
+    def record_handoff_stub(**kwargs: Any) -> dict[str, Any]:
+        handoffs.append(kwargs)
+        return {}
+
     monkeypatch.setattr(
         worker,
         "record_handoff",
-        lambda **kwargs: handoffs.append(kwargs) or {},
+        record_handoff_stub,
     )
 
     _record_dependency_handoffs(
@@ -221,10 +225,14 @@ def test_blocked_qa_result_contract_is_persisted(monkeypatch: Any) -> None:
         "get_task_contract",
         lambda *args, **kwargs: {"input_contract": input_contract},
     )
+    def upsert_task_contract_stub(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        upserts.append(kwargs)
+        return {}
+
     monkeypatch.setattr(
         worker,
         "upsert_task_contract",
-        lambda *args, **kwargs: upserts.append(kwargs) or {},
+        upsert_task_contract_stub,
     )
     monkeypatch.setattr(
         worker,
@@ -304,10 +312,14 @@ def test_review_non_approve_blocks_after_persisting_contract(monkeypatch: Any) -
         "get_task_contract",
         lambda *args, **kwargs: {"input_contract": input_contract},
     )
+    def upsert_task_contract_stub(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        upserts.append(kwargs)
+        return {}
+
     monkeypatch.setattr(
         worker,
         "upsert_task_contract",
-        lambda *args, **kwargs: upserts.append(kwargs) or {},
+        upsert_task_contract_stub,
     )
     monkeypatch.setattr(
         worker,
@@ -334,7 +346,12 @@ def test_review_non_approve_blocks_after_persisting_contract(monkeypatch: Any) -
                     "task_id": "review-1",
                     "panel": ["reviewer"],
                     "verdict": "coder_repair",
-                    "findings": ["bug"],
+                    "findings": [
+                        (
+                            "conformance-tests/src/test/java/RangeScanConformanceTest.java "
+                            "needs prefix coverage"
+                        )
+                    ],
                     "rationale": "needs repair",
                 }
             }
@@ -344,10 +361,17 @@ def test_review_non_approve_blocks_after_persisting_contract(monkeypatch: Any) -
 
     assert result.status == "blocked"
     assert result.blocker_code == "engineering.review_rejected"
+    assert result.blocker_reason is not None
+    assert "conformance-tests/src/test/java/RangeScanConformanceTest.java" in (
+        result.blocker_reason
+    )
     assert upserts[0]["status"] == "completed"
     assert handoffs[0]["handoff_type"] == "review"
     assert recoveries[0]["blocker_code"] == "engineering.review_rejected"
     assert recoveries[0]["action"] == "corrective_slice"
+    assert "conformance-tests/src/test/java/RangeScanConformanceTest.java" in recoveries[0][
+        "rationale"
+    ]
 
 
 def test_milestone_id_reads_task_contract_input() -> None:

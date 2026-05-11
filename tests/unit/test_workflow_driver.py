@@ -382,6 +382,53 @@ def test_review_rejected_benchmark_finding_requests_qa_author_repair(
     assert "Do not emit an implementation slice" in summary
 
 
+def test_review_rejected_conformance_test_finding_requests_qa_author_repair(
+    monkeypatch: Any,
+) -> None:
+    enqueued: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 3,
+                    "blocker_code": "engineering.review_rejected",
+                    "blocker_reason": (
+                        "Reviewer verdict was coder_repair: conformance test wiring "
+                        "is incomplete. Findings: "
+                        "conformance-tests/src/test/java/RangeScanConformanceTest.java "
+                        "must add prefix matching/non-matching assertions for direct "
+                        "SINGLE, mmap SINGLE, direct DOUBLE, mmap DOUBLE."
+                    ),
+                }
+            ]
+        ),
+        None,
+    )
+
+    assert result is not None
+    payload = enqueued[0]["payload"]
+    summary = payload["replan_context"]["summary"]
+    assert "QA-owned benchmark/test harness" in summary
+    assert "Do not emit an implementation slice" in summary
+    assert "conformance-tests/src/test/java/RangeScanConformanceTest.java" in summary
+
+
 def test_review_rejected_mixed_api_and_test_finding_requests_implementation_repair(
     monkeypatch: Any,
 ) -> None:

@@ -474,10 +474,7 @@ def _post_execution_gate(
                         feature_id=feature_id,
                         blocker_code="engineering.review_rejected",
                         action="corrective_slice",
-                        rationale=(
-                            f"Reviewer verdict was {review_verdict_contract.verdict}: "
-                            f"{review_verdict_contract.rationale}"
-                        ),
+                        rationale=_review_rejection_rationale(review_verdict_contract),
                         database_url=database_url,
                     )
         elif task["task_type"] == "engineering.qa.author":
@@ -870,6 +867,19 @@ def _project_name(task: dict[str, Any], feature: dict[str, Any] | None) -> str |
     if feature is not None:
         return str(feature["project"])
     return None
+
+
+def _review_rejection_rationale(verdict: ReviewVerdictContract) -> str:
+    rationale = (
+        f"Reviewer verdict was {verdict.verdict}: {verdict.rationale}"
+    ).strip()
+    findings = [str(finding).strip() for finding in verdict.findings if str(finding).strip()]
+    if not findings:
+        return rationale
+    finding_text = " | ".join(findings[:5])
+    if len(finding_text) > 4000:
+        finding_text = f"{finding_text[:3997]}..."
+    return f"{rationale} Findings: {finding_text}"
 
 
 def _blocked_with_recovery(
