@@ -208,7 +208,7 @@ def test_codex_commands_disable_approval_prompts() -> None:
     )
 
     assert command[command.index("--ask-for-approval") + 1] == "never"
-    assert command.index("--ask-for-approval") < command.index("-m")
+    assert command.index("--ask-for-approval") < command.index("exec")
 
 
 def test_codex_commands_keep_existing_approval_policy() -> None:
@@ -225,9 +225,9 @@ def test_codex_commands_keep_existing_approval_policy() -> None:
 
     assert command == [
         "codex",
-        "exec",
         "--ask-for-approval",
         "never",
+        "exec",
         "-m",
         "gpt-5.5",
     ]

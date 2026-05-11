@@ -248,14 +248,26 @@ def _command_route_metadata(command: list[str]) -> dict[str, Any]:
 def _codex_no_approval_command(command: list[str]) -> list[str]:
     if not _is_codex_command(command):
         return command
-    if "--ask-for-approval" in command:
-        return command
     if "exec" not in command:
         return command
-    hardened = list(command)
-    hardened.insert(hardened.index("exec") + 1, "--ask-for-approval")
+    hardened = _without_flag_value(command, "--ask-for-approval")
+    hardened.insert(hardened.index("exec"), "--ask-for-approval")
     hardened.insert(hardened.index("--ask-for-approval") + 1, "never")
     return hardened
+
+
+def _without_flag_value(command: list[str], flag: str) -> list[str]:
+    cleaned: list[str] = []
+    skip_next = False
+    for part in command:
+        if skip_next:
+            skip_next = False
+            continue
+        if part == flag:
+            skip_next = True
+            continue
+        cleaned.append(part)
+    return cleaned
 
 
 def _is_codex_command(command: list[str]) -> bool:

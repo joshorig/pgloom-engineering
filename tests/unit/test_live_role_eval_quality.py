@@ -318,6 +318,7 @@ def test_live_role_codex_commands_use_full_access_sandbox() -> None:
 
     assert command[command.index("-s") + 1] == "danger-full-access"
     assert command[command.index("--ask-for-approval") + 1] == "never"
+    assert command.index("--ask-for-approval") < command.index("exec")
     assert command[command.index("-C") + 1] == "{worktree}"
 
 

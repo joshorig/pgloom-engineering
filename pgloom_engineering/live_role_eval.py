@@ -1079,9 +1079,9 @@ def _role_command(*, backend: str, model: str, reasoning: str, planner: bool) ->
     elif backend == "codex":
         command = [
             "codex",
-            "exec",
             "--ask-for-approval",
             "never",
+            "exec",
             "-m",
             model,
             "-c",
