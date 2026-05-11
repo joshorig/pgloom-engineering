@@ -194,6 +194,39 @@ def test_production_grade_accepts_reflection_as_forbidden_api_testing() -> None:
     ]
 
 
+def test_production_grade_rejects_broad_implementer_source_roots() -> None:
+    plan = _plan_contract()
+    implementer = next(item for item in plan.task_slices if item.role == "implementer")
+    implementer.allowed_paths = ["core/src/main/java/", "store/src/main/java/"]
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "implementer_source_root_too_broad"
+        and finding.slice_id == implementer.slice_id
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_accepts_package_level_implementer_paths() -> None:
+    plan = _plan_contract()
+    implementer = next(item for item in plan.task_slices if item.role == "implementer")
+    implementer.allowed_paths = [
+        "core/src/main/java/com/joshorig/ull/lvc/api/",
+        "core/src/main/java/com/joshorig/ull/lvc/common/",
+        "store/src/main/java/com/joshorig/ull/lvc/store/direct/",
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "implementer_source_root_too_broad"
+    ]
+
+
 def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() -> None:
     plan = _plan_contract()
     plan.task_slices = [

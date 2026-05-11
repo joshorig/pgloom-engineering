@@ -69,6 +69,10 @@ Rules:
   acceptance entries for unrelated features.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
+- Implementer `allowed_paths` must be package/file-level roots, not broad module
+  source roots such as `core/src/main/java/` or `store/src/main/java/`. Keep the
+  write surface narrow enough that unrelated production packages remain outside
+  the path policy.
 - Preserve or synthesize `acceptance_assertions`, per-slice
   `acceptance_assertion_ids`, `required_procedures`, grading criteria,
   validation strategy, and milestone contracts. Every assertion must be claimed

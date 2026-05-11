@@ -48,6 +48,7 @@ def evaluate_production_grade(
     findings.extend(_milestone_signoff_findings(plan))
     findings.extend(_variant_scope_verification_findings(plan))
     findings.extend(_small_feature_surface_findings(plan))
+    findings.extend(_broad_implementation_source_root_findings(plan))
     blocking = [finding for finding in findings if finding.severity == "blocking"]
     advisory = [finding for finding in findings if finding.severity == "advisory"]
     score = max(0, 100 - len(blocking) * 25 - len(advisory) * 5)
@@ -240,6 +241,37 @@ def _small_feature_surface_findings(plan: PlanContract) -> list[ProductionFindin
                 )
             )
     return findings
+
+
+def _broad_implementation_source_root_findings(plan: PlanContract) -> list[ProductionFinding]:
+    findings: list[ProductionFinding] = []
+    for task_slice in plan.task_slices:
+        if task_slice.role != "implementer":
+            continue
+        broad_paths = [
+            path
+            for path in task_slice.allowed_paths
+            if _is_module_source_root(path)
+        ]
+        if not broad_paths:
+            continue
+        findings.append(
+            ProductionFinding(
+                severity="blocking",
+                code="implementer_source_root_too_broad",
+                slice_id=task_slice.slice_id,
+                message=(
+                    "Implementer allowed_paths must use package/file-level roots, not broad "
+                    f"module source roots: {', '.join(broad_paths)}"
+                ),
+            )
+        )
+    return findings
+
+
+def _is_module_source_root(path: str) -> bool:
+    normalized = path.strip().rstrip("/")
+    return bool(re.search(r"(^|/)src/main/(java|kotlin|scala)$", normalized))
 
 
 def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionFinding]:

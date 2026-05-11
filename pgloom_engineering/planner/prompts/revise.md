@@ -7,6 +7,8 @@ Deterministic validator and critic checks are authoritative. In particular:
 - QA author and QA verify allowed_paths must be limited to the project's
   registered QA/test roots.
 - Implementers must not include project QA/test roots in allowed_paths.
+- Implementers must use package/file-level source roots, not broad module roots
+  like `core/src/main/java/` or `store/src/main/java/`.
 - QA verify must run after every reviewer.
 - Do not add finalization, merge, PR approval, or human-gate task slices; use
   only finalization_policy for the human merge gate.

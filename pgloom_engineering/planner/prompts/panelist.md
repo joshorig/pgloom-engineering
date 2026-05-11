@@ -106,6 +106,10 @@ Rules:
   `parallel_candidates`, `council_decides`, or `single`.
 - Every task slice needs non-empty `allowed_paths`, `forbidden_paths`,
   `expected_outputs`, and `verification_commands`.
+- Implementer `allowed_paths` must be package/file-level roots, not broad module
+  source roots such as `core/src/main/java/` or `store/src/main/java/`. Use
+  concrete paths like `core/src/main/java/.../api/` and the specific store
+  package roots required by the feature.
 - Every task slice must claim at least one `acceptance_assertion_ids` entry, and
   every acceptance assertion must be claimed by at least one slice.
 - Emit executable milestone contracts. A milestone dependency locks every slice
