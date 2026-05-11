@@ -787,6 +787,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_range_benchmark_behavior_gap",
+        "qa_semantic_range_benchmark_parameterized_gate_mismatch",
         "qa_semantic_range_benchmark_smoke_threshold_too_strict",
         "qa_semantic_existing_smoke_threshold_relaxed",
         "qa_semantic_benchmark_visitor_signature_mismatch",
@@ -893,6 +894,12 @@ def build_qa_quality_repair_prompt(
                     "CiSmokeBenchmark allocation thresholds unchanged. Add only "
                     "feature-specific RangeScanBenchmark thresholds or wiring needed "
                     "for the new benchmark smoke gate."
+                ),
+                (
+                    "For parameterized range benchmark gate findings, keep "
+                    "RangeScanBenchmark variant coverage, but repair jmhSmokeCheck so "
+                    "it validates every expected parameterized result instead of "
+                    "requiring exactly one JSON entry per benchmark method."
                 ),
                 (
                     "For range regression guard findings, add or repair behavioral "

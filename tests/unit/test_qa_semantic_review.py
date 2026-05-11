@@ -829,6 +829,66 @@ def test_semantic_review_accepts_range_benchmark_smoke_threshold_with_noise_marg
     ] == []
 
 
+def test_semantic_review_blocks_parameterized_range_benchmark_single_entry_gate() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/build.gradle": """
+            tasks.register('jmhSmokeCheck') {
+                def smokeBenchmarkThresholds = [
+                    'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRangeScan': [
+                        allocBytesPerOp: 0.050d,
+                        gcCount: 0.000d
+                    ]
+                ]
+                smokeBenchmarkThresholds.each { benchmarkName, thresholds ->
+                    def entries = byBenchmark[benchmarkName]
+                    if (entries.size() != 1) {
+                        failures << "Expected exactly one smoke result for ${benchmarkName}"
+                    }
+                }
+            }
+            """,
+            (
+                "changed-files/benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/"
+                "RangeScanBenchmark.java"
+            ): """
+            class RangeScanBenchmark {
+                @Param({"single", "double"})
+                public String storeVariant;
+                @Param({"direct", "mmap"})
+                public String backend;
+                private LvcStore store;
+                private StoreVisitor visitor;
+                @Benchmark
+                public int ascendingRangeScan() {
+                    store.ascendingRange(0, 1023, visitor);
+                    return 1;
+                }
+                @Benchmark
+                public int descendingRangeScan() {
+                    store.descendingRange(1023, 0, visitor);
+                    return 1;
+                }
+                @Benchmark
+                public int prefixFilteredRangeScan() {
+                    store.ascendingRange(0, 1023, 0x0A, 4, visitor);
+                    return 1;
+                }
+            }
+            """,
+        },
+        plan_text="Range benchmark smoke must prove allocation behavior.",
+        task_text="Write JMH benchmark smoke for parameterized range scans.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_range_benchmark_parameterized_gate_mismatch"
+    ] == ["qa_semantic_range_benchmark_parameterized_gate_mismatch"]
+
+
 def test_semantic_review_blocks_relaxing_existing_ci_smoke_thresholds() -> None:
     findings = review_semantic_quality(
         files={

@@ -52,6 +52,7 @@ def review_semantic_quality(
     findings.extend(_jmh_reflective_invocation_findings(files, conventions))
     findings.extend(_range_benchmark_api_findings(files, context, conventions))
     findings.extend(_range_benchmark_behavior_findings(files, context, conventions))
+    findings.extend(_range_benchmark_parameterized_gate_findings(files, context, conventions))
     findings.extend(_range_benchmark_smoke_threshold_findings(files, context, conventions))
     findings.extend(_existing_smoke_threshold_relaxation_findings(files, context, conventions))
     findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
@@ -528,6 +529,54 @@ def _range_benchmark_behavior_findings(
                 line=_first_line_containing_any(
                     text,
                     ["ascendingRange", "descendingRange", "prefix"],
+                ),
+            )
+        )
+    return findings
+
+
+def _range_benchmark_parameterized_gate_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_benchmark"))
+    if range_config.get("require_behavior_coverage") is False:
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "benchmark" not in normalized_context:
+        return []
+    has_parameterized_range_benchmark = any(
+        _looks_like_jmh_benchmark(path, text)
+        and "rangescanbenchmark" in text.lower()
+        and "@param" in text.lower()
+        for path, text in files.items()
+    )
+    if not has_parameterized_range_benchmark:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith("build.gradle"):
+            continue
+        lowered = text.lower()
+        if "rangescanbenchmark" not in lowered:
+            continue
+        if "entries.size() != 1" not in text and "exactly one smoke result" not in lowered:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_range_benchmark_parameterized_gate_mismatch",
+                severity="blocking",
+                message=(
+                    "RangeScanBenchmark is parameterized, so JMH smoke output can contain "
+                    "multiple entries per benchmark method. The smoke gate must validate "
+                    "each expected parameterized entry or key thresholds by benchmark plus "
+                    "params; requiring exactly one entry makes the feature gate invalid."
+                ),
+                file=path,
+                line=_first_line_containing_any(
+                    text,
+                    ["entries.size() != 1", "exactly one smoke result"],
                 ),
             )
         )
