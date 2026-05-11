@@ -59,6 +59,7 @@ def planner_qa_policy_summary(project_metadata: dict[str, Any]) -> dict[str, Any
         "quality_gates": list(qa.get("quality_gates") or [])[:8],
         "avoid_patterns": list(qa.get("avoid_patterns") or [])[:8],
         "required_gates": qa.get("required_gates") or [],
+        "feature_smoke_commands": qa.get("feature_smoke_commands") or [],
         "benchmark_frameworks": qa.get("benchmark_frameworks") or [],
         "benchmark_variants": qa.get("benchmark_variants") or [],
         "test_roots": qa.get("test_roots") or [],
@@ -67,6 +68,7 @@ def planner_qa_policy_summary(project_metadata: dict[str, Any]) -> dict[str, Any
         "test_support_paths": qa.get("test_support_paths") or [],
         "endpoint_acceptance": semantic.get("endpoint_acceptance") or {},
         "payload_assertions": semantic.get("payload_assertions") or {},
+        "range_prefix_behavior": semantic.get("range_prefix_behavior") or {},
         "preferred_helpers": qa.get("preferred_helpers") or {},
         "behavior_coverage_rules": qa.get("behavior_coverage_rules") or [],
     }

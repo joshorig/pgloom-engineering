@@ -842,6 +842,12 @@ def test_repair_brief_turns_failed_checks_into_actionable_repairs() -> None:
                                 "check_id": "check_qa_verify_present",
                                 "code": "qa_verify_not_after_reviewer",
                                 "message": "qa.verify must run after reviewers.",
+                            },
+                            {
+                                "severity": "blocking",
+                                "check_id": "check_qa_verify_present",
+                                "code": "qa_verify_missing_feature_validation",
+                                "message": "qa.verify needs lint/build/test/benchmark.",
                             }
                         ],
                     }
@@ -855,10 +861,15 @@ def test_repair_brief_turns_failed_checks_into_actionable_repairs() -> None:
     assert brief["must_fix_codes"] == [
         "qa_paths_not_restricted",
         "qa_verify_not_after_reviewer",
+        "qa_verify_missing_feature_validation",
     ]
     assert any("Restrict every engineering.qa.author" in item for item in brief["required_repairs"])
     assert any(
         "Move engineering.qa.verify.scrutiny after all reviewer" in item
+        for item in brief["required_repairs"]
+    )
+    assert any(
+        "feature_smoke_commands" in item
         for item in brief["required_repairs"]
     )
 

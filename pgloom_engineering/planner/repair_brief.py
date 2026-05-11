@@ -93,6 +93,14 @@ def _action_for_code(code: str) -> str:
             "Move engineering.qa.verify.scrutiny after all reviewer slices and make "
             "engineering.qa.verify.usertest depend on scrutiny."
         ),
+        "qa_verify_missing_feature_validation": (
+            "Update engineering.qa.verify.scrutiny verification_commands to include all "
+            "four feature-scoped validation categories: lint/style, build/compile, "
+            "feature-specific tests, and direct benchmark smoke. When "
+            "PROJECT_CONTEXT.qa_policy_summary.feature_smoke_commands supplies replacement "
+            "commands for this feature, copy that command set instead of inventing a "
+            "shorter subset."
+        ),
         "qa_usertest_uses_broad_gate": (
             "Keep smoke, benchmark-smoke, full regression, and bare project checks in "
             "engineering.qa.verify.scrutiny. Make engineering.qa.verify.usertest exercise "

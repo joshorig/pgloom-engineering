@@ -100,12 +100,14 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
                 "quality_gates": ["gate"],
                 "avoid_patterns": ["avoid"],
                 "required_gates": [{"id": "smoke"}],
+                "feature_smoke_commands": [{"id": "range", "commands": [["./gradlew"]]}],
                 "benchmark_variants": ["single"],
                 "test_roots": ["core/src/test/java"],
                 "benchmark_roots": ["benchmarks/src/jmh/java"],
                 "semantic_conventions": {
                     "endpoint_acceptance": {"require_http_harness": True},
                     "payload_assertions": {"prefer_structured_json_paths": True},
+                    "range_prefix_behavior": {"key_prefix_filter_required": True},
                 },
             }
         }
@@ -113,6 +115,8 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
 
     assert summary["endpoint_acceptance"]["require_http_harness"] is True
     assert summary["payload_assertions"]["prefer_structured_json_paths"] is True
+    assert summary["range_prefix_behavior"]["key_prefix_filter_required"] is True
+    assert summary["feature_smoke_commands"][0]["id"] == "range"
     assert summary["benchmark_variants"] == ["single"]
     assert summary["test_roots"] == ["core/src/test/java"]
     assert summary["benchmark_roots"] == ["benchmarks/src/jmh/java"]
