@@ -869,7 +869,11 @@ def _corrective_path_scope(
     if blocked_contract.get("task_type") != "engineering.implement":
         return {}
     blocked_allowed = _context_string_list(context, "blocked_slice_allowed_paths")
-    base_allowed = blocked_allowed or task_slice.allowed_paths
+    base_allowed = [
+        path
+        for path in (blocked_allowed or task_slice.allowed_paths)
+        if _corrective_implementer_path_allowed(path)
+    ]
     allowed = _dedupe_path_list(
         [
             *base_allowed,
@@ -932,6 +936,16 @@ def _source_sibling_for_failure(filename: str, base_path: str) -> str | None:
     if _camel_suffix(existing_stem) != _camel_suffix(failed_stem):
         return None
     return f"{directory}/{filename}"
+
+
+def _corrective_implementer_path_allowed(path: str) -> bool:
+    normalized = path.strip().lstrip("./")
+    return not (
+        normalized == "docs"
+        or normalized.startswith("docs/")
+        or normalized == "repo-memory"
+        or normalized.startswith("repo-memory/")
+    )
 
 
 def _camel_suffix(value: str) -> str:

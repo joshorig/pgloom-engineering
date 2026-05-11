@@ -646,6 +646,7 @@ def test_apply_corrective_slice_scope_restores_explicit_source_paths_from_failur
 
     implementer = scoped.task_slices[0]
     assert "api/src/main/java/example/api/Visitor.java" in implementer.allowed_paths
+    assert "docs/Storage.md" not in implementer.allowed_paths
     assert "api/src/main/java/" not in implementer.forbidden_paths
     assert "api/src/test/java/" in implementer.forbidden_paths
 
