@@ -229,6 +229,7 @@ class PlannerCouncil:
                 consolidated,
                 project_root=project_context.project_root,
                 qa_write_paths=project_context.qa_write_paths,
+                project_metadata={"qa": project_context.qa_policy_summary},
             )
             validator_errors.extend(_production_grade_validator_errors(production_grade))
             substance = evaluate_planner_substance(

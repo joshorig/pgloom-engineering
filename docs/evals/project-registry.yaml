@@ -57,6 +57,25 @@ projects:
           - double
           - direct
           - mmap
+        variant_verification_rules:
+          - id: lvc_range_store_variant_gates
+            conflicts:
+              single:
+                - double
+              double:
+                - single
+              direct:
+                - mmap
+              mmap:
+                - direct
+            broad_gate_markers:
+              - ":conformance-tests:test"
+              - RangeScanConformanceTest
+            broad_gate_exempt_markers:
+              - single
+              - double
+              - direct
+              - mmap
         example_tests:
           - store/src/test/java
           - conformance-tests/src/test/java

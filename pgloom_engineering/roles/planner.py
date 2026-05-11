@@ -206,6 +206,7 @@ class PlannerHandler:
             contract,
             project=project,
             qa_write_paths=qa_write_paths,
+            project_metadata=project_metadata,
         )
         if normalized_quality_errors:
             return HandlerResult(
@@ -367,12 +368,14 @@ def _post_normalization_quality_errors(
     *,
     project: ProjectConfig | None,
     qa_write_paths: list[str] | None,
+    project_metadata: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     root = project.root if project is not None else None
     report = evaluate_production_grade(
         contract,
         project_root=root,
         qa_write_paths=qa_write_paths,
+        project_metadata=project_metadata,
     )
     return [
         {

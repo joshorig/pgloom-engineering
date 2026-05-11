@@ -31,6 +31,7 @@ def evaluate_production_grade(
     *,
     project_root: Path | None = None,
     qa_write_paths: list[str] | None = None,
+    project_metadata: dict[str, object] | None = None,
 ) -> ProductionGradeReport:
     root = project_root or _default_project_root(plan.project)
     qa_roots = (
@@ -48,7 +49,7 @@ def evaluate_production_grade(
     findings.extend(_qa_reflective_authoring_findings(plan))
     findings.extend(_qa_usertest_command_findings(plan))
     findings.extend(_milestone_signoff_findings(plan))
-    findings.extend(_variant_scope_verification_findings(plan))
+    findings.extend(_variant_scope_verification_findings(plan, project_metadata or {}))
     findings.extend(_small_feature_surface_findings(plan))
     findings.extend(_broad_implementation_source_root_findings(plan))
     findings.extend(_hot_path_implementation_surface_findings(plan, root))
@@ -427,40 +428,68 @@ def _is_module_source_root(path: str) -> bool:
     return bool(re.search(r"(^|/)src/main/(java|kotlin|scala)$", normalized))
 
 
-def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionFinding]:
+def _variant_scope_verification_findings(
+    plan: PlanContract,
+    project_metadata: dict[str, object],
+) -> list[ProductionFinding]:
+    rules = _variant_verification_rules(project_metadata)
+    if not rules:
+        return []
     implementers = [
         task_slice
         for task_slice in plan.task_slices
         if task_slice.task_type == "engineering.implement"
     ]
-    scoped = [
-        (task_slice, _variant_scope_text(_variant_scope_source(task_slice)))
-        for task_slice in implementers
-    ]
     findings: list[ProductionFinding] = []
-    for task_slice, scope in scoped:
-        if not scope:
-            continue
-        if not any(_variant_scope_conflicts(scope, other_scope) for _, other_scope in scoped):
-            continue
-        if not _has_broad_variant_conformance_without_specific_gate(
-            task_slice.verification_commands
-        ):
-            continue
-        findings.append(
-            ProductionFinding(
-                severity="blocking",
-                code="variant_slice_uses_broad_conformance_gate",
-                slice_id=task_slice.slice_id,
-                message=(
-                    "Variant-scoped implementer slice uses a broad conformance gate. "
-                    "Either keep the implementation in one slice, or provide a "
-                    "slice-specific verification command so the worker is not forced "
-                    "to implement sibling variants."
-                ),
+    for rule in rules:
+        scoped = [
+            (task_slice, _variant_scope_text(_variant_scope_source(task_slice), rule))
+            for task_slice in implementers
+        ]
+        for task_slice, scope in scoped:
+            if not scope:
+                continue
+            if not any(
+                _variant_scope_conflicts(scope, other_scope, rule)
+                for _, other_scope in scoped
+            ):
+                continue
+            if not _has_broad_variant_gate_without_specific_gate(
+                task_slice.verification_commands,
+                rule,
+            ):
+                continue
+            findings.append(
+                ProductionFinding(
+                    severity="blocking",
+                    code="variant_slice_uses_broad_conformance_gate",
+                    slice_id=task_slice.slice_id,
+                    message=(
+                        "Variant-scoped implementer slice uses a broad conformance gate. "
+                        "Either keep the implementation in one slice, or provide a "
+                        "slice-specific verification command so the worker is not forced "
+                        "to implement sibling variants."
+                    ),
+                )
             )
-        )
     return findings
+
+
+def _variant_verification_rules(
+    project_metadata: dict[str, object],
+) -> list[dict[str, object]]:
+    planner = project_metadata.get("planner")
+    qa = project_metadata.get("qa")
+    candidates: list[object] = []
+    if isinstance(planner, dict):
+        candidates.append(planner.get("variant_verification_rules"))
+    if isinstance(qa, dict):
+        candidates.append(qa.get("variant_verification_rules"))
+    candidates.append(project_metadata.get("variant_verification_rules"))
+    for candidate in candidates:
+        if isinstance(candidate, list):
+            return [item for item in candidate if isinstance(item, dict)]
+    return []
 
 
 def _qa_usertest_command_findings(plan: PlanContract) -> list[ProductionFinding]:
@@ -525,7 +554,10 @@ def _looks_like_deterministic_usertest_substitute(command: list[str]) -> bool:
     return False
 
 
-def _has_broad_variant_conformance_without_specific_gate(commands: list[list[str]]) -> bool:
+def _has_broad_variant_gate_without_specific_gate(
+    commands: list[list[str]],
+    rule: dict[str, object],
+) -> bool:
     specific_classes: set[str] = set()
     for command in commands:
         test_filter = _gradle_test_filter(command)
@@ -537,7 +569,7 @@ def _has_broad_variant_conformance_without_specific_gate(commands: list[list[str
             specific_classes.add(test_filter.rsplit(".", maxsplit=1)[0].lower())
     for command in commands:
         test_filter = _gradle_test_filter(command)
-        if not _looks_like_broad_variant_conformance(command):
+        if not _looks_like_broad_variant_gate(command, rule):
             continue
         class_name = (test_filter or "").lower()
         if class_name not in specific_classes:
@@ -552,48 +584,67 @@ def _looks_like_method_test_filter(test_filter: str) -> bool:
     return bool(method_name) and method_name[0].islower()
 
 
-def _variant_scope_text(text: str) -> set[str]:
+def _variant_scope_text(text: str, rule: dict[str, object]) -> set[str]:
     lowered = text.lower()
+    conflicts = _variant_conflicts(rule)
     scope: set[str] = set()
-    for include, exclude in {
-        "single": "double",
-        "double": "single",
-        "direct": "mmap",
-        "mmap": "direct",
-    }.items():
-        if include in lowered and exclude not in lowered:
+    for include, excludes in conflicts.items():
+        if include in lowered and not any(exclude in lowered for exclude in excludes):
             scope.add(include)
     return scope
 
 
-def _variant_scope_conflicts(left: set[str], right: set[str]) -> bool:
-    conflicts = {
-        "single": "double",
-        "double": "single",
-        "direct": "mmap",
-        "mmap": "direct",
-    }
-    return any(conflicts.get(item) in right for item in left)
+def _variant_scope_conflicts(
+    left: set[str],
+    right: set[str],
+    rule: dict[str, object],
+) -> bool:
+    conflicts = _variant_conflicts(rule)
+    return any(conflict in right for item in left for conflict in conflicts.get(item, []))
 
 
-def _looks_like_broad_variant_conformance(command: list[str]) -> bool:
+def _variant_conflicts(rule: dict[str, object]) -> dict[str, set[str]]:
+    raw = rule.get("conflicts")
+    if not isinstance(raw, dict):
+        return {}
+    conflicts: dict[str, set[str]] = {}
+    for key, values in raw.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(values, str):
+            conflicts[key.lower()] = {values.lower()}
+        elif isinstance(values, list):
+            conflicts[key.lower()] = {
+                str(value).lower() for value in values if isinstance(value, str)
+            }
+    return {key: values for key, values in conflicts.items() if values}
+
+
+def _looks_like_broad_variant_gate(
+    command: list[str],
+    rule: dict[str, object],
+) -> bool:
     text = " ".join(command)
     lowered = text.lower()
-    if ":conformance-tests:test" not in lowered:
+    required_markers = _string_list(rule.get("broad_gate_markers"))
+    if required_markers and not all(marker.lower() in lowered for marker in required_markers):
         return False
-    if "rangescanconformancetest" not in lowered:
+    if not required_markers:
         return False
-    if "rangescanconformancetest." in lowered:
+    test_filter = _gradle_test_filter(command)
+    if test_filter and _looks_like_method_test_filter(test_filter):
         return False
+    exempt_markers = _string_list(rule.get("broad_gate_exempt_markers"))
     return not any(
-        marker in lowered
-        for marker in [
-            "single",
-            "double",
-            "direct",
-            "mmap",
-        ]
+        marker.lower() in lowered
+        for marker in exempt_markers
     )
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item.strip()]
 
 
 def _gradle_test_filter(command: list[str]) -> str | None:

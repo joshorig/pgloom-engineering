@@ -1,8 +1,35 @@
 from pathlib import Path
+from typing import Any
 
 from pgloom_engineering.contracts import MilestoneContract
 from pgloom_engineering.planner.production_grade import evaluate_production_grade
 from tests.unit.test_planner_council import _plan_contract
+
+VARIANT_RULE_METADATA: dict[str, Any] = {
+    "planner": {
+        "variant_verification_rules": [
+            {
+                "id": "range-store-variants",
+                "conflicts": {
+                    "single": ["double"],
+                    "double": ["single"],
+                    "direct": ["mmap"],
+                    "mmap": ["direct"],
+                },
+                "broad_gate_markers": [
+                    ":conformance-tests:test",
+                    "RangeScanConformanceTest",
+                ],
+                "broad_gate_exempt_markers": [
+                    "single",
+                    "double",
+                    "direct",
+                    "mmap",
+                ],
+            }
+        ]
+    }
+}
 
 
 def test_production_grade_requires_qa_roots_for_verification_commands(tmp_path: Path) -> None:
@@ -277,12 +304,70 @@ def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() ->
         ]
     )
 
-    report = evaluate_production_grade(plan)
+    report = evaluate_production_grade(plan, project_metadata=VARIANT_RULE_METADATA)
 
     assert report.verdict == "revise"
     assert any(
         finding.code == "variant_slice_uses_broad_conformance_gate"
         and finding.slice_id == "impl-single"
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_variant_rules_require_project_metadata() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.role not in {"implementer", "reviewer"}
+    ]
+    plan.task_slices.extend(
+        [
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-left",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement left-side range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["left implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest",
+                        ]
+                    ],
+                }
+            ),
+            plan.task_slices[0].model_copy(
+                update={
+                    "slice_id": "impl-right",
+                    "role": "implementer",
+                    "task_type": "engineering.implement",
+                    "objective": "Implement right-side range scans.",
+                    "allowed_paths": ["store/src/main/java/"],
+                    "forbidden_paths": ["conformance-tests/src/test/java/"],
+                    "expected_outputs": ["right implementation"],
+                    "verification_commands": [
+                        [
+                            "./gradlew",
+                            ":conformance-tests:test",
+                            "--tests",
+                            "com.example.RangeScanConformanceTest",
+                        ]
+                    ],
+                }
+            ),
+        ]
+    )
+
+    report = evaluate_production_grade(plan)
+
+    assert not any(
+        finding.code == "variant_slice_uses_broad_conformance_gate"
         for finding in report.blocking_findings
     )
 
@@ -358,7 +443,7 @@ def test_production_grade_accepts_variant_slice_with_method_conformance_gate() -
         ]
     )
 
-    report = evaluate_production_grade(plan)
+    report = evaluate_production_grade(plan, project_metadata=VARIANT_RULE_METADATA)
 
     assert not any(
         finding.code == "variant_slice_uses_broad_conformance_gate"
@@ -428,7 +513,7 @@ def test_production_grade_accepts_variant_slice_when_broad_gate_is_redundant() -
         ]
     )
 
-    report = evaluate_production_grade(plan)
+    report = evaluate_production_grade(plan, project_metadata=VARIANT_RULE_METADATA)
 
     assert not any(
         finding.code == "variant_slice_uses_broad_conformance_gate"
@@ -482,7 +567,7 @@ def test_production_grade_rejects_variant_slice_when_outputs_mention_sibling() -
         ]
     )
 
-    report = evaluate_production_grade(plan)
+    report = evaluate_production_grade(plan, project_metadata=VARIANT_RULE_METADATA)
 
     assert report.verdict == "revise"
     assert any(

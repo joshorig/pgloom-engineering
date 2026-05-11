@@ -801,7 +801,35 @@ def test_production_grade_blockers_force_council_revision() -> None:
         PlannerCouncil(
             config=CouncilConfig(panelist_count=2, max_iterations=1),
             provider=provider,
-        ).run(feature_goal=_feature_goal(), project_context=_context())
+        ).run(
+            feature_goal=_feature_goal(),
+            project_context=_context().model_copy(
+                update={
+                    "qa_policy_summary": {
+                        "variant_verification_rules": [
+                            {
+                                "conflicts": {
+                                    "single": ["double"],
+                                    "double": ["single"],
+                                    "direct": ["mmap"],
+                                    "mmap": ["direct"],
+                                },
+                                "broad_gate_markers": [
+                                    ":conformance-tests:test",
+                                    "RangeScanConformanceTest",
+                                ],
+                                "broad_gate_exempt_markers": [
+                                    "single",
+                                    "double",
+                                    "direct",
+                                    "mmap",
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ),
+        )
 
     iteration = exc_info.value.iterations[0]
     assert iteration.critic.verdict == "revise"
