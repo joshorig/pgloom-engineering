@@ -114,6 +114,7 @@ def test_planner_persistence_uses_metadata_qa_write_paths(
             "engineering.qa.verify.usertest",
         }:
             task_slice.allowed_paths = ["tests/", "benchmarks/build.gradle/"]
+            task_slice.forbidden_paths = ["core/", "store/", "docs/"]
     outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
 
     result = PlannerHandler(council=FakeCouncil(outcome)).handle(planner)

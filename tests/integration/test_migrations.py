@@ -297,15 +297,15 @@ def test_plan_contract_round_trip_and_planner_dispatch(database_url: str) -> Non
     assert len(plan_rows) == 1
     assert plan_rows[0]["status"] == "valid"
     task_contracts = list_task_contracts(feature["id"], database_url=database_url)
-    assert [row["role"] for row in task_contracts] == ["implementer", "qa"]
+    assert [row["role"] for row in task_contracts] == ["implementer", "qa", "qa"]
     handoffs = list_handoffs(feature["id"], database_url=database_url)
-    assert len(handoffs) == 2
+    assert len(handoffs) == 3
 
     aggregate = get_feature_aggregate(feature["id"], database_url=database_url)
     assert aggregate is not None
     assert aggregate["active_plan_contract"]["id"] == plan_rows[0]["id"]
-    assert len(aggregate["task_contracts"]) == 2
-    assert len(aggregate["handoffs"]) == 2
+    assert len(aggregate["task_contracts"]) == 3
+    assert len(aggregate["handoffs"]) == 3
 
 
 def test_invalid_plan_contract_is_persisted_with_errors(database_url: str) -> None:
@@ -621,6 +621,17 @@ def _plan_contract(feature_id: str) -> PlanContract:
                 allowed_paths=["tests"],
                 forbidden_paths=["pgloom"],
                 depends_on=["slice-1"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[["pytest"]],
+            ),
+            TaskSliceContract(
+                slice_id="slice-3",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Run the contracted feature user-test.",
+                allowed_paths=["tests"],
+                forbidden_paths=["pgloom"],
+                depends_on=["slice-2"],
                 expected_outputs=["QAResultContract"],
                 verification_commands=[["pytest"]],
             ),
