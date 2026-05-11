@@ -435,14 +435,11 @@ def _role_gate_blocker(
     if project is None:
         return None
     expected = task_contract.role_gate
-    if expected is None:
-        return (
-            "TaskContract is missing explicit role_gate contract for "
-            f"{task_contract.role}."
-        )
     current = role_gate_contract(project, task_contract.role)
     if current.status == "disabled":
         return current.reason
+    if expected is None:
+        return None
     if expected.project != current.project or expected.role != current.role:
         return (
             "TaskContract role_gate contract does not match current project role: "

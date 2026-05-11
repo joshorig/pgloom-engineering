@@ -33,7 +33,7 @@ def test_reviewer_requires_producer_handoff() -> None:
     assert _requires_handoff({"task_type": "engineering.review"})
 
 
-def test_role_gate_blocker_requires_explicit_task_contract_gate() -> None:
+def test_role_gate_blocker_allows_missing_task_contract_gate_when_current_gate_enabled() -> None:
     task_contract = TaskContract(
         role="implementer",
         task_type="engineering.implement",
@@ -49,7 +49,7 @@ def test_role_gate_blocker_requires_explicit_task_contract_gate() -> None:
         task_contract,
     )
 
-    assert blocker == "TaskContract is missing explicit role_gate contract for implementer."
+    assert blocker is None
 
 
 def test_role_gate_blocker_uses_current_project_gate() -> None:
