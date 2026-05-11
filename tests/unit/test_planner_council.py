@@ -872,6 +872,56 @@ def test_deterministic_skeleton_splits_lvc_range_hot_path_feature() -> None:
     assert "zero-allocation hot-path" in skeleton.slices[2].purpose
 
 
+def test_critic_requires_wrapper_coverage_for_hot_path_shared_api() -> None:
+    plan = _plan_contract().model_copy(
+        update={
+            "problem_statement": (
+                "Add a zero-allocation public API interface for hot-path range scans."
+            )
+        }
+    )
+    plan.task_slices[2].objective = (
+        "Implement the zero-allocation public API interface in concrete stores."
+    )
+
+    results = deterministic_check_results(plan, [])
+
+    hot_path = next(
+        result for result in results if result.check_id == "check_hot_path_invariants"
+    )
+    assert any(
+        finding.code == "hot_path_wrapper_coverage_missing"
+        for finding in hot_path.findings
+    )
+
+
+def test_critic_accepts_hot_path_shared_api_with_wrapper_coverage() -> None:
+    plan = _plan_contract().model_copy(
+        update={
+            "problem_statement": (
+                "Add a zero-allocation public API interface for hot-path range scans."
+            )
+        }
+    )
+    plan.task_slices[2].objective = (
+        "Implement the zero-allocation public API interface in concrete stores and "
+        "delegating wrappers."
+    )
+    plan.task_slices[3].objective = (
+        "Review concrete implementations plus wrapper/decorator/adapter paths."
+    )
+
+    results = deterministic_check_results(plan, [])
+
+    hot_path = next(
+        result for result in results if result.check_id == "check_hot_path_invariants"
+    )
+    assert not any(
+        finding.code == "hot_path_wrapper_coverage_missing"
+        for finding in hot_path.findings
+    )
+
+
 def test_project_metadata_qa_write_paths_use_qa_roots(tmp_path: Path) -> None:
     paths = _project_metadata_qa_write_paths(
         {

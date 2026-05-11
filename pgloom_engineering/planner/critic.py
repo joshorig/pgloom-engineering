@@ -904,6 +904,18 @@ def _hot_path_findings(
                 "Benchmark plan uses reflection proxy/InvocationHandler in a hot measured path.",
             )
         ]
+    if _hot_path_shared_api_requires_wrapper_coverage(text):
+        return [
+            _finding(
+                definition,
+                "hot_path_wrapper_coverage_missing",
+                (
+                    "Hot-path shared API plan must cover wrappers, decorators, "
+                    "adapters, or delegating implementations that implement the "
+                    "same contract."
+                ),
+            )
+        ]
     if "compression" not in text and "lz4" not in text:
         return []
     hot_path_violation_terms = [
@@ -923,6 +935,39 @@ def _hot_path_findings(
             "Compression plan appears to put compression/allocation on the publish hot path.",
         )
     ]
+
+
+def _hot_path_shared_api_requires_wrapper_coverage(text: str) -> bool:
+    hot_path_terms = (
+        "zero-allocation",
+        "zero allocation",
+        "hot-path",
+        "hot path",
+        "allocation gate",
+        "alloc gate",
+    )
+    shared_api_terms = (
+        "interface",
+        "shared api",
+        "public api",
+        "api contract",
+        "api addition",
+    )
+    wrapper_terms = (
+        "wrapper",
+        "wrappers",
+        "decorator",
+        "decorators",
+        "adapter",
+        "adapters",
+        "delegating",
+        "forwarding",
+    )
+    return (
+        any(term in text for term in hot_path_terms)
+        and any(term in text for term in shared_api_terms)
+        and not any(term in text for term in wrapper_terms)
+    )
 
 
 def _inventory_only_findings(
