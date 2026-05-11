@@ -363,6 +363,8 @@ def _java_implementation_paths(
     paths: list[str] = []
     for source in project_root.rglob("*.java"):
         relative = source.relative_to(project_root).as_posix()
+        if _skip_java_source_path(relative):
+            continue
         if "/src/main/java/" not in relative:
             continue
         try:
@@ -370,11 +372,30 @@ def _java_implementation_paths(
         except OSError:
             continue
         for clause in re.findall(r"\bimplements\s+([^{]+)", text):
-            implemented = set(re.findall(r"\b[A-Z][A-Za-z0-9_]*\b", clause))
+            implemented = _implemented_java_type_names(clause)
             if implemented & contract_names:
                 paths.append(relative)
                 break
     return list(dict.fromkeys(paths))
+
+
+def _skip_java_source_path(relative: str) -> bool:
+    return any(
+        part in {".git", ".gradle", ".local", "build", "target", "out"}
+        for part in relative.split("/")
+    )
+
+
+def _implemented_java_type_names(clause: str) -> set[str]:
+    names: set[str] = set()
+    for item in clause.split(","):
+        item = re.sub(r"<[^>]*>", "", item).strip()
+        if not item:
+            continue
+        match = re.search(r"([A-Z][A-Za-z0-9_]*)(?:\s*$)", item)
+        if match:
+            names.add(match.group(1))
+    return names
 
 
 def _semantic_plan_text(plan: PlanContract) -> str:
