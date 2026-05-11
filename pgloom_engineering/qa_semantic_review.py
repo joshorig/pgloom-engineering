@@ -714,7 +714,9 @@ def _range_prefix_behavior_findings(
         for marker in [
             "prefix_non_match",
             "prefixnonmatch",
+            "non_matching_prefix",
             "nonmatchingprefix",
+            "non-matching-prefix",
             "prefix_miss",
             "prefixmiss",
             "non-matching prefix",

@@ -1585,6 +1585,35 @@ def test_semantic_review_accepts_range_prefix_miss_wording() -> None:
     ]
 
 
+def test_semantic_review_accepts_non_matching_prefix_constant_wording() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                private static final int MATCHING_PREFIX_VALUE = 0x10;
+                private static final int NON_MATCHING_PREFIX_VALUE = 0x30;
+                @Test
+                void rangeScanSemantics() {
+                    store.ascendingRange(0x10, 0x21, MATCHING_PREFIX_VALUE, 4, visitor);
+                    assertEntriesEqual("matching-prefix", expected, visited);
+                    store.ascendingRange(0x10, 0x21, NON_MATCHING_PREFIX_VALUE, 4, visitor);
+                    assertEntriesEqual("non-matching-prefix", List.of(), visited);
+                }
+            }
+            """
+        },
+        plan_text="Range scans must support matching and non-matching prefix filters.",
+        task_text="Write conformance tests for range prefix behavior.",
+        project_metadata={},
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_behavior_missing"
+    ]
+
+
 def test_semantic_review_accepts_prefix_value_and_miss_constants() -> None:
     findings = review_semantic_quality(
         files={
