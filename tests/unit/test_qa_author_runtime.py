@@ -50,6 +50,11 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
     assert payload["plan"]["feature_id"] == "feature-1"
     assert payload["task_contract"]["task_type"] == "engineering.qa.author"
     assert payload["qa_context_capsule"]["contract"] == "qa_context_capsule.v1"
+    assert payload["role_gate_contract"]["contract_version"] == (
+        "engineering.role_gate_contract.v1"
+    )
+    assert payload["role_gate_contract"]["role"] == "qa.author"
+    assert "qa semantic quality review" in payload["role_gate_contract"]["judged_by"]
     assert "deterministic_test_skeleton" in payload
     assert any(
         "missing-symbol compile failure" in instruction

@@ -42,6 +42,7 @@ from pgloom_engineering.qa_runtime import (
     run_qa_verification,
 )
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
+from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
 from pgloom_engineering.role_payloads import compact_plan_payload, compact_qa_author_payload
 
 
@@ -259,6 +260,7 @@ class ImplementerHandler:
                         task_contract=task_contract,
                         qa_contract=qa_contract,
                         worktree=worktree,
+                        project_metadata=project.metadata,
                         changed_files=touched,
                         path_violations=[],
                         failed_verifications=failed_verifications,
@@ -421,6 +423,12 @@ def build_implementer_prompt(
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
+            "role_gate_contract": build_task_role_gate_contract(
+                role="implementer",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project_metadata,
+            ),
             "implementer_context_capsule": build_implementer_context_capsule(
                 plan=plan,
                 task_contract=task_contract,
@@ -462,6 +470,7 @@ def build_implementer_repair_prompt(
     failed_verifications: list[Any],
     contract_error: str | None,
     raw_response: str,
+    project_metadata: dict[str, Any] | None = None,
     role_context: dict[str, Any] | None = None,
 ) -> str:
     return json.dumps(
@@ -506,6 +515,12 @@ def build_implementer_repair_prompt(
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
+            "role_gate_contract": build_task_role_gate_contract(
+                role="implementer.repair",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project_metadata or {},
+            ),
             "implementer_context_capsule": build_implementer_context_capsule(
                 plan=plan,
                 task_contract=task_contract,

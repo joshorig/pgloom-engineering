@@ -191,6 +191,10 @@ class UserTestProvider:
         assert payload["role"] == "qa.usertest"
         assert payload["worktree"]
         assert payload["role_context"]["contract"] == "engineering.role_context.v1"
+        assert payload["role_gate_contract"]["contract_version"] == (
+            "engineering.role_gate_contract.v1"
+        )
+        assert payload["role_gate_contract"]["role"] == "qa.verify.usertest"
         command: list[str] | str
         command = self.command or (
             "python -c 'consumer flow'"

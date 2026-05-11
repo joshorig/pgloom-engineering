@@ -24,6 +24,7 @@ from pgloom_engineering.qa_author_runtime import (
 )
 from pgloom_engineering.qa_runtime import command_with_env, qa_env
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
+from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
 from pgloom_engineering.role_payloads import compact_plan_payload, compact_task_result_payload
 
 
@@ -210,6 +211,11 @@ def build_reviewer_prompt(
             ],
             "plan_contract": compact_plan_payload(plan),
             "role_context": role_context or {},
+            "role_gate_contract": build_task_role_gate_contract(
+                role="reviewer",
+                plan=plan,
+                task_contract=task_contract,
+            ),
             "task_contract": task_contract.model_dump(mode="json"),
             "task_result_contract": compact_task_result_payload(task_result),
             "required_response": {

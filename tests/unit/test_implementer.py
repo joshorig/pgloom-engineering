@@ -949,6 +949,11 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     )
 
     capsule = prompt["implementer_context_capsule"]
+    assert prompt["role_gate_contract"]["contract_version"] == (
+        "engineering.role_gate_contract.v1"
+    )
+    assert prompt["role_gate_contract"]["role"] == "implementer"
+    assert "TaskContract verification_commands" in prompt["role_gate_contract"]["judged_by"]
     assert capsule["contract"] == "engineering.implementer_context_capsule.v1"
     assert capsule["qa_handoff"]["tests_added"] == ["tests/test_red.py#test_red"]
     assert capsule["recall"]["memory_digest"] == "prior decision: preserve zero allocation"

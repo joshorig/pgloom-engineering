@@ -6,6 +6,7 @@ from pgloom.harness.result import HandlerResult
 
 from pgloom_engineering.contract_store import get_active_plan_contract, get_task_contract
 from pgloom_engineering.contracts import PlanContract, TaskContract
+from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
 
 
 class DesignerHandler:
@@ -33,6 +34,11 @@ class DesignerHandler:
             {
                 "role": "designer",
                 "task_id": task_id,
+                "role_gate_contract": build_task_role_gate_contract(
+                    role="designer",
+                    plan=plan,
+                    task_contract=task_contract,
+                ),
                 "design_contract": plan.design_contract.model_dump(mode="json"),
             }
         )

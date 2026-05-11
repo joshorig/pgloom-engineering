@@ -16,6 +16,7 @@ from pgloom_engineering.planner.plan_skeleton import (
 )
 from pgloom_engineering.planner.plan_summary import candidate_summary
 from pgloom_engineering.planner.repair_brief import build_repair_brief
+from pgloom_engineering.role_gate_contracts import build_planner_gate_contract
 
 
 class PanelistRunner:
@@ -96,6 +97,13 @@ class PanelistRunner:
             + json.dumps(feature_goal.model_dump(mode="json"), indent=2, sort_keys=True)
             + "\n\nPROJECT_CONTEXT:\n"
             + json.dumps(_dump_context(project_context), indent=2, sort_keys=True, default=str)
+            + "\n\nROLE_GATE_CONTRACT:\n"
+            + json.dumps(
+                build_planner_gate_contract(project_context=project_context),
+                indent=2,
+                sort_keys=True,
+                default=str,
+            )
             + "\n\nDETERMINISTIC_PLAN_SKELETON:\n"
             + json.dumps(
                 skeleton_prompt_payload(plan_skeleton) if plan_skeleton else {},

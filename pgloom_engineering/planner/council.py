@@ -203,6 +203,7 @@ class PlannerCouncil:
                 baseline_plan=baseline,
                 replan_from_milestone_id=replan_from_milestone_id,
                 frozen_prefix_slice_ids=frozen_prefix_slice_ids,
+                project_context=project_context,
                 workflow_id=workflow_id,
                 task_id=task_id,
             )

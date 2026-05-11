@@ -19,6 +19,7 @@ from pgloom_engineering.contracts import (
 )
 from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
 from pgloom_engineering.planner import council as council_module
+from pgloom_engineering.planner.consolidator import Consolidator
 from pgloom_engineering.planner.council import (
     _normalize_acceptance_assertion_claims,
     _normalize_project_feature_smoke_commands,
@@ -27,6 +28,7 @@ from pgloom_engineering.planner.council import (
 from pgloom_engineering.planner.critic import (
     RUBRIC_CHECKS,
     CriticRunner,
+    build_critic_prompt,
     compute_verdict,
     deterministic_check_results,
     enforce_deterministic_failures,
@@ -145,6 +147,38 @@ def test_panelist_propose_raises_candidate_invalid_on_unparseable_output() -> No
             panelist_id="panelist-0",
         ).propose(feature_goal=_feature_goal(), project_context=_context())
     assert raised.value.raw_response == "not json"
+
+
+def test_planner_prompts_include_role_gate_contract() -> None:
+    panelist_prompt = PanelistRunner(
+        provider=FakeProvider({}),
+        profile_name="planner-panelist",
+        panelist_id="panelist-0",
+    )._build_prompt(  # noqa: SLF001
+        _feature_goal(),
+        _context(),
+        None,
+        None,
+    )
+    assert "ROLE_GATE_CONTRACT" in panelist_prompt
+    assert "engineering.role_gate_contract.v1" in panelist_prompt
+    assert "post-normalization production-grade validation" in panelist_prompt
+
+    plan = _minimal_plan()
+    consolidator_prompt = Consolidator(
+        provider=FakeProvider({}),
+        profile_name="planner-consolidator",
+    )._build_prompt(  # noqa: SLF001
+        [cast(Any, SimpleNamespace(candidate=plan))],
+        None,
+        project_context=_context(),
+    )
+    assert "ROLE_GATE_CONTRACT" in consolidator_prompt
+    assert "planner" in consolidator_prompt
+
+    critic_prompt = build_critic_prompt(plan, _context(), [])
+    assert "ROLE_GATE_CONTRACT" in critic_prompt
+    assert "check_hot_path_invariants" in critic_prompt
 
 
 def test_critic_blocks_on_missing_lifecycle_coverage() -> None:
@@ -1314,6 +1348,40 @@ def _feature_goal() -> FeatureGoalContract:
 
 def _context() -> ProjectContext:
     return ProjectContext(project_root=Path("/tmp/lvc-standard"), relevant_paths=["store/"])
+
+
+def _minimal_plan() -> PlanContract:
+    return PlanContract(
+        feature_id="feature-1",
+        project="lvc-standard",
+        problem_statement="Implement a small feature.",
+        design_contract=DesignContract(acceptance_tests=["criterion"]),
+        affected_surfaces=["store/", "tests/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Write tests.",
+                allowed_paths=["tests/"],
+                forbidden_paths=["store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+                acceptance_assertion_ids=["assertion-1"],
+            ),
+            TaskSliceContract(
+                slice_id="impl",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement source.",
+                allowed_paths=["store/src/main/java/com/example/"],
+                forbidden_paths=["tests/"],
+                expected_outputs=["TaskResultContract"],
+                acceptance_assertion_ids=["assertion-1"],
+            ),
+        ],
+        acceptance_test_matrix=["criterion"],
+        acceptance_assertions=["assertion-1"],
+    )
 
 
 def _accept_verdict() -> dict[str, object]:

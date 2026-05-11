@@ -19,6 +19,7 @@ from pgloom_engineering.qa_runtime import (
     validate_required_qa_gates,
 )
 from pgloom_engineering.qa_semantic_review import review_semantic_quality
+from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
 from pgloom_engineering.role_payloads import compact_plan_payload
 
 MAX_REPAIR_FILE_CHARS = 12000
@@ -365,6 +366,13 @@ def build_qa_author_prompt(
             ),
         ],
         "project_qa_metadata": prompt_safe_qa_metadata(qa_metadata),
+        "role_gate_contract": build_task_role_gate_contract(
+            role="qa.author",
+            plan=plan,
+            task_contract=task_contract,
+            project_metadata=project_metadata,
+            project_root=project_root,
+        ),
         "project_authorized_test_support_paths": _metadata_test_support_paths(qa_metadata),
         "worktree": str(project_root),
         "role_context": role_context or {},
@@ -805,6 +813,13 @@ def build_qa_code_repair_prompt(
             ],
             "feature_id": task_contract.feature_id,
             "task_id": task_contract.inputs.get("task_id"),
+            "role_gate_contract": build_task_role_gate_contract(
+                role="qa.author",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project_metadata or {},
+                project_root=worktree,
+            ),
             "acceptance_test_matrix": plan.acceptance_test_matrix,
             "selected_verification_command": verification_command,
             "verification_stdout_excerpt": stdout_excerpt,
@@ -994,6 +1009,13 @@ def build_qa_quality_repair_prompt(
             ],
             "feature_id": task_contract.feature_id,
             "task_id": task_contract.inputs.get("task_id"),
+            "role_gate_contract": build_task_role_gate_contract(
+                role="qa.author",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project_metadata or {},
+                project_root=worktree,
+            ),
             "acceptance_test_matrix": plan.acceptance_test_matrix,
             "quality_findings": quality_review.get("blocking_findings"),
             "repair_files": repair_files,
@@ -1062,6 +1084,13 @@ def build_qa_contract_repair_prompt(
             ],
             "feature_id": task_contract.feature_id,
             "task_id": task_contract.inputs.get("task_id"),
+            "role_gate_contract": build_task_role_gate_contract(
+                role="qa.author",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata={},
+                project_root=worktree,
+            ),
             "acceptance_test_matrix": plan.acceptance_test_matrix,
             "changed_files": changed_files,
             "file_contents": test_contents,

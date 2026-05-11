@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pgloom.db.postgres import connect
 from pgloom.tasks import enqueue_task
@@ -45,7 +45,7 @@ def test_planner_role_gate_defers_implementer_slices(database_url: str, tmp_path
     plan = _plan_contract(feature_id=workflow["id"])
     outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
 
-    result = PlannerHandler(council=FakeCouncil(outcome)).handle(planner)
+    result = PlannerHandler(council=cast(PlannerCouncil, FakeCouncil(outcome))).handle(planner)
 
     assert result.status == "done"
     assert result.result["deferred_slices"] == [
@@ -53,6 +53,13 @@ def test_planner_role_gate_defers_implementer_slices(database_url: str, tmp_path
             "slice_id": "impl-store",
             "role": "implementer",
             "reason": "role gated to disabled in engineering_projects.metadata.role_gates",
+            "role_gate": {
+                "project": "lvc-standard",
+                "role": "implementer",
+                "status": "disabled",
+                "source": "engineering_projects.metadata.role_gates",
+                "reason": "role gated to disabled in engineering_projects.metadata.role_gates",
+            },
         }
     ]
     plans = list_plan_contracts(workflow["id"], database_url=database_url)
@@ -69,6 +76,14 @@ def test_planner_role_gate_defers_implementer_slices(database_url: str, tmp_path
     recoveries = list_recovery_actions(workflow["id"], database_url=database_url)
     assert recoveries[0]["blocker_code"] == "engineering.role_gate_disabled"
     assert recoveries[0]["status"] == "deferred"
+    outcome = json.loads(recoveries[0]["outcome"])
+    assert outcome["role_gate"] == {
+        "project": "lvc-standard",
+        "role": "implementer",
+        "status": "disabled",
+        "source": "engineering_projects.metadata.role_gates",
+        "reason": "role gated to disabled in engineering_projects.metadata.role_gates",
+    }
 
 
 def test_planner_enqueues_implementer_when_role_gate_enabled(
@@ -79,12 +94,18 @@ def test_planner_enqueues_implementer_when_role_gate_enabled(
     plan = _plan_contract(feature_id=workflow["id"])
     outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
 
-    result = PlannerHandler(council=FakeCouncil(outcome)).handle(planner)
+    result = PlannerHandler(council=cast(PlannerCouncil, FakeCouncil(outcome))).handle(planner)
 
     assert result.status == "done"
     assert result.result["deferred_slices"] == []
     contracts = list_task_contracts(workflow["id"], database_url=database_url)
     assert {row["role"] for row in contracts} == {"designer", "implementer", "reviewer", "qa"}
+    assert {
+        row["input_contract"]["role_gate"]["status"] for row in contracts
+    } == {"enabled"}
+    assert {
+        row["input_contract"]["role_gate"]["source"] for row in contracts
+    } == {"engineering_projects.metadata.role_gates"}
     assert {_task_type(row) for row in contracts if row["role"] == "qa"} == {
         "engineering.qa.author",
         "engineering.qa.verify.scrutiny",
@@ -117,7 +138,7 @@ def test_planner_persistence_uses_metadata_qa_write_paths(
             task_slice.forbidden_paths = ["core/", "store/", "docs/"]
     outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
 
-    result = PlannerHandler(council=FakeCouncil(outcome)).handle(planner)
+    result = PlannerHandler(council=cast(PlannerCouncil, FakeCouncil(outcome))).handle(planner)
 
     assert result.status == "done"
     plans = list_plan_contracts(workflow["id"], database_url=database_url)

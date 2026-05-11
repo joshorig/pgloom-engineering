@@ -15,6 +15,7 @@ from pgloom_engineering.planner.plan_skeleton import (
     skeleton_prompt_payload,
 )
 from pgloom_engineering.planner.plan_summary import candidate_summary
+from pgloom_engineering.role_gate_contracts import build_planner_gate_contract
 
 
 class ProposalLike(Protocol):
@@ -48,6 +49,7 @@ class Consolidator:
         baseline_plan: PlanContract | None = None,
         replan_from_milestone_id: str | None = None,
         frozen_prefix_slice_ids: list[str] | None = None,
+        project_context: object | None = None,
         workflow_id: str | None = None,
         task_id: str | None = None,
     ) -> PlanContract:
@@ -58,6 +60,7 @@ class Consolidator:
             baseline_plan,
             replan_from_milestone_id,
             frozen_prefix_slice_ids,
+            project_context,
         )
         response = self._provider.invoke(
             profile=self._profile,
@@ -84,6 +87,7 @@ class Consolidator:
         baseline_plan: PlanContract | None = None,
         replan_from_milestone_id: str | None = None,
         frozen_prefix_slice_ids: list[str] | None = None,
+        project_context: object | None = None,
     ) -> str:
         base = Path(__file__).with_name("prompts").joinpath("consolidator.md").read_text(
             encoding="utf-8"
@@ -100,6 +104,13 @@ class Consolidator:
             )
             + "\n\nCANDIDATE_PLAN_SUMMARIES:\n"
             + json.dumps(payload, indent=2, sort_keys=True)
+            + "\n\nROLE_GATE_CONTRACT:\n"
+            + json.dumps(
+                build_planner_gate_contract(project_context=project_context),
+                indent=2,
+                sort_keys=True,
+                default=str,
+            )
             + "\n\nPRIOR_CONSOLIDATED_BASELINE:\n"
             + json.dumps(prior_payload, indent=2, sort_keys=True)
             + "\n\nINHERIT_BASELINE_MODE:\n"

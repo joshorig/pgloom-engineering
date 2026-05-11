@@ -18,6 +18,7 @@ from pgloom_engineering.contracts import (
 from pgloom_engineering.path_policy import is_qa_write_path
 from pgloom_engineering.planner.json_tools import extract_json
 from pgloom_engineering.planner.plan_summary import candidate_summary
+from pgloom_engineering.role_gate_contracts import build_planner_gate_contract
 
 
 class ModelProvider(Protocol):
@@ -614,12 +615,26 @@ def build_critic_prompt(
         f"Rubric: {check.rubric}"
         for check in RUBRIC_CHECKS
     )
+    role_gate_contract = build_planner_gate_contract(
+        project_context=project_context,
+        planner_rubric=[
+            {
+                "check_id": check.check_id,
+                "name": check.name,
+                "severity_if_failed": check.severity_if_failed,
+                "rubric": check.rubric,
+            }
+            for check in RUBRIC_CHECKS
+        ],
+    )
     return (
         Path(__file__).with_name("prompts").joinpath("critic.md").read_text(encoding="utf-8")
         + "\n\n"
         + rubric
         + "\n\nPLAN:\n"
         + json.dumps(candidate_summary(plan), indent=2, sort_keys=True)
+        + "\n\nROLE_GATE_CONTRACT:\n"
+        + json.dumps(role_gate_contract, indent=2, sort_keys=True, default=str)
         + "\n\nPROJECT_CONTEXT:\n"
         + json.dumps(_dump_context(project_context), indent=2, sort_keys=True, default=str)
         + "\n\nVALIDATOR_ERRORS:\n"

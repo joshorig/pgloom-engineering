@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pydantic import BaseModel
 
-from pgloom_engineering.contracts import AgentTopologyPolicy, ImplementationTopology
+from pgloom_engineering.contracts import (
+    AgentTopologyPolicy,
+    ImplementationTopology,
+    RoleGateContract,
+)
 
 
 class ProjectConfig(BaseModel):
@@ -34,11 +38,26 @@ def project_agent_topology(project: ProjectConfig | None = None) -> AgentTopolog
 
 
 def role_enabled(project: ProjectConfig, role: str) -> bool:
+    return role_gate_contract(project, role).status == "enabled"
+
+
+def role_gate_contract(project: ProjectConfig, role: str) -> RoleGateContract:
     gates = project.metadata.get("role_gates")
-    if not isinstance(gates, dict):
-        return True
-    value = gates.get(role, "enabled")
-    return isinstance(value, str) and value == "enabled"
+    value = gates.get(role, "enabled") if isinstance(gates, dict) else "enabled"
+    status: Literal["enabled", "disabled"] = (
+        "enabled" if isinstance(value, str) and value == "enabled" else "disabled"
+    )
+    reason = (
+        "role gated to disabled in engineering_projects.metadata.role_gates"
+        if status == "disabled"
+        else "role enabled by engineering_projects.metadata.role_gates"
+    )
+    return RoleGateContract(
+        project=project.name,
+        role=role,
+        status=status,
+        reason=reason,
+    )
 
 
 def register_project(

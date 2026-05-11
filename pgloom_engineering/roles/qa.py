@@ -65,6 +65,7 @@ from pgloom_engineering.qa_runtime import (
     validate_required_qa_gates,
 )
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
+from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
 from pgloom_engineering.role_payloads import compact_plan_payload
 
 
@@ -127,6 +128,12 @@ class QAHandler:
                 blocker_reason=f"Project is not registered: {plan.project}",
             )
         if validator_type == "usertest" and _usertest_skip_authorized(project.metadata):
+            role_gate_contract = build_task_role_gate_contract(
+                role="qa.verify.usertest",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project.metadata,
+            )
             contract = QAResultContract(
                 feature_id=task_contract.feature_id,
                 task_id=task_id,
@@ -151,6 +158,7 @@ class QAHandler:
                 {
                     "role": "qa",
                     "task_id": task_id,
+                    "role_gate_contract": role_gate_contract,
                     "qa_result_contract": contract.model_dump(mode="json"),
                 }
             )
@@ -182,6 +190,12 @@ class QAHandler:
             or payload.get("workflow_id")
             or payload.get("feature_id")
             or task_contract.feature_id
+        )
+        role_gate_contract = build_task_role_gate_contract(
+            role="qa.verify.scrutiny",
+            plan=plan,
+            task_contract=task_contract,
+            project_metadata=project.metadata,
         )
         verification_results = [
             run_qa_verification(
@@ -261,7 +275,10 @@ class QAHandler:
                 status="blocked",
                 blocker_code="engineering.project_unhealthy",
                 blocker_reason=infra_findings[0],
-                result={"qa_result_contract": contract.model_dump(mode="json")},
+                result={
+                    "role_gate_contract": role_gate_contract,
+                    "qa_result_contract": contract.model_dump(mode="json"),
+                },
             )
         if contract.verdict != "pass":
             return HandlerResult(
@@ -272,12 +289,16 @@ class QAHandler:
                     if command_findings
                     else f"qa.verify.{validator_type} command failed"
                 ),
-                result={"qa_result_contract": contract.model_dump(mode="json")},
+                result={
+                    "role_gate_contract": role_gate_contract,
+                    "qa_result_contract": contract.model_dump(mode="json"),
+                },
             )
         return HandlerResult.done(
             {
                 "role": "qa",
                 "task_id": task_id,
+                "role_gate_contract": role_gate_contract,
                 "qa_result_contract": contract.model_dump(mode="json"),
             }
         )
@@ -394,6 +415,12 @@ class QAHandler:
         )
         broad_command = _first_broad_usertest_command(contract)
         if broad_command is not None:
+            role_gate_contract = build_task_role_gate_contract(
+                role="qa.verify.usertest",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project.metadata,
+            )
             return HandlerResult(
                 status="blocked",
                 blocker_code="engineering.qa_usertest_failed",
@@ -405,12 +432,20 @@ class QAHandler:
                 result={
                     "role": "qa",
                     "task_id": task_id,
+                    "role_gate_contract": role_gate_contract,
                     "qa_result_contract": contract.model_dump(mode="json"),
                 },
             )
+        role_gate_contract = build_task_role_gate_contract(
+            role="qa.verify.usertest",
+            plan=plan,
+            task_contract=task_contract,
+            project_metadata=project.metadata,
+        )
         result = {
             "role": "qa",
             "task_id": task_id,
+            "role_gate_contract": role_gate_contract,
             "qa_result_contract": contract.model_dump(mode="json"),
             "token_savior_usage_ids": token_savior_usage_ids,
         }
@@ -996,6 +1031,12 @@ def build_qa_usertest_prompt(
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
+            "role_gate_contract": build_task_role_gate_contract(
+                role="qa.verify.usertest",
+                plan=plan,
+                task_contract=task_contract,
+                project_metadata=project_metadata,
+            ),
             "plan_contract": compact_plan_payload(plan),
             "task_contract": task_contract.model_dump(mode="json"),
             "project_metadata": _safe_usertest_metadata(project_metadata),

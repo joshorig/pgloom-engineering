@@ -46,9 +46,14 @@ def test_designer_returns_active_plan_design_contract(monkeypatch: Any) -> None:
     )
 
     assert result.status == "done"
+    assert result.result["role_gate_contract"]["contract_version"] == (
+        "engineering.role_gate_contract.v1"
+    )
+    assert result.result["role_gate_contract"]["role"] == "designer"
     assert result.result == {
         "role": "designer",
         "task_id": "design-task-1",
+        "role_gate_contract": result.result["role_gate_contract"],
         "design_contract": {
             "acceptance_tests": ["red"],
             "concurrency_protocol": "",

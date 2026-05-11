@@ -79,6 +79,14 @@ class TaskSliceContract(BaseModel):
     milestone_id: str | None = None
 
 
+class RoleGateContract(BaseModel):
+    project: str
+    role: str
+    status: Literal["enabled", "disabled"]
+    source: str = "engineering_projects.metadata.role_gates"
+    reason: str
+
+
 class PlanContract(BaseModel):
     contract_version: str = CONTRACT_VERSION
     feature_id: str
@@ -149,6 +157,7 @@ class TaskContract(BaseModel):
     verification_commands: list[list[str]] = Field(default_factory=list)
     handoff_requirements: list[str] = Field(default_factory=list)
     required_procedures: list[str] = Field(default_factory=list)
+    role_gate: RoleGateContract | None = None
 
 
 class TaskResultContract(BaseModel):

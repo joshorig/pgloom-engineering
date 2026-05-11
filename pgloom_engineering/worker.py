@@ -45,7 +45,7 @@ from pgloom_engineering.contracts import (
 )
 from pgloom_engineering.features import get_feature
 from pgloom_engineering.handlers.registry import build_registry
-from pgloom_engineering.projects import get_project
+from pgloom_engineering.projects import get_project, role_gate_contract
 
 
 def run_once(
@@ -375,6 +375,16 @@ def _pre_execution_gate(
         )
     plan = PlanContract.model_validate(active_plan["contract"])
     input_contract = TaskContract.model_validate(task_contract["input_contract"])
+    role_gate_blocker = _role_gate_blocker(project, input_contract)
+    if role_gate_blocker is not None:
+        return _blocked_with_recovery(
+            task,
+            feature_id=feature_id,
+            blocker_code="engineering.role_gate_disabled",
+            action="block_execution",
+            rationale=role_gate_blocker,
+            database_url=database_url,
+        )
     milestone_blocker = _milestone_blocker(plan, input_contract, database_url=database_url)
     if milestone_blocker is not None:
         return _blocked_with_recovery(
@@ -414,6 +424,30 @@ def _pre_execution_gate(
             action="block_execution",
             rationale="Review task requires a producer handoff or dependency output.",
             database_url=database_url,
+        )
+    return None
+
+
+def _role_gate_blocker(
+    project: Any,
+    task_contract: TaskContract,
+) -> str | None:
+    if project is None:
+        return None
+    expected = task_contract.role_gate
+    if expected is None:
+        return (
+            "TaskContract is missing explicit role_gate contract for "
+            f"{task_contract.role}."
+        )
+    current = role_gate_contract(project, task_contract.role)
+    if current.status == "disabled":
+        return current.reason
+    if expected.project != current.project or expected.role != current.role:
+        return (
+            "TaskContract role_gate contract does not match current project role: "
+            f"expected {expected.project}/{expected.role}, got "
+            f"{current.project}/{current.role}."
         )
     return None
 

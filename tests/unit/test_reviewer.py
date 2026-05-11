@@ -27,6 +27,13 @@ class ReviewerProvider:
             "Do not block solely because QA-owned commands" in instruction
             for instruction in payload["instructions"]
         )
+        assert payload["role_gate_contract"]["contract_version"] == (
+            "engineering.role_gate_contract.v1"
+        )
+        assert payload["role_gate_contract"]["role"] == "reviewer"
+        assert "ReviewVerdictContract schema validation" in payload["role_gate_contract"][
+            "judged_by"
+        ]
         return SimpleNamespace(
             text=json.dumps(
                 {

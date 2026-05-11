@@ -46,7 +46,7 @@ from pgloom_engineering.planner.token_savior_context import (
     TokenSaviorContextResult,
     build_token_savior_project_context,
 )
-from pgloom_engineering.projects import ProjectConfig, get_project, role_enabled
+from pgloom_engineering.projects import ProjectConfig, get_project, role_gate_contract
 from pgloom_engineering.token_savior import TokenSaviorUsage, record_token_savior_usage
 
 
@@ -243,17 +243,20 @@ class PlannerHandler:
             )
 
         created: dict[str, str] = {}
-        deferred: list[dict[str, str]] = []
+        deferred: list[dict[str, Any]] = []
         for task_slice in contract.task_slices:
-            if project is not None and not role_enabled(project, task_slice.role):
+            gate = (
+                role_gate_contract(project, task_slice.role)
+                if project is not None
+                else None
+            )
+            if gate is not None and gate.status == "disabled":
                 deferred.append(
                     {
                         "slice_id": task_slice.slice_id,
                         "role": task_slice.role,
-                        "reason": (
-                            "role gated to disabled in "
-                            "engineering_projects.metadata.role_gates"
-                        ),
+                        "reason": gate.reason,
+                        "role_gate": gate.model_dump(mode="json"),
                     }
                 )
                 record_recovery_action(
@@ -262,10 +265,7 @@ class PlannerHandler:
                         task_id=task.get("id"),
                         blocker_code="engineering.role_gate_disabled",
                         action="block_execution",
-                        rationale=(
-                            "role gated to disabled in "
-                            "engineering_projects.metadata.role_gates"
-                        ),
+                        rationale=gate.reason,
                         attempt=1,
                         max_attempts=1,
                     ),
@@ -275,6 +275,7 @@ class PlannerHandler:
                             "slice_id": task_slice.slice_id,
                             "role": task_slice.role,
                             "project": contract.project,
+                            "role_gate": gate.model_dump(mode="json"),
                         },
                         sort_keys=True,
                     ),
@@ -337,6 +338,7 @@ class PlannerHandler:
                 ),
                 required_procedures=task_slice.required_procedures,
                 handoff_requirements=["produce TaskResultContract"],
+                role_gate=gate,
             )
             upsert_task_contract(child["id"], task_contract, database_url=database_url)
             record_handoff(

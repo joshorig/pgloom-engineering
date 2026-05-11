@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pgloom_engineering import worker
-from pgloom_engineering.contracts import MilestoneContract, TaskContract
+from pgloom_engineering.contracts import MilestoneContract, RoleGateContract, TaskContract
+from pgloom_engineering.projects import ProjectConfig
 from pgloom_engineering.worker import (
     _artifact_evidence_links_from_result,
     _commands_run_from_result,
@@ -15,6 +17,7 @@ from pgloom_engineering.worker import (
     _qa_result_artifact_ids,
     _record_dependency_handoffs,
     _requires_handoff,
+    _role_gate_blocker,
 )
 
 
@@ -28,6 +31,54 @@ def test_qa_author_does_not_require_task_result_handoff_gate() -> None:
 
 def test_reviewer_requires_producer_handoff() -> None:
     assert _requires_handoff({"task_type": "engineering.review"})
+
+
+def test_role_gate_blocker_requires_explicit_task_contract_gate() -> None:
+    task_contract = TaskContract(
+        role="implementer",
+        task_type="engineering.implement",
+        feature_id="feature-1",
+        plan_contract_id="plan-1",
+        objective="Implement.",
+        allowed_paths=["src/main/"],
+        forbidden_paths=["src/test/"],
+    )
+
+    blocker = _role_gate_blocker(
+        ProjectConfig(name="demo", root=Path("/tmp/demo")),
+        task_contract,
+    )
+
+    assert blocker == "TaskContract is missing explicit role_gate contract for implementer."
+
+
+def test_role_gate_blocker_uses_current_project_gate() -> None:
+    task_contract = TaskContract(
+        role="implementer",
+        task_type="engineering.implement",
+        feature_id="feature-1",
+        plan_contract_id="plan-1",
+        objective="Implement.",
+        allowed_paths=["src/main/"],
+        forbidden_paths=["src/test/"],
+        role_gate=RoleGateContract(
+            project="demo",
+            role="implementer",
+            status="enabled",
+            reason="role enabled by engineering_projects.metadata.role_gates",
+        ),
+    )
+
+    blocker = _role_gate_blocker(
+        ProjectConfig(
+            name="demo",
+            root=Path("/tmp/demo"),
+            metadata={"role_gates": {"implementer": "disabled"}},
+        ),
+        task_contract,
+    )
+
+    assert blocker == "role gated to disabled in engineering_projects.metadata.role_gates"
 
 
 def test_review_handoff_gate_accepts_qa_author_repair_dependency(monkeypatch: Any) -> None:
