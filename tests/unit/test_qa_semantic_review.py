@@ -1035,6 +1035,64 @@ def test_semantic_review_accepts_integer_key_prefix_constants() -> None:
     ] == []
 
 
+def test_semantic_review_accepts_key_bytes_prefix_with_payload_assertions() -> None:
+    conformance_path = (
+        "changed-files/conformance-tests/src/test/java/com/example/"
+        "RangeScanConformanceTest.java"
+    )
+    findings = review_semantic_quality(
+        files={
+            conformance_path: """
+            class RangeScanConformanceTest {
+                private static final byte[] PREFIX_MATCHES_ONLY_SLOT_ONE =
+                    prefixBytesForSlot(1, Integer.BYTES);
+
+                void prefixFilterMatchesAndRejectsKeys() {
+                    Map<Integer, byte[]> expectedPayloads = seedStore(store);
+                    assertEntriesEqual(List.of(entry(1, expectedPayloads.get(1))),
+                        visitAscending(store, 0, 7, PREFIX_MATCHES_ONLY_SLOT_ONE));
+                }
+
+                private static byte[] payloadFor(int slot) {
+                    byte[] payload = new byte[16];
+                    payload[0] = (byte) 0x51;
+                    payload[1] = (byte) (0x20 + slot);
+                    return payload;
+                }
+
+                private static byte[] prefixBytesForSlot(int slot, int prefixLength) {
+                    byte[] keyBytes = ByteBuffer.allocate(Integer.BYTES)
+                        .order(ByteOrder.BIG_ENDIAN)
+                        .putInt(slot)
+                        .array();
+                    byte[] prefix = new byte[prefixLength];
+                    System.arraycopy(keyBytes, 0, prefix, 0, prefixLength);
+                    return prefix;
+                }
+            }
+            """,
+        },
+        plan_text="R-003 requires optional key-prefix filtering for range scans.",
+        task_text="Write QA tests for ascendingRange prefix behavior.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "range_prefix_behavior": {
+                        "required": True,
+                        "key_prefix_filter_required": True,
+                    }
+                }
+            }
+        },
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_key_prefix_not_payload_prefix"
+    ] == []
+
+
 def test_semantic_review_blocks_too_strict_range_benchmark_class_threshold() -> None:
     findings = review_semantic_quality(
         files={

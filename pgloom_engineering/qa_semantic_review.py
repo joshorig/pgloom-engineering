@@ -715,7 +715,7 @@ def _range_key_prefix_semantics_findings(
         ]
     )
     payload_prefix_seed = _payload_prefix_seed_signal(combined)
-    if has_key_prefix_signal and not payload_prefix_seed:
+    if has_key_prefix_signal:
         return []
     first_path = next(iter(candidate_files))
     return [
