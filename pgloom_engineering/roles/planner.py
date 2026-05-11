@@ -868,7 +868,14 @@ def _corrective_path_scope(
         return {}
     if blocked_contract.get("task_type") != "engineering.implement":
         return {}
-    allowed = _context_string_list(context, "blocked_slice_allowed_paths")
+    blocked_allowed = _context_string_list(context, "blocked_slice_allowed_paths")
+    base_allowed = blocked_allowed or task_slice.allowed_paths
+    allowed = _dedupe_path_list(
+        [
+            *base_allowed,
+            *_corrective_source_paths_from_failure(context, base_allowed),
+        ]
+    )
     forbidden = _context_string_list(context, "blocked_slice_forbidden_paths")
     if _corrective_context_mentions_core_api_compile_failure(context):
         allowed = _dedupe_path_list([*allowed, "core/src/main/java/"])
@@ -877,12 +884,68 @@ def _corrective_path_scope(
             for path in forbidden
             if not _paths_overlap(path, "core/src/main/java/")
         ]
+    forbidden = [
+        path
+        for path in forbidden
+        if not any(_paths_overlap(path, allowed_path) for allowed_path in allowed)
+    ]
     update: dict[str, list[str]] = {}
     if allowed:
         update["allowed_paths"] = allowed
     if forbidden:
         update["forbidden_paths"] = forbidden
     return update
+
+
+def _corrective_source_paths_from_failure(
+    context: dict[str, Any],
+    base_paths: list[str],
+) -> list[str]:
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    )
+    full_path_matches = re.findall(
+        r"(?<![A-Za-z0-9_.-])([A-Za-z0-9_./-]+/src/main/[A-Za-z0-9_./-]+\.(?:java|kt|scala|go|rs|py|ts|tsx|js|jsx|c|cc|cpp|h|hpp))(?::\d+)?",
+        context_text,
+    )
+    filenames = re.findall(
+        r"(?<![A-Za-z0-9_.-])([A-Z][A-Za-z0-9_]*\.(?:java|kt|scala|go|rs|py|ts|tsx|js|jsx|c|cc|cpp|h|hpp))(?::\d+)?",
+        context_text,
+    )
+    source_sibling_matches = [
+        inferred
+        for filename in filenames
+        for path in base_paths
+        if (inferred := _source_sibling_for_failure(filename, path))
+    ]
+    return _dedupe_path_list([*full_path_matches, *source_sibling_matches])
+
+
+def _source_sibling_for_failure(filename: str, base_path: str) -> str | None:
+    if "/src/main/" not in base_path:
+        return None
+    if base_path.endswith("/"):
+        return None
+    directory, _, existing_filename = base_path.rpartition("/")
+    if not directory or "." not in existing_filename:
+        return None
+    if existing_filename == filename:
+        return base_path
+    existing_stem, _, existing_ext = existing_filename.partition(".")
+    failed_stem, _, failed_ext = filename.partition(".")
+    if existing_ext != failed_ext:
+        return None
+    if _camel_suffix(existing_stem) != _camel_suffix(failed_stem):
+        return None
+    return f"{directory}/{filename}"
+
+
+def _camel_suffix(value: str) -> str:
+    parts = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", value)
+    if len(parts) <= 1:
+        return value
+    return "".join(parts[1:])
 
 
 def _context_string_list(context: dict[str, Any], key: str) -> list[str]:

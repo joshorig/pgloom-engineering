@@ -561,7 +561,7 @@ def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> N
     implementer = scoped.task_slices[0]
     reviewer = scoped.task_slices[1]
     assert implementer.allowed_paths == [
-        "store/src/main/java/com/joshorig/ull/lvc/store/mmap/"
+        "store/src/main/java/com/joshorig/ull/lvc/store/mmap/",
     ]
     assert implementer.forbidden_paths == [
         "core/src/main/java/com/joshorig/ull/lvc/metrics/"
@@ -648,6 +648,87 @@ def test_apply_corrective_slice_scope_restores_core_paths_for_api_compile_failur
     assert "core/src/main/java/" in implementer.allowed_paths
     assert "core/src/main/java/" not in implementer.forbidden_paths
     assert "core/src/test/java/" in implementer.forbidden_paths
+
+
+def test_apply_corrective_slice_scope_preserves_planner_added_implementation_paths() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="example-library",
+        problem_statement="Correct indexed range API implementation.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "storage/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-range-api-corrective",
+                role="implementer",
+                task_type="engineering.implement",
+                objective=(
+                    "Repair the public range API and the B-tree backend named by "
+                    "the failure evidence."
+                ),
+                allowed_paths=[
+                    "core/src/main/java/example/api/",
+                    "storage/src/main/java/example/store/BTreeRangeIndex.java",
+                ],
+                forbidden_paths=[
+                    "core/src/test/java/",
+                    "storage/src/test/java/",
+                ],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":core:test",
+                        "--tests",
+                        "example.RangeScanApiTest",
+                    ]
+                ],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review range repair.",
+                allowed_paths=["core/src/main/java/", "storage/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["impl-range-api-corrective"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        acceptance_test_matrix=["Range API tests pass."],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "blocked_task_contract": {
+                    "task_type": "engineering.implement",
+                },
+                "blocked_slice_allowed_paths": [
+                    "core/src/main/java/example/api/",
+                ],
+                "blocked_slice_forbidden_paths": [
+                    "core/src/test/java/",
+                    "storage/src/test/java/",
+                ],
+                "failure_context": (
+                    "RangeScanApiTest failed at "
+                    "storage/src/main/java/example/store/BTreeRangeIndex.java:65"
+                ),
+            }
+        },
+    )
+
+    implementer = scoped.task_slices[0]
+    assert (
+        "storage/src/main/java/example/store/BTreeRangeIndex.java"
+        in implementer.allowed_paths
+    )
+    assert "core/src/main/java/example/api/" in implementer.allowed_paths
+    assert "storage/src/test/java/" in implementer.forbidden_paths
 
 
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
