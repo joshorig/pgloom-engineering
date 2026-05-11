@@ -140,6 +140,16 @@ RUBRIC_CHECKS: list[CheckDefinition] = [
         ),
     ),
     CheckDefinition(
+        "check_role_write_path_hygiene",
+        "Role write path hygiene",
+        "blocking",
+        (
+            "Design slices must not claim production source, tests, or benchmark "
+            "write paths; implementer slices must not claim docs or repo-memory "
+            "write paths."
+        ),
+    ),
+    CheckDefinition(
         "check_acceptance_assertion_coverage",
         "Acceptance assertion coverage",
         "blocking",
@@ -698,6 +708,8 @@ def _run_deterministic_check(
         return _qa_verify_findings(definition, plan, qa_write_paths=qa_write_paths)
     if check_id == "check_qa_paths_disjoint":
         return _qa_paths_disjoint_findings(definition, plan, qa_write_paths=qa_write_paths)
+    if check_id == "check_role_write_path_hygiene":
+        return _role_write_path_hygiene_findings(definition, plan)
     if check_id == "check_acceptance_assertion_coverage":
         return _acceptance_assertion_findings(definition, plan)
     if check_id == "check_milestones_present":
@@ -1356,6 +1368,72 @@ def _qa_paths_disjoint_findings(
                 )
             )
     return findings
+
+
+def _role_write_path_hygiene_findings(
+    definition: CheckDefinition,
+    plan: PlanContract,
+) -> list[CriticFinding]:
+    findings: list[CriticFinding] = []
+    for task_slice in plan.task_slices:
+        if task_slice.task_type == "engineering.design":
+            bad_paths = [
+                path
+                for path in task_slice.allowed_paths
+                if _is_source_path(path) or _is_test_or_benchmark_path(path)
+            ]
+            if bad_paths:
+                findings.append(
+                    _finding(
+                        definition,
+                        "design_claims_execution_paths",
+                        (
+                            "Design slices may name source/test/benchmark files in the "
+                            "objective or expected outputs, but allowed_paths must stay "
+                            "limited to design documentation paths."
+                        ),
+                        task_slice.slice_id,
+                    )
+                )
+        if task_slice.role == "implementer":
+            bad_paths = [
+                path for path in task_slice.allowed_paths if _is_docs_or_memory_path(path)
+            ]
+            if bad_paths:
+                findings.append(
+                    _finding(
+                        definition,
+                        "implementer_claims_docs_or_memory_paths",
+                        (
+                            "Implementer slices must not write docs or repo-memory; "
+                            "documentation/status updates belong to design or final "
+                            "human-gated follow-up work."
+                        ),
+                        task_slice.slice_id,
+                    )
+                )
+    return findings
+
+
+def _is_source_path(path: str) -> bool:
+    normalized = _normalize_path(path).lower()
+    return "/src/main/" in normalized or normalized.endswith("/src/main/")
+
+
+def _is_test_or_benchmark_path(path: str) -> bool:
+    normalized = _normalize_path(path).lower()
+    return (
+        "/src/test/" in normalized
+        or normalized.endswith("/src/test/")
+        or normalized.startswith("tests/")
+        or normalized.startswith("qa/")
+        or "benchmark" in normalized
+    )
+
+
+def _is_docs_or_memory_path(path: str) -> bool:
+    normalized = _normalize_path(path).lower()
+    return normalized.startswith("docs/") or normalized.startswith("repo-memory/")
 
 
 def _acceptance_assertion_findings(

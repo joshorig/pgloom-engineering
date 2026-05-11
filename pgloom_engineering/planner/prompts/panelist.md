@@ -166,6 +166,13 @@ Rules:
     command or small harness that uses the public feature surface.
 - Implementer slices must depend on the QA author slice and must not include
   PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
+- Design slices may name source/test/benchmark files in objectives and expected
+  outputs, but their `allowed_paths` must stay limited to design documentation
+  paths. Do not give a design slice production source, test, benchmark, or
+  harness write paths.
+- Implementer slices must not include `docs/` or `repo-memory/` paths in
+  `allowed_paths`; documentation/status updates are design or final human-gated
+  follow-up work, not implementation work.
 - Do not create an `engineering.finalization`, `final-human-gate`, merge, or PR
   approval task slice. Human merge is represented only by
   `finalization_policy: "open_final_feature_pr_for_human_merge"`.

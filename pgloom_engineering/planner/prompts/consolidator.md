@@ -45,6 +45,12 @@ Rules:
 - QA author/scrutiny/user-test write paths must be restricted to the QA/test
   roots shown in candidate project contexts. Implementer write paths must not
   include those paths.
+- Design slice `allowed_paths` must be documentation/design paths only. Keep
+  source/test/benchmark paths in the design objective or expected outputs if
+  needed for context, but do not preserve them as design write permissions.
+- Implementer `allowed_paths` must not include `docs/` or `repo-memory/`.
+  Documentation/status updates are design or final human-gated follow-up work,
+  not implementation work.
 - Apply compactness pressure for small/single-surface roadmap items: prefer 6
   slices total: design, qa.author, 1-2 implementers, reviewer, qa.scrutiny, and
   qa.usertest. For code-heavy or hot-path features that span multiple source

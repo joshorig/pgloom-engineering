@@ -193,6 +193,32 @@ def test_critic_blocks_same_slice_allowed_forbidden_overlap() -> None:
     assert overlap.findings[0].code == "slice_allowed_forbidden_overlap"
 
 
+def test_critic_blocks_role_write_path_hygiene_violations() -> None:
+    plan = _plan_contract()
+    plan.task_slices[0].allowed_paths = [
+        "docs/Stores.md",
+        "core/src/main/java/com/example/PublicApi.java",
+        "conformance-tests/src/test/java/com/example/PublicApiTest.java",
+        "benchmarks/src/jmh/java/com/example/PublicApiBenchmark.java",
+    ]
+    plan.task_slices[2].allowed_paths = [
+        "store/src/main/java/com/example/Store.java",
+        "docs/Stores.md",
+        "repo-memory/ROADMAP.md",
+    ]
+
+    results = deterministic_check_results(plan, [])
+
+    hygiene = next(
+        result for result in results if result.check_id == "check_role_write_path_hygiene"
+    )
+    assert not hygiene.passed
+    assert [finding.code for finding in hygiene.findings] == [
+        "design_claims_execution_paths",
+        "implementer_claims_docs_or_memory_paths",
+    ]
+
+
 def test_critic_accepts_clean_plan() -> None:
     plan = _plan_contract()
     provider = FakeProvider(
@@ -1160,7 +1186,7 @@ def _plan_contract(
                 role="designer",
                 task_type="engineering.design",
                 objective="Design Store.snapshot(Path) and Store.restore(Path) format in store/",
-                allowed_paths=["store/", "docs/"],
+                allowed_paths=["docs/"],
                 forbidden_paths=["benchmarks/"],
                 expected_outputs=["DesignContract"],
                 verification_commands=[["./gradlew", ":store:compileJava"]],
