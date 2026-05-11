@@ -20,6 +20,7 @@ from pgloom_engineering.contracts import (
 from pgloom_engineering.planner import CouncilConfig, PlannerCouncil, ProjectContext
 from pgloom_engineering.planner import council as council_module
 from pgloom_engineering.planner.council import (
+    _normalize_acceptance_assertion_claims,
     _normalize_project_feature_smoke_commands,
     _repair_unachievable_milestones,
 )
@@ -448,6 +449,22 @@ def test_council_normalizes_project_feature_smoke_commands_before_critic() -> No
         ["./gradlew", ":core:checkstyleMain", ":store:checkstyleMain"],
         ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
     ]
+
+
+def test_council_promotes_slice_assertion_claims_to_plan_and_milestone() -> None:
+    plan = _plan_contract()
+    implementer = next(
+        item for item in plan.task_slices if item.task_type == "engineering.implement"
+    )
+    implementer.acceptance_assertion_ids = [
+        *implementer.acceptance_assertion_ids,
+        "assertion-single-variant",
+    ]
+
+    normalized = _normalize_acceptance_assertion_claims(plan)
+
+    assert "assertion-single-variant" in normalized.acceptance_assertions
+    assert "assertion-single-variant" in normalized.milestones[0].acceptance_assertions
 
 
 def test_critic_rejects_feature_qa_scrutiny_broad_smoke_script() -> None:

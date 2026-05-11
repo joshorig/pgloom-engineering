@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -504,17 +505,40 @@ def _requires_public_api_behavior_tests(text: str) -> bool:
 
 
 def _mentions_reflective_api_testing(text: str) -> bool:
+    reflective_tokens = [
+        "reflection",
+        "reflective",
+        "class.forname",
+        "getmethod",
+        "method.invoke",
+        "invocationhandler",
+        "proxy.newproxyinstance",
+        "reflection/signature",
+    ]
+    for sentence in re.split(r"[;\n]", text):
+        if not any(token in sentence for token in reflective_tokens):
+            continue
+        if _prohibits_reflective_api_testing(sentence):
+            continue
+        return True
+    return False
+
+
+def _prohibits_reflective_api_testing(sentence: str) -> bool:
     return any(
-        token in text
-        for token in [
-            "reflection",
-            "reflective",
-            "class.forname",
-            "getmethod",
-            "method.invoke",
-            "invocationhandler",
-            "proxy.newproxyinstance",
-            "reflection/signature",
+        marker in sentence
+        for marker in [
+            "do not",
+            "don't",
+            "must not",
+            "rather than",
+            "instead of",
+            "without",
+            "avoid",
+            "forbid",
+            "forbidden",
+            "not reflection",
+            "not reflective",
         ]
     )
 

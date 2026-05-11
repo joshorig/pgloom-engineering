@@ -19,6 +19,7 @@ from pgloom_engineering.contracts import (
     MilestoneContract,
     PlanContract,
     TaskSliceContract,
+    canonical_acceptance_assertion_id,
     validate_plan_contract,
 )
 from pgloom_engineering.planner.consolidator import Consolidator
@@ -218,6 +219,7 @@ class PlannerCouncil:
                 consolidated,
                 project_context=project_context,
             )
+            consolidated = _normalize_acceptance_assertion_claims(consolidated)
             validator_errors = validate_plan_contract(
                 consolidated,
                 qa_write_paths=project_context.qa_write_paths,
@@ -639,6 +641,64 @@ def _has_unachievable_milestone(
         ):
             return True
     return False
+
+
+def _normalize_acceptance_assertion_claims(plan: PlanContract) -> PlanContract:
+    """Promote slice-level assertion claims into the plan/milestone indexes."""
+    known = {
+        canonical_acceptance_assertion_id(assertion)
+        for assertion in plan.acceptance_assertions
+    }
+    missing_by_label: dict[str, str] = {}
+    milestone_by_slice = {
+        slice_id: milestone
+        for milestone in plan.milestones
+        for slice_id in milestone.slice_ids
+    }
+    milestone_missing: dict[str, dict[str, str]] = {}
+    for task_slice in plan.task_slices:
+        milestone = milestone_by_slice.get(task_slice.slice_id)
+        milestone_known = (
+            {
+                canonical_acceptance_assertion_id(assertion)
+                for assertion in milestone.acceptance_assertions
+            }
+            if milestone is not None
+            else set()
+        )
+        for assertion in task_slice.acceptance_assertion_ids:
+            canonical = canonical_acceptance_assertion_id(assertion)
+            if canonical not in known:
+                missing_by_label.setdefault(canonical, assertion)
+            if milestone is not None and canonical not in milestone_known:
+                milestone_missing.setdefault(milestone.milestone_id, {}).setdefault(
+                    canonical,
+                    assertion,
+                )
+    if not missing_by_label and not milestone_missing:
+        return plan
+    updated_milestones = [
+        milestone.model_copy(
+            update={
+                "acceptance_assertions": [
+                    *milestone.acceptance_assertions,
+                    *milestone_missing.get(milestone.milestone_id, {}).values(),
+                ]
+            }
+        )
+        if milestone.milestone_id in milestone_missing
+        else milestone
+        for milestone in plan.milestones
+    ]
+    return plan.model_copy(
+        update={
+            "acceptance_assertions": [
+                *plan.acceptance_assertions,
+                *missing_by_label.values(),
+            ],
+            "milestones": updated_milestones,
+        }
+    )
 
 
 def _normalize_project_feature_smoke_commands(

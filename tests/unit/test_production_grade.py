@@ -169,6 +169,31 @@ def test_production_grade_rejects_reflective_qa_api_tests() -> None:
     )
 
 
+def test_production_grade_accepts_reflection_as_forbidden_api_testing() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.objective = (
+        "Write failing public API tests for LvcStore range scans that compile against "
+        "the typed public API directly."
+    )
+    qa_author.grading_criteria = [
+        "Range/API acceptance tests must compile against public APIs rather than reflection.",
+        "Do not use Class.forName, Method.invoke, Proxy, or reflection-oriented signature checks.",
+    ]
+    qa_author.expected_outputs = [
+        "RangeScanApiTest with direct public API behavior coverage",
+        "Behavioral conformance tests",
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "qa_author_reflective_api_testing"
+    ]
+
+
 def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() -> None:
     plan = _plan_contract()
     plan.task_slices = [
