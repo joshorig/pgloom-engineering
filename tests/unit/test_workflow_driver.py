@@ -1097,10 +1097,105 @@ def test_replan_payload_routes_repeated_benchmark_gate_to_harness_repair() -> No
     assert payload is not None
     context = payload["replan_context"]
     assert context["same_blocker_recovery_count"] == 1
+    assert context["benchmark_gate_classification"] == "qa_harness"
     assert "Repeated implementer verification failure" in context["summary"]
-    assert "QA-author benchmark repair slice" in context["summary"]
-    assert "exact hot-path allocation source" in context["summary"]
+    assert "qa-harness benchmark-smoke gate" in context["summary"]
+    assert "QA-owned benchmark" in context["summary"]
     assert "rangeScanSmoke allocated" in payload["feature_goal_contract"]["requirements"][-1]
+
+
+def test_replan_payload_classifies_material_benchmark_gate_as_implementation_work() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "impl-1",
+                "slot": "implementer",
+                "task_type": "engineering.implement",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.implementation_verification_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": (
+                "benchmark_smoke_diagnostic: RangeScanBenchmark.ascendingScan "
+                "allocated 96.0 B/op above 32.0 B/op threshold; "
+                "source-level allocation uses ByteBuffer.allocate in the range loop"
+            ),
+            "result": {
+                "stderr_excerpt": "Allocation threshold exceeded: 96.0 B/op > 32.0 B/op",
+                "commands": [["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert context["benchmark_gate_classification"] == "material_allocation"
+    assert "material benchmark-smoke allocation failure" in context["summary"]
+    assert "exactly one narrow implementation slice" in context["summary"]
+    assert "do not emit a QA-author repair slice" in context["summary"]
+
+
+def test_replan_payload_classifies_unrealistic_benchmark_threshold_as_qa_harness() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "impl-1",
+                "slot": "implementer",
+                "task_type": "engineering.implement",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.implementation_verification_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": (
+                "benchmark_smoke_diagnostic: RangeScanBenchmark.mmapScan "
+                "allocated 18.7 B/op above 0.050 B/op threshold"
+            ),
+            "result": {
+                "stderr_excerpt": "Allocation threshold exceeded: 18.7 B/op > 0.050 B/op",
+                "commands": [["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert context["benchmark_gate_classification"] == "qa_harness"
+    assert "qa-harness benchmark-smoke gate" in context["summary"]
+    assert "QA-owned benchmark" in context["summary"]
 
 
 def test_replan_payload_carries_implementation_artifact_hints() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -893,13 +894,28 @@ def _narrow_corrective_slice_chain(
 ) -> list[TaskSliceContract]:
     primary_types = ["engineering.implement"]
     blocker_code = str(context.get("blocker_code") or "")
+    benchmark_classification = (
+        _benchmark_gate_classification(context)
+        if blocker_code == "engineering.implementation_verification_failed"
+        else None
+    )
+    if benchmark_classification in {"near_threshold", "qa_harness"}:
+        primary_types = ["engineering.qa.author"]
     if blocker_code in {
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_handoff_missing",
-    } or _corrective_context_mentions_qa_owned_paths(context) or any(
-        task_slice.task_type == "engineering.qa.author" for task_slice in task_slices
+    } or (
+        benchmark_classification != "material_allocation"
+        and (
+            _corrective_context_mentions_qa_owned_paths(context)
+            or any(
+                task_slice.task_type == "engineering.qa.author"
+                for task_slice in task_slices
+            )
+        )
     ):
         primary_types.insert(0, "engineering.qa.author")
+    primary_types = list(dict.fromkeys(primary_types))
     selected_ids: set[str] = set()
     narrowed: list[TaskSliceContract] = []
     for task_type in primary_types:
@@ -1072,6 +1088,16 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
         and int(context.get("same_blocker_recovery_count") or 0) >= 1
         and _corrective_context_mentions_benchmark_gate_failure(context)
     ):
+        benchmark_classification = _benchmark_gate_classification(context)
+        if benchmark_classification == "material_allocation":
+            return allowed
+        if benchmark_classification in {"near_threshold", "qa_harness"}:
+            return {
+                "engineering.qa.author",
+                "engineering.review",
+                "engineering.qa.verify.scrutiny",
+                "engineering.qa.verify.usertest",
+            }
         return {
             "engineering.qa.author",
             "engineering.implement",
@@ -1161,6 +1187,89 @@ def _corrective_context_mentions_benchmark_gate_failure(context: dict[str, Any])
             "allocated",
             "b/op",
             "allocation threshold",
+        )
+    )
+
+
+def _benchmark_gate_classification(context: dict[str, Any]) -> str | None:
+    raw = context.get("benchmark_gate_classification")
+    if raw in {"near_threshold", "qa_harness", "material_allocation", "unknown"}:
+        return str(raw)
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    if not any(
+        signal in context_text
+        for signal in (
+            "jmhsmokecheck",
+            "benchmark_smoke_diagnostic",
+            "benchmark smoke",
+            "allocated",
+            "b/op",
+            "allocation threshold",
+        )
+    ):
+        return None
+    if any(
+        signal in context_text
+        for signal in (
+            "missing smoke benchmark result",
+            "wrongmethodtypeexception",
+            "classnotfoundexception",
+            "invalid benchmark",
+            "benchmark harness",
+            "metadata-disallowed threshold",
+        )
+    ):
+        return "qa_harness"
+    if _benchmark_context_mentions_source_allocation(context_text):
+        return "material_allocation"
+    b_op_values = _benchmark_b_op_values(context_text)
+    threshold_values = _benchmark_threshold_values(context_text)
+    if threshold_values and min(threshold_values) < 32.0:
+        return "qa_harness"
+    if b_op_values and max(b_op_values) >= 32.0:
+        return "material_allocation"
+    if b_op_values and max(b_op_values) <= 32.0:
+        return "near_threshold"
+    return "unknown"
+
+
+def _benchmark_b_op_values(context_text: str) -> list[float]:
+    return [
+        float(match.group(1))
+        for match in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*b/op", context_text)
+    ]
+
+
+def _benchmark_threshold_values(context_text: str) -> list[float]:
+    values: list[float] = []
+    threshold_patterns = [
+        r"(?:threshold|allocbytesperop)\D{0,24}([0-9]+(?:\.[0-9]+)?)",
+        r">\s*([0-9]+(?:\.[0-9]+)?)\s*b/op",
+    ]
+    for pattern in threshold_patterns:
+        values.extend(
+            float(match.group(1)) for match in re.finditer(pattern, context_text)
+        )
+    return values
+
+
+def _benchmark_context_mentions_source_allocation(context_text: str) -> bool:
+    return any(
+        signal in context_text
+        for signal in (
+            "bytebuffer.allocate",
+            "new byte[",
+            "new object",
+            "proxy.newproxyinstance",
+            "invocationhandler",
+            "arrays.copyof",
+            "stream()",
+            ".iterator()",
+            "source-level allocation",
+            "hot-path allocation source",
         )
     )
 

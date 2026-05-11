@@ -954,7 +954,7 @@ def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_fai
     ]
 
 
-def test_apply_corrective_slice_scope_routes_repeated_benchmark_gate_to_qa_author() -> None:
+def test_apply_corrective_slice_scope_routes_near_threshold_benchmark_gate_to_qa_author() -> None:
     plan = PlanContract(
         feature_id="wf_range",
         project="lvc-standard",
@@ -1029,16 +1029,103 @@ def test_apply_corrective_slice_scope_routes_repeated_benchmark_gate_to_qa_autho
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
         "qa-author-repair",
-        "impl-fix",
         "review",
         "qa-scrutiny",
     ]
     assert scoped.task_slices[0].depends_on == []
     assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
-    assert scoped.task_slices[2].depends_on == ["impl-fix"]
-    assert scoped.task_slices[3].depends_on == ["review"]
+    assert scoped.task_slices[2].depends_on == ["review"]
     assert scoped.milestones[0].slice_ids == [
         "qa-author-repair",
+        "review",
+        "qa-scrutiny",
+    ]
+
+
+def test_apply_corrective_slice_scope_routes_material_benchmark_gate_to_implementer() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct material benchmark smoke failure.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["benchmark smoke gate is valid"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author-repair",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair benchmark smoke allocation gate.",
+                allowed_paths=["benchmarks/src/jmh/java/", "benchmarks/build.gradle"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix RangeScanBenchmark allocation in the store hot path.",
+                allowed_paths=["core/", "store/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["qa-author-repair"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review benchmark repair.",
+                allowed_paths=["core/", "store/", "benchmarks/"],
+                forbidden_paths=[],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Verify benchmark smoke repair.",
+                allowed_paths=["benchmarks/", "core/", "store/"],
+                forbidden_paths=[],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["qa-author-repair", "impl-fix", "review", "qa-scrutiny"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "same_blocker_recovery_count": 1,
+                "benchmark_gate_classification": "material_allocation",
+                "failure_context": (
+                    "benchmark_smoke_diagnostic: RangeScanBenchmark.ascendingScan "
+                    "allocated 96.0 B/op above 32.0 B/op threshold; "
+                    "source-level allocation uses ByteBuffer.allocate in the range loop"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "impl-fix",
+        "review",
+        "qa-scrutiny",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["impl-fix"]
+    assert scoped.task_slices[2].depends_on == ["review"]
+    assert scoped.milestones[0].slice_ids == [
         "impl-fix",
         "review",
         "qa-scrutiny",

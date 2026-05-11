@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -562,8 +563,16 @@ def _replan_payload(
         aggregate,
         str(blocked_task.get("id") or ""),
     )
-    summary = _replan_summary(blocked_task, repeat_count=repeat_count)
     failure_context = _failure_context(blocked_task)
+    benchmark_gate_classification = _benchmark_gate_classification(
+        blocked_task,
+        failure_context,
+    )
+    summary = _replan_summary(
+        blocked_task,
+        repeat_count=repeat_count,
+        benchmark_gate_classification=benchmark_gate_classification,
+    )
     revised_goal = goal.model_copy(
         update={
             "requirements": _append_unique(goal.requirements, summary),
@@ -604,6 +613,7 @@ def _replan_payload(
             "blocked_slice_id": _blocked_slice_id(blocked_contract),
             "attempt": int(blocked_task.get("attempt") or 1),
             "same_blocker_recovery_count": repeat_count,
+            "benchmark_gate_classification": benchmark_gate_classification,
             "summary": summary,
         },
     }
@@ -675,7 +685,12 @@ def _blocked_slice_id(contract: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> str:
+def _replan_summary(
+    blocked_task: dict[str, Any],
+    *,
+    repeat_count: int = 0,
+    benchmark_gate_classification: str | None = None,
+) -> str:
     blocker_code = str(blocked_task.get("blocker_code") or "engineering.blocked")
     blocker_reason = str(blocked_task.get("blocker_reason") or "No blocker reason recorded.")
     failure_context = _failure_context(blocked_task)
@@ -795,6 +810,28 @@ def _replan_summary(blocked_task: dict[str, Any], *, repeat_count: int = 0) -> s
         )
     if blocker_code == "engineering.implementation_verification_failed":
         if repeat_count >= 1 and "benchmark" in f"{blocker_reason} {detail}".lower():
+            if benchmark_gate_classification == "material_allocation":
+                return (
+                    "Repeated implementer verification failure is blocked on a "
+                    "material benchmark-smoke allocation failure, not a QA threshold "
+                    "repair. Replan must emit exactly one narrow implementation slice "
+                    "that names the measured allocation signal and the suspected "
+                    "hot-path allocation source; do not emit a QA-author repair slice "
+                    "unless new evidence names an invalid benchmark harness, missing "
+                    "benchmark result, or metadata-disallowed threshold. Preserve these "
+                    f"verification details: {blocker_reason}{detail}"
+                )
+            if benchmark_gate_classification in {"near_threshold", "qa_harness"}:
+                return (
+                    "Repeated implementer verification failure is blocked on a "
+                    f"{benchmark_gate_classification.replace('_', '-')} benchmark-smoke "
+                    "gate. Replan must first repair or justify the QA-owned benchmark "
+                    "harness, threshold, operations-per-invocation, or fixture setup "
+                    "using project-metadata-approved benchmark paths. Do not broaden "
+                    "production implementation work unless the repaired gate still "
+                    "shows material allocation. Preserve these verification details: "
+                    f"{blocker_reason}{detail}"
+                )
             return (
                 "Repeated implementer verification failure is still blocked on a "
                 "benchmark-smoke allocation gate. Replan must stop regenerating broad "
@@ -957,6 +994,99 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
         if rendered_findings:
             excerpts.append(f"findings={'; '.join(rendered_findings)}")
     return " | ".join(excerpts)[:3000]
+
+
+def _benchmark_gate_classification(
+    blocked_task: dict[str, Any],
+    failure_context: str,
+) -> str | None:
+    if str(blocked_task.get("blocker_code") or "") != (
+        "engineering.implementation_verification_failed"
+    ):
+        return None
+    text = " ".join(
+        part
+        for part in (
+            str(blocked_task.get("blocker_reason") or ""),
+            failure_context,
+        )
+        if part
+    ).lower()
+    if not _mentions_benchmark_gate(text):
+        return None
+    if any(
+        signal in text
+        for signal in (
+            "missing smoke benchmark result",
+            "wrongmethodtypeexception",
+            "classnotfoundexception",
+            "invalid benchmark",
+            "benchmark harness",
+            "metadata-disallowed threshold",
+        )
+    ):
+        return "qa_harness"
+    if _benchmark_context_mentions_source_allocation(text):
+        return "material_allocation"
+    b_op_values = _benchmark_b_op_values(text)
+    threshold_values = _benchmark_threshold_values(text)
+    if threshold_values and min(threshold_values) < 32.0:
+        return "qa_harness"
+    if b_op_values and max(b_op_values) >= 32.0:
+        return "material_allocation"
+    if b_op_values and max(b_op_values) <= 32.0:
+        return "near_threshold"
+    return "unknown"
+
+
+def _benchmark_b_op_values(text: str) -> list[float]:
+    return [
+        float(match.group(1))
+        for match in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*b/op", text)
+    ]
+
+
+def _benchmark_threshold_values(text: str) -> list[float]:
+    values: list[float] = []
+    threshold_patterns = [
+        r"(?:threshold|allocbytesperop)\D{0,24}([0-9]+(?:\.[0-9]+)?)",
+        r">\s*([0-9]+(?:\.[0-9]+)?)\s*b/op",
+    ]
+    for pattern in threshold_patterns:
+        values.extend(float(match.group(1)) for match in re.finditer(pattern, text))
+    return values
+
+
+def _benchmark_context_mentions_source_allocation(text: str) -> bool:
+    return any(
+        signal in text
+        for signal in (
+            "bytebuffer.allocate",
+            "new byte[",
+            "new object",
+            "proxy.newproxyinstance",
+            "invocationhandler",
+            "arrays.copyof",
+            "stream()",
+            ".iterator()",
+            "source-level allocation",
+            "hot-path allocation source",
+        )
+    )
+
+
+def _mentions_benchmark_gate(text: str) -> bool:
+    return any(
+        signal in text
+        for signal in (
+            "jmhsmokecheck",
+            "benchmark_smoke_diagnostic",
+            "benchmark smoke",
+            "allocated",
+            "b/op",
+            "allocation threshold",
+        )
+    )
 
 
 def _compact_artifact_hints(hints: dict[str, Any]) -> str:
