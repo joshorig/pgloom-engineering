@@ -1229,6 +1229,77 @@ def test_replan_payload_requires_diagnostic_after_repeated_material_allocations(
     assert "Allocation diagnosis:" in context["summary"]
 
 
+def test_replan_payload_carries_qa_allocation_diagnostic_to_planner() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-scrutiny-1",
+                "slot": "qa-scrutiny",
+                "task_type": "engineering.qa.verify.scrutiny",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.qa_verify_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.qa_verify_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "qa-scrutiny-1",
+            "attempt": 1,
+            "blocker_code": "engineering.qa_verify_failed",
+            "blocker_reason": "qa.verify.scrutiny allocation diagnostic failed",
+            "result": {
+                "qa_result_contract": {
+                    "verdict": "fail",
+                    "validator_type": "scrutiny",
+                    "findings": [
+                        (
+                            "RangeScanBenchmark.ascendingRange allocated 4.174 B/op "
+                            "above 0.005 B/op"
+                        )
+                    ],
+                    "validation_evidence": [
+                        {
+                            "summary": (
+                                "RangeScanBenchmark.ascendingRange allocated "
+                                "4.174 B/op above 0.005 B/op"
+                            ),
+                            "metadata": {
+                                "benchmark_allocation_diagnosis": {
+                                    "classification": "material_allocation",
+                                    "diagnostic_required": True,
+                                    "suspected_source": (
+                                        "store/src/main/java/.../DoubleMmapStore.java"
+                                    ),
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    assert "qa_result_contract" in context["failure_context"]
+    assert "suspected_source" in context["failure_context"]
+    assert context["benchmark_gate_classification"] == "material_allocation"
+    assert context["benchmark_allocation_diagnosis"]["classification"] == (
+        "material_allocation"
+    )
+
+
 def test_replan_payload_classifies_benchmark_harness_error_as_qa_harness() -> None:
     aggregate = _aggregate(
         [

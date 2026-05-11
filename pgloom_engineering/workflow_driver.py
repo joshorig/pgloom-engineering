@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from typing import Any, Literal
@@ -1010,16 +1011,94 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
                 rendered_findings.append(" - ".join(parts))
         if rendered_findings:
             excerpts.append(f"findings={'; '.join(rendered_findings)}")
+    contract_excerpts = _result_contract_excerpts(result)
+    if contract_excerpts:
+        excerpts.extend(contract_excerpts)
     return " | ".join(excerpts)[:3000]
+
+
+def _result_contract_excerpts(result: dict[str, Any]) -> list[str]:
+    excerpts: list[str] = []
+    for key in ("qa_result_contract", "review_verdict_contract", "task_result_contract"):
+        contract = result.get(key)
+        if not isinstance(contract, dict):
+            continue
+        rendered = _contract_evidence_excerpt(contract)
+        if rendered:
+            excerpts.append(f"{key}={rendered}")
+    return excerpts
+
+
+def _contract_evidence_excerpt(contract: dict[str, Any]) -> str:
+    parts: list[str] = []
+    findings = contract.get("findings")
+    if isinstance(findings, list):
+        rendered_findings = [
+            _compact_contract_item(item)
+            for item in findings[:8]
+            if _compact_contract_item(item)
+        ]
+        if rendered_findings:
+            parts.append("findings=" + "; ".join(rendered_findings))
+    evidence = contract.get("evidence")
+    if isinstance(evidence, list):
+        rendered_items = [
+            _compact_contract_item(item)
+            for item in evidence[:6]
+            if _compact_contract_item(item)
+        ]
+        if rendered_items:
+            parts.append("evidence=" + "; ".join(rendered_items))
+    validation_evidence = contract.get("validation_evidence")
+    if isinstance(validation_evidence, list):
+        rendered_evidence: list[str] = []
+        for item in validation_evidence[:6]:
+            if not isinstance(item, dict):
+                continue
+            summary = str(item.get("summary") or "").strip()
+            metadata = item.get("metadata")
+            allocation = None
+            if isinstance(metadata, dict):
+                allocation = metadata.get("benchmark_allocation_diagnosis") or metadata.get(
+                    "allocation_diagnosis"
+                )
+            rendered_summary = summary
+            if isinstance(allocation, dict):
+                rendered_summary = " ".join(
+                    part
+                    for part in (
+                        rendered_summary,
+                        "allocation_diagnosis="
+                        + json.dumps(allocation, sort_keys=True, default=str),
+                    )
+                    if part
+                )
+            if rendered_summary:
+                rendered_evidence.append(" ".join(rendered_summary.split())[:800])
+        if rendered_evidence:
+            parts.append("validation_evidence=" + "; ".join(rendered_evidence))
+    return " ".join(parts)[:1800]
+
+
+def _compact_contract_item(item: Any) -> str:
+    if isinstance(item, str):
+        return " ".join(item.split())[:500]
+    if isinstance(item, dict):
+        message = item.get("message") or item.get("summary") or item.get("code")
+        if message:
+            return " ".join(str(message).split())[:500]
+        return json.dumps(item, sort_keys=True, default=str)[:500]
+    return ""
 
 
 def _benchmark_gate_classification(
     blocked_task: dict[str, Any],
     failure_context: str,
 ) -> str | None:
-    if str(blocked_task.get("blocker_code") or "") != (
-        "engineering.implementation_verification_failed"
-    ):
+    if str(blocked_task.get("blocker_code") or "") not in {
+        "engineering.implementation_verification_failed",
+        "engineering.qa_verify_failed",
+    }:
         return None
     text = " ".join(
         part
