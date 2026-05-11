@@ -1029,7 +1029,7 @@ def _range_benchmark_smoke_threshold_findings(
         return []
     if "range" not in context or "benchmark" not in context:
         return []
-    minimum = float(threshold_config.get("minimum_alloc_bytes_per_op") or 32.0)
+    maximum = float(threshold_config.get("max_alloc_bytes_per_op") or 0.005)
     findings: list[SemanticFinding] = []
     for path, text in files.items():
         if not path.endswith(("build.gradle", "build.gradle.kts")):
@@ -1054,24 +1054,24 @@ def _range_benchmark_smoke_threshold_findings(
             if current_benchmark and "rangescan" not in current_benchmark.lower():
                 continue
             threshold = float(threshold_match.group(1))
-            if threshold >= minimum:
+            if threshold <= maximum:
                 continue
             findings.append(
                 SemanticFinding(
-                    code="qa_semantic_range_benchmark_smoke_threshold_too_strict",
+                    code="qa_semantic_range_benchmark_smoke_threshold_too_loose",
                     severity="blocking",
                     message=(
-                        "Range-scan JMH smoke gate uses a near-zero allocation threshold. "
-                        "Smoke benchmarks should prove coverage and catch gross allocation "
-                        "regressions; sub-32 B/op thresholds are too noisy for autonomous "
-                        "feature validation."
+                        "Range-scan JMH smoke gate relaxes the library allocation "
+                        "requirement. RangeScanBenchmark should meet the existing "
+                        "near-zero smoke threshold unless project metadata explicitly "
+                        "declares a different requirement."
                     ),
                     file=path,
                     line=line_no,
                     details={
                         "benchmark": current_benchmark,
                         "threshold_bytes_per_op": threshold,
-                        "minimum_threshold_bytes_per_op": minimum,
+                        "maximum_threshold_bytes_per_op": maximum,
                     },
                 )
             )

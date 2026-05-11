@@ -1226,12 +1226,9 @@ def _benchmark_gate_classification(context: dict[str, Any]) -> str | None:
     if _benchmark_context_mentions_source_allocation(context_text):
         return "material_allocation"
     b_op_values = _benchmark_b_op_values(context_text)
-    threshold_values = _benchmark_threshold_values(context_text)
-    if threshold_values and min(threshold_values) < 32.0:
-        return "qa_harness"
-    if b_op_values and max(b_op_values) >= 32.0:
+    if b_op_values and max(b_op_values) > 0.005:
         return "material_allocation"
-    if b_op_values and max(b_op_values) <= 32.0:
+    if b_op_values and max(b_op_values) <= 0.005:
         return "near_threshold"
     return "unknown"
 
@@ -1241,19 +1238,6 @@ def _benchmark_b_op_values(context_text: str) -> list[float]:
         float(match.group(1))
         for match in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*b/op", context_text)
     ]
-
-
-def _benchmark_threshold_values(context_text: str) -> list[float]:
-    values: list[float] = []
-    threshold_patterns = [
-        r"(?:threshold|allocbytesperop)\D{0,24}([0-9]+(?:\.[0-9]+)?)",
-        r">\s*([0-9]+(?:\.[0-9]+)?)\s*b/op",
-    ]
-    for pattern in threshold_patterns:
-        values.extend(
-            float(match.group(1)) for match in re.finditer(pattern, context_text)
-        )
-    return values
 
 
 def _benchmark_context_mentions_source_allocation(context_text: str) -> bool:

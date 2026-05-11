@@ -954,7 +954,7 @@ def test_apply_corrective_slice_scope_keeps_qa_author_for_qa_owned_benchmark_fai
     ]
 
 
-def test_apply_corrective_slice_scope_routes_near_threshold_benchmark_gate_to_qa_author() -> None:
+def test_apply_corrective_slice_scope_routes_benchmark_gate_failure_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",
         project="lvc-standard",
@@ -1028,15 +1028,15 @@ def test_apply_corrective_slice_scope_routes_near_threshold_benchmark_gate_to_qa
     )
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
-        "qa-author-repair",
+        "impl-fix",
         "review",
         "qa-scrutiny",
     ]
     assert scoped.task_slices[0].depends_on == []
-    assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
+    assert scoped.task_slices[1].depends_on == ["impl-fix"]
     assert scoped.task_slices[2].depends_on == ["review"]
     assert scoped.milestones[0].slice_ids == [
-        "qa-author-repair",
+        "impl-fix",
         "review",
         "qa-scrutiny",
     ]
@@ -1110,7 +1110,7 @@ def test_apply_corrective_slice_scope_routes_material_benchmark_gate_to_implemen
                 "benchmark_gate_classification": "material_allocation",
                 "failure_context": (
                     "benchmark_smoke_diagnostic: RangeScanBenchmark.ascendingScan "
-                    "allocated 96.0 B/op above 32.0 B/op threshold; "
+                    "allocated 0.031 B/op above 0.005 B/op threshold; "
                     "source-level allocation uses ByteBuffer.allocate in the range loop"
                 ),
             }

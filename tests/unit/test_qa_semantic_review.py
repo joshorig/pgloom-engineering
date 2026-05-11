@@ -752,7 +752,46 @@ def test_semantic_review_accepts_range_benchmark_with_descending_and_prefix() ->
     ] == []
 
 
-def test_semantic_review_blocks_too_strict_range_benchmark_smoke_threshold() -> None:
+def test_semantic_review_blocks_too_loose_range_benchmark_smoke_threshold() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/benchmarks/build.gradle": """
+            tasks.register('jmhSmokeCheck') {
+                def smokeBenchmarkThresholds = [
+                    'com.example.CiSmokeBenchmark.rangeScanSmoke': [
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.050d,
+                        gcCount: 0.000d
+                    ]
+                ]
+            }
+            """,
+            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            class RangeScanBenchmark {
+                private LvcStore store;
+                private StoreVisitor visitor;
+                private byte[] prefix;
+                public void smoke() {
+                    store.ascendingRange(0, 1023, visitor);
+                    store.descendingRange(1023, 0, visitor);
+                    store.ascendingRange(0, 1023, prefix, visitor);
+                }
+            }
+            """,
+        },
+        plan_text="Range benchmark smoke must prove allocation behavior.",
+        task_text="Write JMH benchmark smoke for range scans.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_loose"
+    ] == ["qa_semantic_range_benchmark_smoke_threshold_too_loose"]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_accepts_existing_range_benchmark_smoke_threshold() -> None:
     findings = review_semantic_quality(
         files={
             "changed-files/benchmarks/build.gradle": """
@@ -784,48 +823,9 @@ def test_semantic_review_blocks_too_strict_range_benchmark_smoke_threshold() -> 
     )
 
     assert [
-        finding.code
-        for finding in findings
-        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
-    ] == ["qa_semantic_range_benchmark_smoke_threshold_too_strict"]
-    assert findings[0].severity == "blocking"
-
-
-def test_semantic_review_accepts_range_benchmark_smoke_threshold_with_noise_margin() -> None:
-    findings = review_semantic_quality(
-        files={
-            "changed-files/benchmarks/build.gradle": """
-            tasks.register('jmhSmokeCheck') {
-                def smokeBenchmarkThresholds = [
-                    'com.example.CiSmokeBenchmark.rangeScanSmoke': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
-                        gcCount: 0.000d
-                    ]
-                ]
-            }
-            """,
-            "changed-files/benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
-            class RangeScanBenchmark {
-                private LvcStore store;
-                private StoreVisitor visitor;
-                private byte[] prefix;
-                public void smoke() {
-                    store.ascendingRange(0, 1023, visitor);
-                    store.descendingRange(1023, 0, visitor);
-                    store.ascendingRange(0, 1023, prefix, visitor);
-                }
-            }
-            """,
-        },
-        plan_text="Range benchmark smoke must prove allocation behavior.",
-        task_text="Write JMH benchmark smoke for range scans.",
-        project_metadata={},
-    )
-
-    assert [
         finding
         for finding in findings
-        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
+        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_loose"
     ] == []
 
 
@@ -836,7 +836,7 @@ def test_semantic_review_blocks_parameterized_range_benchmark_single_entry_gate(
             tasks.register('jmhSmokeCheck') {
                 def smokeBenchmarkThresholds = [
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRangeScan': [
-                        allocBytesPerOp: 32.0d,
+                        allocBytesPerOp: 0.005d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -900,7 +900,7 @@ def test_semantic_review_blocks_relaxing_existing_ci_smoke_thresholds() -> None:
                         gcCount: 0.000d
                     ],
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRange': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.005d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -934,7 +934,7 @@ def test_semantic_review_blocks_relaxing_existing_ci_smoke_thresholds() -> None:
     assert relaxed[0].details["benchmark"].endswith("CiSmokeBenchmark.pollerBitsetSmoke")
 
 
-def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> None:
+def test_semantic_review_allows_range_only_existing_smoke_threshold() -> None:
     findings = review_semantic_quality(
         files={
             "changed-files/benchmarks/build.gradle": """
@@ -945,7 +945,7 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
                         gcCount: 0.000d
                     ],
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRange': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.005d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -977,7 +977,7 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
     assert [
         finding
         for finding in findings
-        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
+        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_loose"
     ] == []
 
 
@@ -1250,14 +1250,14 @@ def test_semantic_review_accepts_key_bytes_partial_prefix_with_payload_assertion
     ] == []
 
 
-def test_semantic_review_blocks_too_strict_range_benchmark_class_threshold() -> None:
+def test_semantic_review_blocks_too_loose_range_benchmark_class_threshold() -> None:
     findings = review_semantic_quality(
         files={
             "changed-files/benchmarks/build.gradle": """
             tasks.register('jmhSmokeCheck') {
                 def smokeBenchmarkThresholds = [
                     'com.example.RangeScanBenchmark.ascendingRange': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.005d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.050d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -1284,8 +1284,8 @@ def test_semantic_review_blocks_too_strict_range_benchmark_class_threshold() -> 
     assert [
         finding.code
         for finding in findings
-        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_strict"
-    ] == ["qa_semantic_range_benchmark_smoke_threshold_too_strict"]
+        if finding.code == "qa_semantic_range_benchmark_smoke_threshold_too_loose"
+    ] == ["qa_semantic_range_benchmark_smoke_threshold_too_loose"]
 
 
 def test_semantic_review_blocks_benchmark_store_visitor_signature_mismatch() -> None:

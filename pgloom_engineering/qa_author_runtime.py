@@ -303,10 +303,11 @@ def build_qa_author_prompt(
             ),
             (
                 "For range-scan JMH smoke gates, use a realistic noise margin for "
-                "feature-specific allocation thresholds: do not set RangeScanBenchmark "
-                "allocation thresholds below 32 B/op unless project_qa_metadata provides "
-                "a higher or explicit threshold, and validate every parameterized range "
-                "benchmark result instead of requiring exactly one JSON entry."
+                "measurement setup but do not relax the library allocation requirement: "
+                "RangeScanBenchmark allocation thresholds must stay at the existing "
+                "0.005 B/op smoke bar unless project_qa_metadata explicitly declares a "
+                "different requirement. Validate every parameterized range benchmark "
+                "result instead of requiring exactly one JSON entry."
             ),
             (
                 "For prefix, filter, route, or query behavior, write behavior tests with "
@@ -841,7 +842,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_benchmark_parameterized_gate_mismatch",
-        "qa_semantic_range_benchmark_smoke_threshold_too_strict",
+        "qa_semantic_range_benchmark_smoke_threshold_too_loose",
         "qa_semantic_existing_smoke_threshold_relaxed",
         "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
@@ -949,11 +950,11 @@ def build_qa_quality_repair_prompt(
                     "for the new benchmark smoke gate."
                 ),
                 (
-                    "For range benchmark smoke threshold findings, raise only the "
-                    "feature-specific RangeScanBenchmark allocation threshold to a "
-                    "realistic smoke margin of at least 32 B/op unless project "
-                    "metadata provides a higher threshold. Do not relax unrelated "
-                    "benchmark gates."
+                    "For range benchmark smoke threshold findings, keep the "
+                    "feature-specific RangeScanBenchmark allocation threshold at the "
+                    "existing 0.005 B/op smoke bar unless project metadata explicitly "
+                    "declares a different requirement. Do not relax unrelated "
+                    "benchmark gates or the new range gate."
                 ),
                 (
                     "For parameterized range benchmark gate findings, keep "

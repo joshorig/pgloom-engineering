@@ -72,8 +72,9 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         for instruction in payload["instructions"]
     )
     assert any(
-        "RangeScanBenchmark allocation thresholds below 32 B/op" in instruction
-        and "validate every parameterized range benchmark result" in instruction
+        "RangeScanBenchmark allocation thresholds must stay at the existing "
+        "0.005 B/op smoke bar" in instruction
+        and "Validate every parameterized range benchmark result" in instruction
         for instruction in payload["instructions"]
     )
     assert any(
@@ -314,7 +315,7 @@ def test_quality_repair_prompt_includes_range_threshold_repair_guidance(
             quality_review={
                 "blocking_findings": [
                     {
-                        "code": "qa_semantic_range_benchmark_smoke_threshold_too_strict",
+                        "code": "qa_semantic_range_benchmark_smoke_threshold_too_loose",
                         "file": "benchmarks/build.gradle",
                     }
                 ]
@@ -325,7 +326,7 @@ def test_quality_repair_prompt_includes_range_threshold_repair_guidance(
     )
 
     assert any(
-        "at least 32 B/op" in item and "Do not relax unrelated benchmark gates" in item
+        "0.005 B/op smoke bar" in item and "Do not relax unrelated benchmark gates" in item
         for item in payload["instructions"]
     )
 
