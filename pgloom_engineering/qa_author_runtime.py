@@ -774,6 +774,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_existing_smoke_threshold_relaxed",
         "qa_semantic_benchmark_visitor_signature_mismatch",
         "qa_semantic_range_test_reflective_api",
+        "qa_semantic_range_null_receiver_api_test",
         "qa_semantic_range_prefix_behavior_missing",
         "qa_semantic_range_key_prefix_not_payload_prefix",
         "qa_semantic_range_key_prefix_too_narrow",
@@ -837,9 +838,13 @@ def build_qa_quality_repair_prompt(
                     "the typed public API directly; do not use Class.forName, "
                     "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "
                     "class metadata assertions, or annotation-presence checks to avoid "
-                    "compile-time API checks. For Java test helper resources, do not declare "
-                    "AutoCloseable.close() with throws Exception; catch or wrap cleanup "
-                    "exceptions so -Werror builds do not fail on try-with-resources warnings."
+                    "compile-time API checks. Do not call range methods on a null LvcStore "
+                    "just to prove overload existence; once the API compiles that becomes "
+                    "a NullPointerException test failure. Use a real store fixture or a "
+                    "typed fake implementation instead. For Java test helper resources, "
+                    "do not declare AutoCloseable.close() with throws Exception; catch "
+                    "or wrap cleanup exceptions so -Werror builds do not fail on "
+                    "try-with-resources warnings."
                 ),
                 (
                     "For JMH reflective invocation findings, remove reflection, Proxy, "

@@ -1429,6 +1429,57 @@ def test_semantic_review_accepts_typed_range_api_tests() -> None:
     ] == []
 
 
+def test_semantic_review_blocks_range_api_tests_using_null_receiver() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                @Test
+                void lvcStoreExposesRangeApis() {
+                    compileRangeApiSurface(null);
+                }
+
+                private static void compileRangeApiSurface(LvcStore store) {
+                    store.ascendingRange(0, 0, null);
+                    store.descendingRange(0, 0, null);
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_null_receiver_api_test"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_blocks_direct_null_lvc_receiver_range_call() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                @Test
+                void lvcStoreExposesRangeApis() {
+                    LvcStore store = null;
+                    store.ascendingRange(0, 0, null);
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_null_receiver_api_test"
+    ]
+
+
 def test_semantic_review_blocks_missing_range_prefix_behavior() -> None:
     findings = review_semantic_quality(
         files={

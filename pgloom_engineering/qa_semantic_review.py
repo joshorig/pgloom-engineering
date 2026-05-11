@@ -56,6 +56,7 @@ def review_semantic_quality(
     findings.extend(_existing_smoke_threshold_relaxation_findings(files, context, conventions))
     findings.extend(_benchmark_visitor_signature_findings(files, context, conventions))
     findings.extend(_range_test_reflective_api_findings(files, context, conventions))
+    findings.extend(_range_test_null_receiver_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_range_key_prefix_semantics_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
@@ -628,6 +629,44 @@ def _range_test_reflective_api_findings(
     return findings
 
 
+def _range_test_null_receiver_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_api_tests"))
+    if range_config.get("allow_null_receiver_api_smoke"):
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context and "storevisitor" not in normalized_context:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(".java") or "test" not in path.lower():
+            continue
+        lowered = text.lower()
+        if "range" not in lowered and "storevisitor" not in lowered:
+            continue
+        line_no = _null_lvc_receiver_range_call_line(text) or _null_helper_range_call_line(text)
+        if line_no is None:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_range_null_receiver_api_test",
+                severity="blocking",
+                message=(
+                    "Range API tests must not prove method existence by invoking range "
+                    "methods on a null LvcStore. Once the API compiles, the JUnit test "
+                    "fails with NullPointerException instead of testing product behavior; "
+                    "use a real store fixture or a typed fake implementation."
+                ),
+                file=path,
+                line=line_no,
+            )
+        )
+    return findings
+
+
 def _range_prefix_behavior_findings(
     files: dict[str, str],
     context: str,
@@ -1189,4 +1228,53 @@ def _first_line_containing_any(text: str, needles: list[str]) -> int | None:
     for line_no, line in enumerate(text.splitlines(), start=1):
         if any(needle in line for needle in needles):
             return line_no
+    return None
+
+
+def _null_lvc_receiver_range_call_line(text: str) -> int | None:
+    null_vars = set(re.findall(r"\bLvcStore\s+(\w+)\s*=\s*null\s*;", text))
+    if not null_vars:
+        return None
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        for var_name in null_vars:
+            if re.search(
+                rf"\b{re.escape(var_name)}\.(?:ascendingRange|descendingRange)\s*\(",
+                line,
+            ):
+                return line_no
+    return None
+
+
+def _null_helper_range_call_line(text: str) -> int | None:
+    helper_calls: dict[str, int] = {}
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        match = re.search(r"\b(\w+)\s*\(\s*null\s*\)\s*;", line)
+        if match:
+            helper_calls.setdefault(match.group(1), line_no)
+    if not helper_calls:
+        return None
+    for method_name, call_line in helper_calls.items():
+        signature = re.compile(
+            rf"\b(?:private|public|protected)?\s*(?:static\s+)?"
+            rf"(?:void|[\w<>[\]]+)\s+{re.escape(method_name)}\s*"
+            r"\(\s*LvcStore\s+(\w+)\s*\)",
+            re.MULTILINE,
+        )
+        match = signature.search(text)
+        if not match:
+            continue
+        receiver = match.group(1)
+        body = text[match.end() :]
+        next_method = re.search(
+            r"\n\s*(?:private|public|protected)\s+(?:static\s+)?"
+            r"(?:void|[\w<>[\]]+)\s+\w+\s*\(",
+            body,
+        )
+        if next_method:
+            body = body[: next_method.start()]
+        if re.search(
+            rf"\b{re.escape(receiver)}\.(?:ascendingRange|descendingRange)\s*\(",
+            body,
+        ):
+            return call_line
     return None
