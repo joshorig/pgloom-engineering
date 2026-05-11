@@ -258,9 +258,8 @@ def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionF
             continue
         if not any(_variant_scope_conflicts(scope, other_scope) for _, other_scope in scoped):
             continue
-        if not any(
-            _looks_like_broad_variant_conformance(command)
-            for command in task_slice.verification_commands
+        if not _has_broad_variant_conformance_without_specific_gate(
+            task_slice.verification_commands
         ):
             continue
         findings.append(
@@ -277,6 +276,33 @@ def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionF
             )
         )
     return findings
+
+
+def _has_broad_variant_conformance_without_specific_gate(commands: list[list[str]]) -> bool:
+    specific_classes = {
+        _gradle_test_filter(command).rsplit(".", maxsplit=1)[0].lower()
+        for command in commands
+        if (
+            _gradle_test_filter(command)
+            and _looks_like_method_test_filter(_gradle_test_filter(command) or "")
+            and _gradle_test_task_key(command)
+        )
+    }
+    for command in commands:
+        test_filter = _gradle_test_filter(command)
+        if not _looks_like_broad_variant_conformance(command):
+            continue
+        class_name = (test_filter or "").lower()
+        if class_name not in specific_classes:
+            return True
+    return False
+
+
+def _looks_like_method_test_filter(test_filter: str) -> bool:
+    if "." not in test_filter:
+        return False
+    method_name = test_filter.rsplit(".", maxsplit=1)[1]
+    return bool(method_name) and method_name[0].islower()
 
 
 def _variant_scope_text(text: str) -> set[str]:
@@ -321,6 +347,33 @@ def _looks_like_broad_variant_conformance(command: list[str]) -> bool:
             "mmap",
         ]
     )
+
+
+def _gradle_test_filter(command: list[str]) -> str | None:
+    try:
+        index = command.index("--tests")
+    except ValueError:
+        return None
+    if index + 1 >= len(command):
+        return None
+    value = command[index + 1]
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _gradle_test_task_key(command: list[str]) -> tuple[str, ...] | None:
+    if not command:
+        return None
+    executable = Path(command[0]).name
+    if executable not in {"gradle", "gradlew"} and command[0] != "./gradlew":
+        return None
+    task_parts: list[str] = []
+    for part in command[1:]:
+        if part == "--tests":
+            break
+        if part.startswith("-"):
+            continue
+        task_parts.append(part)
+    return tuple(task_parts) if task_parts else None
 
 
 def _variant_scope_source(task_slice: object) -> str:

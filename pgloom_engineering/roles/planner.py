@@ -528,7 +528,7 @@ def _drop_redundant_gradle_wildcard_test_filters(
         if _gradle_test_filter(command) and "*" not in (_gradle_test_filter(command) or "")
     }
     if not exact_test_tasks:
-        return commands
+        return _drop_redundant_gradle_class_test_filters(commands)
     filtered: list[list[str]] = []
     for command in commands:
         test_filter = _gradle_test_filter(command)
@@ -539,7 +539,43 @@ def _drop_redundant_gradle_wildcard_test_filters(
         ):
             continue
         filtered.append(command)
+    return _drop_redundant_gradle_class_test_filters(filtered)
+
+
+def _drop_redundant_gradle_class_test_filters(
+    commands: list[list[str]],
+) -> list[list[str]]:
+    method_filters_by_task = {
+        (_gradle_test_task_key(command), _gradle_test_filter(command).rsplit(".", 1)[0])
+        for command in commands
+        if (
+            _gradle_test_task_key(command)
+            and _gradle_test_filter(command)
+            and _looks_like_method_test_filter(_gradle_test_filter(command) or "")
+        )
+    }
+    if not method_filters_by_task:
+        return commands
+    filtered: list[list[str]] = []
+    for command in commands:
+        test_filter = _gradle_test_filter(command)
+        task_key = _gradle_test_task_key(command)
+        if (
+            task_key
+            and test_filter
+            and not _looks_like_method_test_filter(test_filter)
+            and (task_key, test_filter) in method_filters_by_task
+        ):
+            continue
+        filtered.append(command)
     return filtered
+
+
+def _looks_like_method_test_filter(test_filter: str) -> bool:
+    if "." not in test_filter:
+        return False
+    method_name = test_filter.rsplit(".", 1)[1]
+    return bool(method_name) and method_name[0].islower()
 
 
 def _gradle_test_filter(command: list[str]) -> str | None:

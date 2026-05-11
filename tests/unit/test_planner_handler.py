@@ -1171,6 +1171,59 @@ def test_feature_scoped_verification_commands_drop_redundant_wildcard_test_filte
     ]
 
 
+def test_feature_scoped_verification_commands_drop_redundant_class_test_filter() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["RangeScanBenchmark smoke"]),
+        affected_surfaces=["store/"],
+        task_slices=[],
+        acceptance_test_matrix=["double store range behavior"],
+    )
+
+    commands = _feature_scoped_verification_commands(
+        [
+            [
+                "./gradlew",
+                ":conformance-tests:test",
+                "--tests",
+                "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest",
+            ],
+            [
+                "./gradlew",
+                ":conformance-tests:test",
+                "--tests",
+                "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest.doubleDirectAndMmapRangeScansVisitOrderedKeys",
+            ],
+            [
+                "./gradlew",
+                ":conformance-tests:test",
+                "--tests",
+                "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest.doubleDirectAndMmapShortPrefixMatchesMultipleKeys",
+            ],
+        ],
+        plan=plan,
+        task_objective="Implement DOUBLE-store direct and mmap range scans.",
+        project_metadata={},
+    )
+
+    assert commands == [
+        [
+            "./gradlew",
+            ":conformance-tests:test",
+            "--tests",
+            "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest.doubleDirectAndMmapRangeScansVisitOrderedKeys",
+        ],
+        [
+            "./gradlew",
+            ":conformance-tests:test",
+            "--tests",
+            "com.joshorig.ull.lvc.conformance.RangeScanConformanceTest.doubleDirectAndMmapShortPrefixMatchesMultipleKeys",
+        ],
+    ]
+
+
 def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:
     plan = PlanContract(
         feature_id="wf_range",
