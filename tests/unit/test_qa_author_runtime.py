@@ -72,6 +72,11 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         for instruction in payload["instructions"]
     )
     assert any(
+        "RangeScanBenchmark allocation thresholds below 0.05 B/op" in instruction
+        and "validate every parameterized range benchmark result" in instruction
+        for instruction in payload["instructions"]
+    )
+    assert any(
         "matrix_coverage must include every exact string" in instruction
         for instruction in payload["instructions"]
     )
@@ -289,6 +294,40 @@ def test_quality_repair_prompt_can_repair_harness_dependencies(tmp_path: Path) -
 
     assert payload["repair_files"] == ["tests/EndpointTest.java", "app-api/build.gradle"]
     assert any("test-scoped dependency" in item for item in payload["instructions"])
+
+
+def test_quality_repair_prompt_includes_range_threshold_repair_guidance(
+    tmp_path: Path,
+) -> None:
+    tmp_path.joinpath("benchmarks").mkdir()
+    tmp_path.joinpath("benchmarks/build.gradle").write_text(
+        "jmhSmokeCheck { allocBytesPerOp: value ?: 0.005d }\n",
+        encoding="utf-8",
+    )
+
+    payload = json.loads(
+        build_qa_quality_repair_prompt(
+            plan=_plan(),
+            task_contract=_task_contract(),
+            worktree=tmp_path,
+            changed_files=["benchmarks/build.gradle"],
+            quality_review={
+                "blocking_findings": [
+                    {
+                        "code": "qa_semantic_range_benchmark_smoke_threshold_too_strict",
+                        "file": "benchmarks/build.gradle",
+                    }
+                ]
+            },
+            current_contract={"paths_touched": ["benchmarks/build.gradle"]},
+            project_metadata={"qa": {"test_support_paths": ["benchmarks/build.gradle"]}},
+        )
+    )
+
+    assert any(
+        "at least 0.05 B/op" in item and "Do not relax unrelated benchmark gates" in item
+        for item in payload["instructions"]
+    )
 
 
 def test_benchmark_requirements_include_project_variants_and_prompt_skeleton() -> None:

@@ -163,6 +163,25 @@ The current priority is live-eval convergence and output quality. R66
 accepted artifacts are now evidence for production-grade review gaps, not only
 orchestration progress.
 
+Fresh R90/R92 evidence refines that focus:
+
+- Happy-path implementer slices are materially cheaper than earlier runs, but
+  corrective implementer slices can still explode into multi-million-token
+  Codex sessions. Recovery plans should preserve the narrow failed slice,
+  exact validator finding, and known allowed paths instead of reopening broad
+  implementation work.
+- QA author output is now blocked on substantive semantic findings such as
+  too-strict feature benchmark thresholds and missing regression/no-alias
+  guards. Treat these as quality signals, not orchestration failures.
+- QA author contracts must keep paths relative to the project worktree.
+  Absolute path normalization is landed; future path failures should be
+  investigated as producer bugs only after confirming normalization ran.
+- Corrective planners must distinguish QA-owned harness failures from
+  production-code defects. Benchmark threshold and harness wiring failures
+  should route through the smallest QA-author repair that project metadata
+  permits; production API or hot-path allocation defects should route through a
+  single narrow implementer repair followed by review and split validators.
+
 ## Command Center persistence follow-up
 
 Status: active follow-up. Most schema/API surfaces have landed, but keep

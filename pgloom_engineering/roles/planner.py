@@ -306,6 +306,7 @@ class PlannerHandler:
                     "validation_strategy": task_slice.validation_strategy,
                     "context_budget": task_slice.context_budget,
                     "model_route_hint": task_slice.model_route_hint,
+                    "replan_context": _task_replan_context_payload(payload),
                 },
                 allowed_paths=task_slice.allowed_paths,
                 forbidden_paths=task_slice.forbidden_paths,
@@ -693,6 +694,42 @@ def _replan_from_milestone_id(payload: dict[str, Any]) -> str | None:
     if payload.get("replan_from_milestone_id"):
         return str(payload["replan_from_milestone_id"])
     return None
+
+
+def _task_replan_context_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+    context = payload.get("replan_context")
+    if not isinstance(context, dict):
+        return None
+    if context.get("mode") not in {"corrective_slice", "replan_from_milestone"}:
+        return None
+    keys = [
+        "mode",
+        "source",
+        "blocked_task_id",
+        "active_plan_contract_id",
+        "replan_from_milestone_id",
+        "blocker_code",
+        "blocker_reason",
+        "failure_context",
+        "blocked_slice_id",
+        "attempt",
+        "same_blocker_recovery_count",
+        "summary",
+    ]
+    compact = {
+        key: _compact_replan_context_value(context.get(key))
+        for key in keys
+        if context.get(key) not in (None, "", [])
+    }
+    return compact or None
+
+
+def _compact_replan_context_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return value[:3000]
+    if isinstance(value, int | float | bool):
+        return value
+    return str(value)[:3000]
 
 
 def _apply_corrective_slice_scope(

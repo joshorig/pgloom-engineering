@@ -6,7 +6,7 @@ import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pgloom.harness.result import HandlerResult
 from pgloom.models.cli import CLIModelProfile
@@ -45,7 +45,7 @@ from pgloom_engineering.role_payloads import compact_plan_payload, compact_qa_au
 
 
 class ImplementerHandler:
-    def __init__(self, *, provider: EngineeringCLIModelProvider | None = None) -> None:
+    def __init__(self, *, provider: ImplementerModelProvider | None = None) -> None:
         self._provider = provider
 
     def handle(self, task: dict[str, Any]) -> HandlerResult:
@@ -348,6 +348,10 @@ class ImplementerHandler:
             )
 
 
+class ImplementerModelProvider(Protocol):
+    def invoke(self, *, profile: CLIModelProfile, prompt: str, **kwargs: Any) -> Any: ...
+
+
 def build_implementer_prompt(
     *,
     plan: PlanContract,
@@ -552,6 +556,9 @@ def build_implementer_context_capsule(
                 if isinstance(item, dict) and item.get("command")
             ],
         },
+        "recovery_context": _compact_recovery_context(
+            task_contract.inputs.get("replan_context")
+        ),
         "recall": {
             "relevant_paths": _string_list(context.get("relevant_paths")),
             "qa_write_paths": _string_list(context.get("qa_write_paths")),
@@ -565,6 +572,32 @@ def build_implementer_context_capsule(
             ),
         },
     }
+
+
+def _compact_recovery_context(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    keys = [
+        "mode",
+        "blocker_code",
+        "blocker_reason",
+        "failure_context",
+        "blocked_slice_id",
+        "same_blocker_recovery_count",
+        "summary",
+    ]
+    compact: dict[str, Any] = {}
+    for key in keys:
+        item = value.get(key)
+        if item in (None, "", []):
+            continue
+        if isinstance(item, str):
+            compact[key] = _compact_text(item, limit=1600)
+        elif isinstance(item, int | float | bool):
+            compact[key] = item
+        else:
+            compact[key] = _compact_text(str(item), limit=1600)
+    return compact
 
 
 def build_implementer_source_starter_pack(

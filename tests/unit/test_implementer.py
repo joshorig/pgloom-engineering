@@ -761,7 +761,19 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     prompt = json.loads(
         build_implementer_prompt(
             plan=_plan(),
-            task_contract=_implementer_contract(),
+            task_contract=_implementer_contract().model_copy(
+                update={
+                    "inputs": {
+                        "task_slice_id": "impl",
+                        "replan_context": {
+                            "mode": "corrective_slice",
+                            "blocker_code": "engineering.review_rejected",
+                            "failure_context": "prefix validation failed",
+                            "summary": "repair only the rejected prefix behavior",
+                        },
+                    }
+                }
+            ),
             qa_contract=qa_contract,
             worktree=tmp_path,
             project_metadata={},
@@ -776,6 +788,8 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     assert capsule["recall"]["memory_digest"] == "prior decision: preserve zero allocation"
     assert "src/App.java" in capsule["recall"]["source_queries"]
     assert "scope_boundary" in capsule["slice"]
+    assert capsule["recovery_context"]["blocker_code"] == "engineering.review_rejected"
+    assert "prefix validation failed" in capsule["recovery_context"]["failure_context"]
     assert prompt["source_starter_pack"]["contract"] == (
         "engineering.implementer_source_starter_pack.v1"
     )

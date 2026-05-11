@@ -15,6 +15,7 @@ from pgloom_engineering.roles.planner import (
     _normalize_feature_scoped_plan_verification,
     _plan_validation_error_summary,
     _provider_usage_limit_reason,
+    _task_replan_context_payload,
 )
 
 
@@ -166,6 +167,33 @@ def test_assign_task_slice_milestones_from_milestone_membership() -> None:
 
     assert assigned.task_slices[0].milestone_id == "m1"
     assert assigned.task_slices[1].milestone_id == "existing"
+
+
+def test_task_replan_context_payload_compacts_corrective_evidence() -> None:
+    payload = {
+        "replan_context": {
+            "mode": "corrective_slice",
+            "source": "workflow_driver",
+            "blocked_task_id": "task-1",
+            "blocker_code": "engineering.review_rejected",
+            "blocker_reason": "review failed",
+            "failure_context": "x" * 4000,
+            "blocked_slice_id": "impl",
+            "same_blocker_recovery_count": 1,
+            "summary": "repair the rejected range behavior",
+            "blocked_task_contract": {"large": "omitted"},
+        }
+    }
+
+    context = _task_replan_context_payload(payload)
+
+    assert context is not None
+    assert context["mode"] == "corrective_slice"
+    assert context["blocker_code"] == "engineering.review_rejected"
+    assert context["blocked_slice_id"] == "impl"
+    assert context["same_blocker_recovery_count"] == 1
+    assert len(context["failure_context"]) == 3000
+    assert "blocked_task_contract" not in context
 
 
 def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:

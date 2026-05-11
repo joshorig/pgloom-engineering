@@ -302,6 +302,13 @@ def build_qa_author_prompt(
                 "is actually executed by the smoke/regression gate."
             ),
             (
+                "For range-scan JMH smoke gates, use a realistic noise margin for "
+                "feature-specific allocation thresholds: do not set RangeScanBenchmark "
+                "allocation thresholds below 0.05 B/op unless project_qa_metadata provides "
+                "a higher or explicit threshold, and validate every parameterized range "
+                "benchmark result instead of requiring exactly one JSON entry."
+            ),
+            (
                 "For prefix, filter, route, or query behavior, write behavior tests with "
                 "matching and non-matching cases; overload or route inventory checks alone "
                 "do not satisfy acceptance."
@@ -940,6 +947,13 @@ def build_qa_quality_repair_prompt(
                     "CiSmokeBenchmark allocation thresholds unchanged. Add only "
                     "feature-specific RangeScanBenchmark thresholds or wiring needed "
                     "for the new benchmark smoke gate."
+                ),
+                (
+                    "For range benchmark smoke threshold findings, raise only the "
+                    "feature-specific RangeScanBenchmark allocation threshold to a "
+                    "realistic noise margin of at least 0.05 B/op unless project "
+                    "metadata provides a higher threshold. Do not relax unrelated "
+                    "benchmark gates."
                 ),
                 (
                     "For parameterized range benchmark gate findings, keep "
