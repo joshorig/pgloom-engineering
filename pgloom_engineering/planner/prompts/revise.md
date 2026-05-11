@@ -22,6 +22,12 @@ Deterministic validator and critic checks are authoritative. In particular:
   a concrete slice-specific Gradle `--tests Class.method` or class filter that
   the QA-author slice is instructed to create. Do not keep the same broad
   conformance class command on multiple variant slices.
+- If a prior validator error says `qa_usertest_uses_deterministic_command`,
+  move Gradle/test/check/JMH/smoke/regression commands to
+  `engineering.qa.verify.scrutiny`. The user-test slice must be model-driven:
+  keep only a launch/setup harness or interaction entrypoint in
+  `verification_commands`, and require replay evidence from public browser, CLI,
+  API, service, or consumer-library behavior.
 - If `replan_context.benchmark_allocation_diagnosis` is present, consume it as
   authoritative evidence. Do not issue a generic implementer repair for a JMH
   allocation failure before the allocation source is known. When

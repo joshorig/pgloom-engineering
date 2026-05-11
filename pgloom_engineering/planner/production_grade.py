@@ -46,6 +46,7 @@ def evaluate_production_grade(
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
     findings.extend(_qa_benchmark_output_path_findings(plan))
     findings.extend(_qa_reflective_authoring_findings(plan))
+    findings.extend(_qa_usertest_command_findings(plan))
     findings.extend(_milestone_signoff_findings(plan))
     findings.extend(_variant_scope_verification_findings(plan))
     findings.extend(_small_feature_surface_findings(plan))
@@ -460,6 +461,68 @@ def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionF
             )
         )
     return findings
+
+
+def _qa_usertest_command_findings(plan: PlanContract) -> list[ProductionFinding]:
+    findings: list[ProductionFinding] = []
+    for task_slice in plan.task_slices:
+        if task_slice.task_type != "engineering.qa.verify.usertest":
+            continue
+        for command in task_slice.verification_commands:
+            if not _looks_like_deterministic_usertest_substitute(command):
+                continue
+            findings.append(
+                ProductionFinding(
+                    severity="blocking",
+                    code="qa_usertest_uses_deterministic_command",
+                    slice_id=task_slice.slice_id,
+                    message=(
+                        "engineering.qa.verify.usertest must be a model-driven "
+                        "user-facing exercise. Do not use deterministic test, lint, "
+                        "check, smoke, regression, or benchmark commands as the "
+                        "user-test verification_commands; keep those in "
+                        "engineering.qa.verify.scrutiny and give usertest only a "
+                        "launch/setup harness or interaction entrypoint."
+                    ),
+                )
+            )
+            break
+    return findings
+
+
+def _looks_like_deterministic_usertest_substitute(command: list[str]) -> bool:
+    lowered = " ".join(command).lower()
+    if not lowered.strip():
+        return False
+    deterministic_markers = [
+        "./qa/smoke.sh",
+        "./qa/regression.sh",
+        "jmhsmokecheck",
+        "jmh",
+        "pytest",
+        "go test",
+        "cargo test",
+        "mvn test",
+        "npm test",
+        "pnpm test",
+        "yarn test",
+        "checkstyle",
+    ]
+    if any(marker in lowered for marker in deterministic_markers):
+        return True
+    if re.search(r"(^|\s)(\./)?gradlew?(\s|$)", lowered):
+        return any(
+            token in lowered
+            for token in [
+                ":test",
+                " test",
+                ":check",
+                " check",
+                "checkstyle",
+                "jmh",
+            ]
+        )
+    return False
 
 
 def _has_broad_variant_conformance_without_specific_gate(commands: list[list[str]]) -> bool:

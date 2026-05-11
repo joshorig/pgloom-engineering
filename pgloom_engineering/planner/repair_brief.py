@@ -106,6 +106,13 @@ def _action_for_code(code: str) -> str:
             "engineering.qa.verify.scrutiny. Make engineering.qa.verify.usertest exercise "
             "a user-facing CLI/API/browser/app or focused consumer-style library flow."
         ),
+        "qa_usertest_uses_deterministic_command": (
+            "Remove deterministic test/lint/check/smoke/regression/benchmark commands from "
+            "engineering.qa.verify.usertest verification_commands. Keep those gates in "
+            "engineering.qa.verify.scrutiny. User-test may name only a launch/setup harness "
+            "or interaction entrypoint; the validator model must exercise the feature and "
+            "record replay evidence through the public surface."
+        ),
         "missing_qa_author": (
             "Add one engineering.qa.author slice before implementers for failing tests/fixtures."
         ),

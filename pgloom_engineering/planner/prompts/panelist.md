@@ -160,10 +160,14 @@ Rules:
     unless project metadata declares `usertest_harness.kind = "none"`. It
     launches the app/service or CLI harness, records replay evidence, or records
     the metadata-authorized skip. It must not use `qa/smoke.sh`,
-    `qa/regression.sh`, bare `./gradlew test/check`, `:benchmarks:jmhSmokeCheck`,
-    or full benchmark sweeps as the user journey; those are scrutiny or
-    periodic gates. For pure libraries, specify a focused consumer-style CLI/API
-    command or small harness that uses the public feature surface.
+    `qa/regression.sh`, deterministic test/check commands such as Gradle
+    `:module:test --tests ...`, `:benchmarks:jmhSmokeCheck`, or full benchmark
+    sweeps as the user journey; those are scrutiny or periodic gates. Its
+    `verification_commands` must not be deterministic Gradle/test/lint/check/
+    benchmark commands; those belong to scrutiny. For pure libraries, specify
+    only a launch/setup harness or interaction entrypoint, then require the
+    validator model to exercise the public feature surface and record replay
+    evidence.
 - Implementer slices must depend on the QA author slice and must not include
   PROJECT_CONTEXT.qa_write_paths in `allowed_paths`.
 - Design slices may name source/test/benchmark files in objectives and expected

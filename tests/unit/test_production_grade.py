@@ -287,6 +287,27 @@ def test_production_grade_rejects_variant_slice_with_broad_conformance_gate() ->
     )
 
 
+def test_production_grade_rejects_deterministic_usertest_commands() -> None:
+    plan = _plan_contract()
+    usertest = next(
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.qa.verify.usertest"
+    )
+    usertest.verification_commands = [
+        ["./gradlew", ":conformance-tests:test", "--tests", "com.example.ConsumerJourneyTest"]
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "qa_usertest_uses_deterministic_command"
+        and finding.slice_id == "qa-usertest"
+        for finding in report.blocking_findings
+    )
+
+
 def test_production_grade_accepts_variant_slice_with_method_conformance_gate() -> None:
     plan = _plan_contract()
     plan.task_slices = [

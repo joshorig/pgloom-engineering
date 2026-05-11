@@ -210,7 +210,7 @@ def _qa_usertest_contract(
         deterministic_gates=[
             "Act as a fresh-context user-test validator and exercise a user-facing browser, CLI, API, service, or consumer-library flow.",
             "Do not rely only on static inspection or deterministic command replay.",
-            "Do not use broad regression, bare test/check, or benchmark sweeps as the user test.",
+            "Do not use deterministic test/check/JMH commands, broad regression, or benchmark sweeps as the user test.",
             "Record commands, transcript/evidence summaries, artifacts, timings, and verdict.",
             "Return pass only when the exercised user-facing behavior satisfies acceptance criteria.",
         ],

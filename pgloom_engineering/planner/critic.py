@@ -1289,7 +1289,8 @@ def _qa_verify_findings(
                     (
                         "QA user-test must exercise the feature through a user-facing "
                         "CLI/API/browser/app flow, not substitute qa/smoke.sh, "
-                        "benchmark-smoke gates, full regression, or bare project checks."
+                        "benchmark-smoke gates, deterministic test/check commands, "
+                        "full regression, or bare project checks."
                     ),
                     usertest.slice_id,
                 )
@@ -1382,7 +1383,37 @@ def _is_broad_usertest_gate(command: str) -> bool:
         or ":benchmarks:jmhSmokeCheck" in command
         or command.endswith(":benchmarks:jmh")
         or ":benchmarks:jmh " in command
+        or _is_deterministic_usertest_command(command)
         or _is_bare_gradle_project_gate(command)
+    )
+
+
+def _is_deterministic_usertest_command(command: str) -> bool:
+    lowered = command.lower()
+    if any(
+        signal in lowered
+        for signal in (
+            "jmh",
+            "pytest",
+            "vitest",
+            "jest ",
+            "go test",
+            "cargo test",
+        )
+    ):
+        return True
+    parts = lowered.split()
+    if not parts or parts[0] not in {"./gradlew", "gradlew"}:
+        return False
+    meaningful = [
+        part
+        for part in parts[1:]
+        if part not in {"--no-daemon", "--console=plain", "--console", "plain"}
+        and not part.startswith("-p")
+    ]
+    return any(
+        part in {"test", "check"} or part.endswith(":test") or part.endswith(":check")
+        for part in meaningful
     )
 
 

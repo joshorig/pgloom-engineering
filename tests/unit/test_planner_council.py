@@ -1516,14 +1516,7 @@ def _plan_contract(
                 forbidden_paths=["store/", "core/", "benchmarks/", "docs/"],
                 depends_on=["qa-scrutiny"],
                 expected_outputs=["QAResultContract"],
-                verification_commands=[
-                    [
-                        "./gradlew",
-                        ":store:test",
-                        "--tests",
-                        "com.example.SnapshotUserFlowTest",
-                    ]
-                ],
+                verification_commands=[["bash", "qa/fixtures/launch-snapshot-app.sh"]],
             ),
         ],
         acceptance_test_matrix=acceptance
@@ -1542,6 +1535,43 @@ def test_critic_rejects_qa_usertest_broad_smoke_gate() -> None:
         item for item in plan.task_slices if item.task_type == "engineering.qa.verify.usertest"
     )
     usertest.verification_commands = [["./qa/smoke.sh"]]
+
+    results = deterministic_check_results(plan, [])
+
+    qa_verify = next(
+        result for result in results if result.check_id == "check_qa_verify_present"
+    )
+    assert any(
+        finding.code == "qa_usertest_uses_broad_gate" for finding in qa_verify.findings
+    )
+
+
+def test_production_grade_rejects_qa_usertest_deterministic_test_command() -> None:
+    plan = _plan_contract()
+    usertest = next(
+        item for item in plan.task_slices if item.task_type == "engineering.qa.verify.usertest"
+    )
+    usertest.verification_commands = [
+        ["./gradlew", ":feature-tests:test", "--tests", "com.example.UserFlowTest"]
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "qa_usertest_uses_deterministic_command"
+        for finding in report.blocking_findings
+    )
+
+
+def test_critic_rejects_qa_usertest_deterministic_test_command() -> None:
+    plan = _plan_contract()
+    usertest = next(
+        item for item in plan.task_slices if item.task_type == "engineering.qa.verify.usertest"
+    )
+    usertest.verification_commands = [
+        ["./gradlew", ":feature-tests:test", "--tests", "com.example.UserFlowTest"]
+    ]
 
     results = deterministic_check_results(plan, [])
 

@@ -31,6 +31,12 @@ Rules:
   and `engineering.qa.verify.usertest` slices. If candidates use generic QA
   slices, split them into test-first authoring before implementers, scrutiny
   after reviewers, and user-test after scrutiny unless metadata authorizes skip.
+- Keep deterministic lint/build/test/smoke/benchmark commands in
+  `engineering.qa.verify.scrutiny`. Do not put Gradle/test/check/JMH/smoke
+  commands in `engineering.qa.verify.usertest.verification_commands`; user-test
+  may name only a launch/setup harness or interaction entrypoint and must rely on
+  the validator model to exercise the public feature surface and record replay
+  evidence.
 - Preserve QA policy guidance from candidate contexts and summaries: endpoint
   harness requirements, structured payload assertions, benchmark variants,
   required gates, behavior coverage rules, and avoid patterns must survive in QA
@@ -111,8 +117,9 @@ Rules:
 - QA user-test is not another broad gate runner. It must specify a
   user-facing CLI/API/browser/app flow, or for a pure library a focused
   consumer-style command/harness using the public API. Do not put `qa/smoke.sh`,
-  `qa/regression.sh`, bare `./gradlew test/check`, `:benchmarks:jmhSmokeCheck`,
-  or full benchmark sweeps in user-test verification.
+  `qa/regression.sh`, deterministic test/check commands such as Gradle
+  `:module:test --tests ...`, `:benchmarks:jmhSmokeCheck`, or full benchmark
+  sweeps in user-test verification.
 - Remove exploratory commands (`grep`, `cat`, `echo`), list-only commands, and
   dry-run-only commands when they are used as verification proof.
 - In corrective-slice recovery, preserve existing QA-authored test class/method
