@@ -43,6 +43,7 @@ def review_semantic_quality(
     conventions = _semantic_conventions(qa_metadata)
     context = f"{plan_text}\n{task_text}".lower()
     findings: list[SemanticFinding] = []
+    findings.extend(_java_style_findings(files, conventions))
     findings.extend(_java_array_assertion_findings(files, conventions))
     findings.extend(_java_try_resource_close_findings(files, conventions))
     findings.extend(_journal_cursor_findings(files, context, conventions))
@@ -63,6 +64,47 @@ def review_semantic_quality(
     findings.extend(_range_regression_guard_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     return findings
+
+
+def _java_style_findings(
+    files: dict[str, str],
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    java_style = _mapping(conventions.get("java_style"))
+    max_line_length = int(java_style.get("max_line_length") or 100)
+    if java_style.get("allow_long_lines") is True:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(".java"):
+            continue
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if len(line) <= max_line_length or _java_long_line_exempt(line):
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_java_line_too_long",
+                    severity="blocking",
+                    message=(
+                        "Authored Java QA files contain lines longer than the project style "
+                        "limit. Red proof may fail earlier on missing APIs, but the tests "
+                        "must still be style-clean once the implementation exists."
+                    ),
+                    file=path,
+                    line=line_no,
+                    details={
+                        "line_length": len(line),
+                        "max_line_length": max_line_length,
+                    },
+                )
+            )
+            break
+    return findings
+
+
+def _java_long_line_exempt(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("package ") or stripped.startswith("import ")
 
 
 def _qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:

@@ -3,6 +3,43 @@ from __future__ import annotations
 from pgloom_engineering.qa_semantic_review import review_semantic_quality
 
 
+def test_semantic_review_blocks_long_java_qa_lines() -> None:
+    findings = review_semantic_quality(
+        files={
+            "benchmarks/src/jmh/java/com/example/RangeScanBenchmark.java": """
+            class RangeScanBenchmark {
+                void createStore() {
+                    DirectStores.singleBuilder().slotCount(SLOT_COUNT).payloadSize(PAYLOAD_SIZE).metaEnabled(false).pools(pools).build();
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans need benchmark smoke coverage.",
+        task_text="Write Java QA benchmark coverage.",
+        project_metadata={"qa": {"semantic_conventions": {"java_style": {"max_line_length": 100}}}},
+    )
+
+    assert [finding.code for finding in findings] == ["qa_semantic_java_line_too_long"]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_allows_java_imports_over_line_limit() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": (
+                "package com.example;\n"
+                "import com.example.really.deep.package.name.with.a.long.TypeNameForTests;\n"
+                "class RangeScanApiTest {}\n"
+            )
+        },
+        plan_text="R-003 range scans need typed API tests.",
+        task_text="Write Java QA tests.",
+        project_metadata={"qa": {"semantic_conventions": {"java_style": {"max_line_length": 40}}}},
+    )
+
+    assert findings == []
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={
