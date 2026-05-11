@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from pgloom.artifacts import register_artifact
 from pgloom.harness.result import HandlerResult
 from pgloom.models.cli import CLIModelProfile
 
@@ -378,6 +379,14 @@ class QAHandler:
                     **_procedures_attestation(task_contract),
                 },
             }
+        )
+        contract = _attach_usertest_transcript_artifact(
+            contract,
+            worktree=verify_root,
+            workflow_id=str(task.get("workflow_id") or task_contract.feature_id),
+            task_id=task_id,
+            model_usage_id=response.model_usage_id,
+            database_url=database_url,
         )
         broad_command = _first_broad_usertest_command(contract)
         if broad_command is not None:
@@ -1021,6 +1030,71 @@ def normalize_qa_result_payload(payload: object) -> object:
     if isinstance(payload, dict) and isinstance(payload.get("qa_result_contract"), dict):
         return _normalize_qa_result_contract_shape(payload["qa_result_contract"])
     return _normalize_qa_result_contract_shape(payload)
+
+
+def _attach_usertest_transcript_artifact(
+    contract: QAResultContract,
+    *,
+    worktree: Path,
+    workflow_id: str,
+    task_id: str,
+    model_usage_id: int | None,
+    database_url: str | None,
+) -> QAResultContract:
+    transcript = {
+        "contract_version": contract.contract_version,
+        "feature_id": contract.feature_id,
+        "task_id": contract.task_id,
+        "validator_type": contract.validator_type,
+        "verdict": contract.verdict,
+        "commands": contract.commands,
+        "commands_run": contract.commands_run,
+        "evidence": contract.evidence,
+        "findings": contract.findings,
+        "validation_evidence": contract.validation_evidence,
+        "procedures_attestation": contract.procedures_attestation,
+        "worktree": str(worktree),
+        "model_usage_id": model_usage_id,
+    }
+    try:
+        row = register_artifact(
+            workflow_id=workflow_id,
+            task_id=task_id,
+            artifact_type="qa-usertest-transcript",
+            content=json.dumps(transcript, indent=2, sort_keys=True).encode("utf-8"),
+            metadata={
+                "validator_type": "usertest",
+                "verdict": contract.verdict,
+                "model_usage_id": model_usage_id,
+            },
+            database_url=database_url,
+        )
+    except Exception:
+        return contract
+    artifact_id = str(row.get("id") or "")
+    if not artifact_id:
+        return contract
+    return contract.model_copy(
+        update={
+            "commands_run": [
+                _append_artifact_id(command_run, artifact_id)
+                for command_run in contract.commands_run
+            ],
+            "validation_evidence": [
+                _append_artifact_id(evidence, artifact_id)
+                for evidence in contract.validation_evidence
+            ],
+        }
+    )
+
+
+def _append_artifact_id(payload: dict[str, Any], artifact_id: str) -> dict[str, Any]:
+    updated = dict(payload)
+    raw_ids = updated.get("artifact_ids")
+    artifact_ids = list(raw_ids) if isinstance(raw_ids, list) else []
+    artifact_ids.append(artifact_id)
+    updated["artifact_ids"] = list(dict.fromkeys(str(item) for item in artifact_ids))
+    return updated
 
 
 def _normalize_qa_result_contract_shape(payload: object) -> object:

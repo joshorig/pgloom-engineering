@@ -1379,6 +1379,11 @@ def test_qa_usertest_uses_model_driven_user_flow(tmp_path: Path, monkeypatch: An
         "pgloom_engineering.roles.qa.record_role_context_usage",
         lambda *args, **kwargs: 88,
     )
+    registered: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.register_artifact",
+        lambda **kwargs: registered.append(kwargs) or {"id": "artifact-usertest"},
+    )
 
     result = QAHandler(provider=UserTestProvider()).handle(
         {
@@ -1393,6 +1398,10 @@ def test_qa_usertest_uses_model_driven_user_flow(tmp_path: Path, monkeypatch: An
     contract = QAResultContract.model_validate(result.result["qa_result_contract"])
     assert contract.validator_type == "usertest"
     assert contract.validation_evidence[0]["metadata"]["surface"] == "library"
+    assert contract.validation_evidence[0]["artifact_ids"] == ["artifact-usertest"]
+    assert contract.commands_run[0]["artifact_ids"] == ["artifact-usertest"]
+    assert registered[0]["artifact_type"] == "qa-usertest-transcript"
+    assert json.loads(registered[0]["content"])["model_usage_id"] == 77
     assert result.result["token_savior_usage_ids"] == [88]
 
 
