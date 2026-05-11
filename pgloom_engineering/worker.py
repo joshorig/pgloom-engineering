@@ -400,15 +400,17 @@ def _pre_execution_gate(
                 rationale=f"User-test resource lock is busy: {resource_key}",
                 database_url=database_url,
             )
-    if _requires_handoff(task) and not list_task_handoffs(
-        task["id"], handoff_type="task_result", database_url=database_url
+    if _requires_handoff(task) and not _has_reviewable_dependency_output(
+        input_contract,
+        task_id=str(task["id"]),
+        database_url=database_url,
     ):
         return _blocked_with_recovery(
             task,
             feature_id=feature_id,
             blocker_code="engineering.handoff_missing",
             action="block_execution",
-            rationale="Review/QA task requires a producer task_result handoff.",
+            rationale="Review task requires a producer handoff or dependency output.",
             database_url=database_url,
         )
     return None
@@ -606,6 +608,26 @@ def _requires_handoff(task: dict[str, Any]) -> bool:
     return task["task_type"] in {
         "engineering.review",
     }
+
+
+def _has_reviewable_dependency_output(
+    task_contract: TaskContract,
+    *,
+    task_id: str,
+    database_url: str | None,
+) -> bool:
+    if list_task_handoffs(task_id, handoff_type="task_result", database_url=database_url):
+        return True
+    if list_task_handoffs(task_id, handoff_type="qa_author_contract", database_url=database_url):
+        return True
+    for dependency_id in reversed(task_contract.dependencies):
+        row = get_task_contract(dependency_id, database_url=database_url)
+        if row is None:
+            continue
+        output = row.get("output_contract")
+        if isinstance(output, dict) and output:
+            return True
+    return False
 
 
 def _milestone_blocker(

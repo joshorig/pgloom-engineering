@@ -6,6 +6,7 @@ from pgloom_engineering import worker
 from pgloom_engineering.contracts import MilestoneContract
 from pgloom_engineering.worker import (
     _commands_run_from_result,
+    _has_reviewable_dependency_output,
     _milestone_id,
     _milestone_signed_off,
     _persist_qa_result_contract,
@@ -26,6 +27,37 @@ def test_qa_author_does_not_require_task_result_handoff_gate() -> None:
 
 def test_reviewer_requires_producer_handoff() -> None:
     assert _requires_handoff({"task_type": "engineering.review"})
+
+
+def test_review_handoff_gate_accepts_qa_author_repair_dependency(monkeypatch: Any) -> None:
+    task_contract = worker.TaskContract(
+        role="reviewer",
+        task_type="engineering.review",
+        feature_id="feature-1",
+        plan_contract_id="plan-1",
+        objective="Review QA-only corrective repair.",
+        allowed_paths=["tests/"],
+        forbidden_paths=["src/main/"],
+        dependencies=["qa-author-1"],
+        expected_outputs=["ReviewVerdictContract"],
+    )
+
+    monkeypatch.setattr(worker, "list_task_handoffs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        worker,
+        "get_task_contract",
+        lambda task_id, **kwargs: {
+            "output_contract": {"qa_author_contract": {"task_id": task_id}}
+        }
+        if task_id == "qa-author-1"
+        else None,
+    )
+
+    assert _has_reviewable_dependency_output(
+        task_contract,
+        task_id="review-1",
+        database_url=None,
+    )
 
 
 def test_commands_run_from_result_falls_back_to_checks() -> None:
