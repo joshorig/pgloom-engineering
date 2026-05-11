@@ -761,6 +761,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_review_benchmark_variant_gap",
         "qa_review_unconsumed_fixture",
         "qa_semantic_brittle_array_assertion",
+        "qa_semantic_java_try_resource_checked_close",
         "qa_semantic_direct_spring_controller_call",
         "qa_semantic_brittle_payload_assertions",
         "qa_semantic_journal_cursor_mismatch",
@@ -836,7 +837,9 @@ def build_qa_quality_repair_prompt(
                     "the typed public API directly; do not use Class.forName, "
                     "java.lang.reflect.Modifier, Method.invoke, InvocationHandler, Proxy, "
                     "class metadata assertions, or annotation-presence checks to avoid "
-                    "compile-time API checks."
+                    "compile-time API checks. For Java test helper resources, do not declare "
+                    "AutoCloseable.close() with throws Exception; catch or wrap cleanup "
+                    "exceptions so -Werror builds do not fail on try-with-resources warnings."
                 ),
                 (
                     "For JMH reflective invocation findings, remove reflection, Proxy, "

@@ -164,6 +164,38 @@ def test_semantic_review_blocks_brittle_payload_string_assertions() -> None:
     assert findings[0].details["raw_contains_count"] == 7
 
 
+def test_semantic_review_blocks_autocloseable_test_helper_checked_close() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/com/example/RangeScanTest.java": """
+            class RangeScanTest {
+                @Test
+                void coversStores() throws Exception {
+                    try (StoreHandle handle = openStore()) {
+                        assertTrue(handle.store != null);
+                    }
+                }
+
+                private static final class StoreHandle implements AutoCloseable {
+                    @Override
+                    public void close() throws Exception {
+                        store.close();
+                        Files.deleteIfExists(path);
+                    }
+                }
+            }
+            """
+        },
+        plan_text="Range scans must compile under project test gates.",
+        task_text="Write Java conformance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_java_try_resource_checked_close"
+    ]
+
+
 def test_semantic_review_allows_contains_on_explicit_textual_fields() -> None:
     path = "changed-files/app-api/src/test/java/com/example/web/DiagnosticsControllerTest.java"
     findings = review_semantic_quality(

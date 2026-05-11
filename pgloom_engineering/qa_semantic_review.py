@@ -44,6 +44,7 @@ def review_semantic_quality(
     context = f"{plan_text}\n{task_text}".lower()
     findings: list[SemanticFinding] = []
     findings.extend(_java_array_assertion_findings(files, conventions))
+    findings.extend(_java_try_resource_close_findings(files, conventions))
     findings.extend(_journal_cursor_findings(files, context, conventions))
     findings.extend(_spring_endpoint_harness_findings(files, conventions))
     findings.extend(_structured_payload_assertion_findings(files, conventions))
@@ -98,6 +99,42 @@ def _java_array_assertion_findings(
                     line=line_no,
                 )
             )
+    return findings
+
+
+def _java_try_resource_close_findings(
+    files: dict[str, str],
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    java_config = _mapping(conventions.get("java_tests"))
+    if java_config.get("allow_autocloseable_checked_close"):
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(".java") or "test" not in path.lower():
+            continue
+        if "implements AutoCloseable" not in text:
+            continue
+        line_no = _first_line_containing_any(
+            text,
+            ["void close() throws Exception", "void close() throws Throwable"],
+        )
+        if line_no is None:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_java_try_resource_checked_close",
+                severity="blocking",
+                message=(
+                    "Java QA tests define an AutoCloseable helper whose close() throws a "
+                    "broad checked exception. In -Werror builds this can make "
+                    "try-with-resources fail before the implementation is evaluated; catch "
+                    "or wrap cleanup exceptions so close() does not declare Exception."
+                ),
+                file=path,
+                line=line_no,
+            )
+        )
     return findings
 
 
