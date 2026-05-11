@@ -150,6 +150,7 @@ def run_once(
             commands_run=_commands_run_from_result(result.result),
             evidence_ids=_evidence_ids_from_result(result.result),
             artifact_ids=_artifact_ids_from_result(result.result),
+            artifact_evidence_links=_artifact_evidence_links_from_result(result.result),
             handoff_id=_handoff_id_from_result(result.result),
             database_url=database_url,
         )
@@ -189,6 +190,7 @@ def run_once(
             commands_run=_commands_run_from_result(result.result),
             evidence_ids=_evidence_ids_from_result(result.result),
             artifact_ids=_artifact_ids_from_result(result.result),
+            artifact_evidence_links=_artifact_evidence_links_from_result(result.result),
             metadata_patch={"blocker_reason": result.blocker_reason or result.message},
             database_url=database_url,
         )
@@ -864,6 +866,36 @@ def _artifact_ids_from_result(result: dict[str, Any] | None) -> list[str]:
             if isinstance(raw, list):
                 ids.extend(str(item) for item in raw)
     return ids
+
+
+def _artifact_evidence_links_from_result(result: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(result, dict):
+        return []
+    payload = result.get("qa_result_contract")
+    if not isinstance(payload, dict):
+        return []
+    evidence = payload.get("validation_evidence")
+    if not isinstance(evidence, list):
+        return []
+    links: list[dict[str, Any]] = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        evidence_id = item.get("evidence_id")
+        raw_artifact_ids = item.get("artifact_ids")
+        if not evidence_id or not isinstance(raw_artifact_ids, list):
+            continue
+        for artifact_id in raw_artifact_ids:
+            if artifact_id is None:
+                continue
+            links.append(
+                {
+                    "artifact_id": str(artifact_id),
+                    "evidence_id": str(evidence_id),
+                    "evidence_kind": item.get("kind"),
+                }
+            )
+    return links
 
 
 def _handoff_id_from_result(result: dict[str, Any] | None) -> str | None:

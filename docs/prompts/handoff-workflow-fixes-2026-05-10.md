@@ -165,7 +165,8 @@ orchestration progress.
 
 ## Command Center persistence follow-up
 
-Status: landed; keep validating against fresh live runs.
+Status: active follow-up. Most schema/API surfaces have landed, but keep
+patching producer persistence gaps as fresh live runs expose missing facts.
 
 The Command Center should render persisted workflow facts, not inferred or
 speculative UI state. Keep this work below the workflow semantics layer:
@@ -173,7 +174,7 @@ persist values that already exist in worker, model, task, artifact, handoff,
 or validation objects, and avoid changing dispatch or recovery behavior unless
 the change is required to store already-known data.
 
-Landed behavior to preserve:
+Landed behavior to preserve and verify:
 
 - Codex-backed `model_usage` rows must store non-zero cost when token usage is
   known. `engineering_worker_runs.cost_usd` rolls up the same calculated cost.
@@ -195,6 +196,15 @@ Landed behavior to preserve:
 - Scrutiny and user-test QA signoffs persist validator type, verdict, result
   contract, validation evidence, artifact ids, and metadata in the same table
   shape.
+
+Current fixes to keep narrow:
+
+- Codex usage rows that report `total_cost_usd=0` must be repriced through the
+  same canonical Codex formula used by Command Center aggregation and worker-run
+  rollups.
+- Artifact metadata should be enriched from real producer evidence. If QA
+  validation evidence names `evidence_id` and `artifact_ids`, persist that
+  evidence linkage onto the artifact row; do not invent labels or evidence.
 
 Validation expectations for future changes in this area:
 

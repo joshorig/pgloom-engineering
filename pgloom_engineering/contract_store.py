@@ -300,6 +300,7 @@ def finish_worker_run(
     commands_run: list[dict[str, Any]] | None = None,
     evidence_ids: list[str] | None = None,
     artifact_ids: list[str] | None = None,
+    artifact_evidence_links: list[dict[str, Any]] | None = None,
     handoff_id: str | None = None,
     metadata_patch: dict[str, Any] | None = None,
     database_url: str | None = None,
@@ -327,6 +328,7 @@ def finish_worker_run(
             worker_run_id=worker_run_id,
             commands_run=commands_run or [],
             artifact_ids=artifact_ids or [],
+            artifact_evidence_links=artifact_evidence_links or [],
         )
         row = conn.execute(
             """
@@ -735,6 +737,7 @@ def _persist_artifact_links(
     worker_run_id: int,
     commands_run: list[dict[str, Any]],
     artifact_ids: list[str],
+    artifact_evidence_links: list[dict[str, Any]],
 ) -> None:
     linked: set[str] = set()
     for command in commands_run:
@@ -760,6 +763,19 @@ def _persist_artifact_links(
                 str(artifact_id),
                 {"source_worker_run_id": worker_run_id},
             )
+    for link in artifact_evidence_links:
+        artifact_id = link.get("artifact_id")
+        if not artifact_id:
+            continue
+        _patch_artifact_metadata(
+            conn,
+            str(artifact_id),
+            {
+                "source_worker_run_id": worker_run_id,
+                "evidence_id": link.get("evidence_id"),
+                "evidence_kind": link.get("evidence_kind"),
+            },
+        )
 
 
 def _patch_artifact_metadata(conn: Any, artifact_id: str, metadata: dict[str, Any]) -> None:

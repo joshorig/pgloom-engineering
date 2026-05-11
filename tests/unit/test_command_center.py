@@ -183,6 +183,13 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
             }
         ],
         artifact_ids=[artifact["id"]],
+        artifact_evidence_links=[
+            {
+                "artifact_id": artifact["id"],
+                "evidence_id": "ev-impl",
+                "evidence_kind": "test_run",
+            }
+        ],
         database_url=database_url,
     )
 
@@ -201,6 +208,8 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     assert model_usage["reasoning_tokens"] == 3
     stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
     assert stored_artifact["source_command"] == "./gradlew :core:test"
+    assert stored_artifact["evidence_id"] == "ev-impl"
+    assert stored_artifact["metadata"]["evidence_kind"] == "test_run"
     assert stored_artifact["metadata"]["source_worker_run_id"] == finished["id"]
 
 

@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from pgloom_engineering import worker
-from pgloom_engineering.contracts import MilestoneContract
+from pgloom_engineering.contracts import MilestoneContract, TaskContract
 from pgloom_engineering.worker import (
+    _artifact_evidence_links_from_result,
     _commands_run_from_result,
     _has_reviewable_dependency_output,
     _milestone_id,
@@ -30,7 +31,7 @@ def test_reviewer_requires_producer_handoff() -> None:
 
 
 def test_review_handoff_gate_accepts_qa_author_repair_dependency(monkeypatch: Any) -> None:
-    task_contract = worker.TaskContract(
+    task_contract = TaskContract(
         role="reviewer",
         task_type="engineering.review",
         feature_id="feature-1",
@@ -243,6 +244,40 @@ def test_qa_result_artifact_ids_collects_validation_and_command_artifacts() -> N
     )
 
     assert _qa_result_artifact_ids(contract) == ["artifact-a", "artifact-b", "artifact-c"]
+
+
+def test_artifact_evidence_links_collects_validation_artifact_mapping() -> None:
+    assert _artifact_evidence_links_from_result(
+        {
+            "qa_result_contract": {
+                "validation_evidence": [
+                    {
+                        "evidence_id": "ev-1",
+                        "kind": "ui_exercise",
+                        "artifact_ids": ["artifact-a", "artifact-b"],
+                    },
+                    {"evidence_id": "ev-2", "artifact_ids": ["artifact-c"]},
+                    {"artifact_ids": ["artifact-ignored"]},
+                ]
+            }
+        }
+    ) == [
+        {
+            "artifact_id": "artifact-a",
+            "evidence_id": "ev-1",
+            "evidence_kind": "ui_exercise",
+        },
+        {
+            "artifact_id": "artifact-b",
+            "evidence_id": "ev-1",
+            "evidence_kind": "ui_exercise",
+        },
+        {
+            "artifact_id": "artifact-c",
+            "evidence_id": "ev-2",
+            "evidence_kind": None,
+        },
+    ]
 
 
 def test_blocked_qa_result_contract_is_persisted(monkeypatch: Any) -> None:

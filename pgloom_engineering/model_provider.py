@@ -49,7 +49,11 @@ class EngineeringCLIModelProvider:
         output_tokens = usage.output_tokens or _approx_tokens(text)
         route_metadata = _command_route_metadata(profile.command)
         cost_usd = usage.cost_usd
-        if cost_usd is None:
+        if cost_usd is None or (
+            cost_usd == 0
+            and route_metadata.get("provider") == "codex"
+            and (input_tokens > 0 or output_tokens > 0)
+        ):
             cost_usd = _fallback_cost_usd(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -294,13 +298,19 @@ def _fallback_cost_usd(
         )
     if route_metadata.get("provider") != "codex":
         return 0.0
-    reasoning_tokens = _int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0
-    billable_output_tokens = max(output_tokens, reasoning_tokens)
+    reasoning_tokens = (
+        (_int_or_none(usage_metadata.get("reasoning_tokens")) or 0)
+        + (_int_or_none(usage_metadata.get("reasoning_output_tokens")) or 0)
+    )
+    cached_input_tokens = (
+        (_int_or_none(usage_metadata.get("cached_input_tokens")) or 0)
+        + (_int_or_none(usage_metadata.get("cache_read_input_tokens")) or 0)
+    )
     return _codex_cost_usd(
         input_tokens=input_tokens,
-        output_tokens=billable_output_tokens,
-        reasoning_tokens=0,
-        cached_input_tokens=_int_or_none(usage_metadata.get("cached_input_tokens")) or 0,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+        cached_input_tokens=cached_input_tokens,
     )
 
 
