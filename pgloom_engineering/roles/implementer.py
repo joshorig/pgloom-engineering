@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pgloom.harness.result import HandlerResult
+from pgloom.harness.subprocess import run_bounded
 from pgloom.models.cli import CLIModelProfile
 
 from pgloom_engineering.config import get_settings
@@ -1373,7 +1374,7 @@ def _path_violation_diffs(
 ) -> dict[str, dict[str, Any]]:
     diffs: dict[str, dict[str, Any]] = {}
     for path in sorted(dict.fromkeys(paths)):
-        before = baseline_contents.get(path)
+        before = _baseline_content_for_path(worktree, baseline_contents, path)
         target = worktree / path
         after = target.read_bytes() if target.is_file() else None
         diffs[path] = {
@@ -1393,13 +1394,34 @@ def _restore_paths(
         if not isinstance(path, str) or not path:
             continue
         target = worktree / path
-        before = baseline_contents.get(path)
+        before = _baseline_content_for_path(worktree, baseline_contents, path)
         if before is None:
             if target.exists():
                 target.unlink()
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(before)
+
+
+def _baseline_content_for_path(
+    worktree: Path,
+    baseline_contents: dict[str, bytes | None],
+    path: str,
+) -> bytes | None:
+    if path in baseline_contents:
+        return baseline_contents[path]
+    return _head_content(worktree, path)
+
+
+def _head_content(worktree: Path, path: str) -> bytes | None:
+    result = run_bounded(
+        ["git", "show", f"HEAD:{path}"],
+        cwd=worktree,
+        timeout_seconds=30,
+    )
+    if result.exit_code != 0:
+        return None
+    return result.stdout.encode("utf-8")
 
 
 def _bytes_hash(value: bytes | None) -> str | None:

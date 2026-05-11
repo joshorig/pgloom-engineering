@@ -201,6 +201,27 @@ class QaPathMutatingImplementerProvider(ImplementerProvider):
         )
 
 
+class TrackedForbiddenDeletingImplementerProvider(ImplementerProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del profile, prompt, kwargs
+        self.calls += 1
+        self.worktree.joinpath("src").mkdir(exist_ok=True)
+        self.worktree.joinpath("src/App.java").write_text("class App {}\n", encoding="utf-8")
+        self.worktree.joinpath("tests/test_tracked.py").unlink()
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "TaskResultContract": {
+                        "feature_id": "feature-1",
+                        "task_id": "impl-1",
+                        "changed_files": ["src/App.java", "tests/test_tracked.py"],
+                    }
+                }
+            ),
+            model_usage_id=650 + self.calls,
+        )
+
+
 def test_implementer_uses_qa_worktree_and_reports_only_implementation_delta(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -249,6 +270,30 @@ def test_implementer_blocks_and_restores_qa_owned_path_before_verification(
     assert worktree.joinpath("tests/test_red.py").read_text(encoding="utf-8") == (
         "def test_red():\n    assert False\n"
     )
+
+
+def test_implementer_restores_deleted_tracked_path_violation_from_head(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    worktree = _git_repo(tmp_path)
+    worktree.joinpath("tests").mkdir()
+    tracked = worktree / "tests/test_tracked.py"
+    tracked.write_text("def test_tracked():\n    assert True\n", encoding="utf-8")
+    _run(["git", "add", "tests/test_tracked.py"], cwd=worktree)
+    _run(["git", "commit", "-m", "add tracked test"], cwd=worktree)
+
+    _patch_live_contracts(monkeypatch, worktree)
+    result = ImplementerHandler(
+        provider=TrackedForbiddenDeletingImplementerProvider(worktree)
+    ).handle(_task())
+
+    assert result.status == "blocked"
+    assert result.blocker_code == "engineering.implementation_path_violation"
+    assert result.result["violations"] == [
+        {"path": "tests/test_tracked.py", "reason": "forbidden_path"}
+    ]
+    assert tracked.read_text(encoding="utf-8") == "def test_tracked():\n    assert True\n"
+    assert result.result["violation_diffs"]["tests/test_tracked.py"]["before_sha256"]
 
 
 def test_implementer_context_isolation_skips_eager_add_dir_by_default(
