@@ -279,15 +279,15 @@ def _variant_scope_verification_findings(plan: PlanContract) -> list[ProductionF
 
 
 def _has_broad_variant_conformance_without_specific_gate(commands: list[list[str]]) -> bool:
-    specific_classes = {
-        _gradle_test_filter(command).rsplit(".", maxsplit=1)[0].lower()
-        for command in commands
+    specific_classes: set[str] = set()
+    for command in commands:
+        test_filter = _gradle_test_filter(command)
         if (
-            _gradle_test_filter(command)
-            and _looks_like_method_test_filter(_gradle_test_filter(command) or "")
+            test_filter
+            and _looks_like_method_test_filter(test_filter)
             and _gradle_test_task_key(command)
-        )
-    }
+        ):
+            specific_classes.add(test_filter.rsplit(".", maxsplit=1)[0].lower())
     for command in commands:
         test_filter = _gradle_test_filter(command)
         if not _looks_like_broad_variant_conformance(command):

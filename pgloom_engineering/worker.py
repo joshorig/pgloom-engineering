@@ -795,15 +795,17 @@ def _commands_run_from_checks(checks: list[Any]) -> list[dict[str, Any]]:
         command = item.get("command") or item.get("cmd")
         if not isinstance(command, list):
             continue
-        commands.append(
-            {
-                "cmd": [str(part) for part in command],
-                "exit_code": int(item.get("exit_code") or 0),
-                "duration_s": float(
-                    item.get("duration_s") or item.get("duration_seconds") or 0.0
-                ),
-            }
-        )
+        payload: dict[str, Any] = {
+            "cmd": [str(part) for part in command],
+            "exit_code": int(item.get("exit_code") or 0),
+            "duration_s": float(item.get("duration_s") or item.get("duration_seconds") or 0.0),
+        }
+        artifact_ids = item.get("artifact_ids")
+        if isinstance(artifact_ids, list):
+            payload["artifact_ids"] = [
+                str(artifact_id) for artifact_id in artifact_ids if artifact_id is not None
+            ]
+        commands.append(payload)
     return commands
 
 

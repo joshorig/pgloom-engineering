@@ -37,11 +37,19 @@ def test_commands_run_from_result_falls_back_to_checks() -> None:
                         "command": ["pytest", "-q"],
                         "exit_code": 0,
                         "duration_seconds": 1.2,
+                        "artifact_ids": ["artifact-log"],
                     }
                 ]
             }
         }
-    ) == [{"cmd": ["pytest", "-q"], "exit_code": 0, "duration_s": 1.2}]
+    ) == [
+        {
+            "cmd": ["pytest", "-q"],
+            "exit_code": 0,
+            "duration_s": 1.2,
+            "artifact_ids": ["artifact-log"],
+        }
+    ]
 
 
 def test_commands_run_from_result_uses_qa_author_red_proof_artifacts() -> None:

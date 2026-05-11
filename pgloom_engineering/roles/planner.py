@@ -545,15 +545,12 @@ def _drop_redundant_gradle_wildcard_test_filters(
 def _drop_redundant_gradle_class_test_filters(
     commands: list[list[str]],
 ) -> list[list[str]]:
-    method_filters_by_task = {
-        (_gradle_test_task_key(command), _gradle_test_filter(command).rsplit(".", 1)[0])
-        for command in commands
-        if (
-            _gradle_test_task_key(command)
-            and _gradle_test_filter(command)
-            and _looks_like_method_test_filter(_gradle_test_filter(command) or "")
-        )
-    }
+    method_filters_by_task: set[tuple[tuple[str, ...], str]] = set()
+    for command in commands:
+        task_key = _gradle_test_task_key(command)
+        test_filter = _gradle_test_filter(command)
+        if task_key and test_filter and _looks_like_method_test_filter(test_filter):
+            method_filters_by_task.add((task_key, test_filter.rsplit(".", 1)[0]))
     if not method_filters_by_task:
         return commands
     filtered: list[list[str]] = []

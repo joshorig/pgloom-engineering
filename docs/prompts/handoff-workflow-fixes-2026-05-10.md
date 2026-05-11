@@ -163,6 +163,50 @@ The current priority is live-eval convergence and output quality. R66
 accepted artifacts are now evidence for production-grade review gaps, not only
 orchestration progress.
 
+## Command Center persistence follow-up
+
+Status: active follow-up.
+
+The Command Center should render persisted workflow facts, not inferred or
+speculative UI state. Keep this work below the workflow semantics layer:
+persist values that already exist in worker, model, task, artifact, handoff,
+or validation objects, and avoid changing dispatch or recovery behavior unless
+the change is required to store already-known data.
+
+Required checks for this follow-up:
+
+- Codex-backed `model_usage` rows must store non-zero cost when token usage is
+  known, and `engineering_worker_runs.cost_usd` must roll that value up.
+- Worker runs should carry `model_provider`, `model`, `model_profile`, and
+  `reasoning_level` from recorded model usage.
+- Worker timing splits should use real queue, lease, model, verification, and
+  blocked durations where those values are available.
+- Task milestone membership should be persisted on task contracts so the DAG
+  can expose milestone progression without reconstructing it from nested
+  payloads.
+- User-test slot state should be exposed from persisted slot, task, and
+  resource-lock rows; do not invent slot occupancy in the UI.
+- Artifact rows should expose kind, display name/path, size, source command,
+  source worker run, and evidence linkage where the producer reported it.
+- Handoffs should persist concise `title` and `summary` display fields at
+  creation time while keeping the full contract/objective intact.
+- Scrutiny and user-test QA signoffs should persist validator type, verdict,
+  result contract, validation evidence, artifact ids, and metadata in the same
+  table shape.
+
+Primary surfaces:
+
+- `pgloom_engineering/model_provider.py`
+- `pgloom_engineering/contract_store.py`
+- `pgloom_engineering/worker.py`
+- `pgloom_engineering/command_center/store.py`
+- `pgloom_engineering/db/schema/009_qa_signoffs.sql`
+- `pgloom_engineering/db/schema/011_command_center_persistence.sql`
+- `pgloom_engineering/db/schema/014_codex_cost_backfill.sql`
+- `pgloom_engineering/db/schema/015_worker_run_model_usage_sync.sql`
+- `tests/unit/test_command_center.py`
+- `tests/unit/test_worker.py`
+
 R66 follow-up:
 
 - Keep the per-feature validation shape: feature-scoped lint/style,
