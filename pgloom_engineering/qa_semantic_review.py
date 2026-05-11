@@ -1338,7 +1338,7 @@ def _null_lvc_receiver_range_call_line(text: str) -> int | None:
 def _null_helper_range_call_line(text: str) -> int | None:
     helper_calls: dict[str, int] = {}
     for line_no, line in enumerate(text.splitlines(), start=1):
-        match = re.search(r"\b(\w+)\s*\(\s*null\s*\)\s*;", line)
+        match = re.search(r"\b(\w+)\s*\(\s*null\s*(?:,|\))", line)
         if match:
             helper_calls.setdefault(match.group(1), line_no)
     if not helper_calls:
@@ -1347,7 +1347,7 @@ def _null_helper_range_call_line(text: str) -> int | None:
         signature = re.compile(
             rf"\b(?:private|public|protected)?\s*(?:static\s+)?"
             rf"(?:void|[\w<>[\]]+)\s+{re.escape(method_name)}\s*"
-            r"\(\s*LvcStore\s+(\w+)\s*\)",
+            r"\(\s*LvcStore\s+(\w+)(?:\s*,[^)]*)?\)",
             re.MULTILINE,
         )
         match = signature.search(text)

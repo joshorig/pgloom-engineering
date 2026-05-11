@@ -1457,6 +1457,35 @@ def test_semantic_review_blocks_range_api_tests_using_null_receiver() -> None:
     assert findings[0].severity == "blocking"
 
 
+def test_semantic_review_blocks_null_receiver_helper_with_visitor_argument() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                @Test
+                void lvcStoreExposesRangeApis() {
+                    compileAgainstPublicApi(null, (key, buffer, offset, length) -> { });
+                }
+
+                private static void compileAgainstPublicApi(
+                        LvcStore store,
+                        StoreVisitor visitor) {
+                    store.ascendingRange(0, 0, visitor);
+                    store.descendingRange(0, 0, visitor);
+                }
+            }
+            """
+        },
+        plan_text="Range scans expose a StoreVisitor public API.",
+        task_text="Write range API acceptance tests.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_range_null_receiver_api_test"
+    ]
+
+
 def test_semantic_review_blocks_direct_null_lvc_receiver_range_call() -> None:
     findings = review_semantic_quality(
         files={
