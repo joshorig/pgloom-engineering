@@ -145,6 +145,34 @@ projects:
           range_prefix_behavior:
             required: true
             key_prefix_filter_required: true
+        preferred_test_skeletons:
+          r003_range_scan:
+            public_api_shape:
+              store_visitor: "void onEntry(int key, DirectBuffer buffer, int offset, int length)"
+              ascending_range: "ascendingRange(int fromKeyInclusive, int toKeyInclusive, StoreVisitor visitor)"
+              descending_range: "descendingRange(int fromKeyInclusive, int toKeyInclusive, StoreVisitor visitor)"
+              prefix_ascending_range: "ascendingRange(int fromKeyInclusive, int toKeyInclusive, int prefixValue, int prefixBits, StoreVisitor visitor)"
+              prefix_descending_range: "descendingRange(int fromKeyInclusive, int toKeyInclusive, int prefixValue, int prefixBits, StoreVisitor visitor)"
+            required_behavior_cases:
+              - empty ascending range produces no visitor calls
+              - single-key inclusive range visits exactly that key
+              - full-keyspace ascending range visits populated keys in key order
+              - descending range visits populated keys in reverse key order
+              - prefix match uses PREFIX_VALUE, PREFIX_BITS, PREFIX_RANGE_START, and PREFIX_RANGE_END against logical integer keys
+              - prefix miss uses NON_MATCHING_PREFIX_VALUE and asserts no visitor calls
+              - SINGLE and DOUBLE variants both run against direct and mmap stores where available
+            benchmark_shape:
+              - RangeScanBenchmark must exercise ascending, descending, and prefix-filtered public StoreVisitor scans
+              - benchmark visitors, stores, buffers, temp files, and fixture data are created in setup, not benchmark methods
+            rejects:
+              - long-key API drift for R-003 integer slot keys
+              - StoreVisitor.visit instead of StoreVisitor.onEntry
+              - prefix tests that only prove overload presence
+              - payload-prefix filtering in place of logical-key prefix filtering
+        behavior_coverage_rules:
+          - R-003 QA must compile against the typed public API directly; do not use reflection or null receivers for API checks.
+          - R-003 prefix tests must include both matching and non-matching prefixes against logical integer keys.
+          - R-003 benchmark smoke must cover ascending, descending, and prefix-filtered visitor scans.
 
   - name: trade-research-platform
     root: /Volumes/devssd/repos/apps/trade-research-platform

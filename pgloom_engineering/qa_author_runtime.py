@@ -221,6 +221,13 @@ def build_qa_author_prompt(
                 "and tie every required route to controller or HTTP behavior."
             ),
             (
+                "If deterministic_test_skeleton has preferred_test_skeletons, "
+                "preferred_helpers, or behavior_coverage_rules, treat those entries as "
+                "source-of-truth scaffolding for authored QA files. Do not invent an "
+                "incompatible public API shape when the skeleton names method signatures, "
+                "primitive types, fixtures, or required behavior cases."
+            ),
+            (
                 "For Spring APIs, prefer MockMvc, WebTestClient, or TestRestTemplate "
                 "over direct controller calls when endpoint routing semantics matter."
             ),
