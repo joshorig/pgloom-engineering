@@ -395,6 +395,12 @@ def build_implementer_prompt(
                 qa_contract=qa_contract,
                 role_context=role_context,
             ),
+            "source_starter_pack": build_implementer_source_starter_pack(
+                worktree=worktree,
+                task_contract=task_contract,
+                qa_contract=qa_contract,
+                role_context=role_context,
+            ),
             "plan_contract": compact_plan_payload(plan),
             "task_contract": task_contract.model_dump(mode="json"),
             "qa_author_contract": compact_qa_author_payload(qa_contract),
@@ -543,6 +549,74 @@ def build_implementer_context_capsule(
                 qa_tests=[*qa_tests, *qa_paths],
                 relevant_paths=_string_list(context.get("relevant_paths")),
             ),
+        },
+    }
+
+
+def build_implementer_source_starter_pack(
+    *,
+    worktree: Path,
+    task_contract: TaskContract,
+    qa_contract: QAAuthorContract,
+    role_context: dict[str, Any] | None,
+    max_source_files: int = 6,
+    max_test_files: int = 4,
+    max_file_chars: int = 4200,
+    max_total_chars: int = 24000,
+) -> dict[str, Any]:
+    query = " ".join(
+        [
+            task_contract.objective,
+            " ".join(task_contract.expected_outputs),
+            " ".join(_string_list(task_contract.inputs.get("acceptance_assertion_ids"))),
+            " ".join(_string_list((role_context or {}).get("relevant_paths"))),
+            " ".join(qa_contract.tests_added),
+            " ".join(qa_contract.paths_touched),
+        ]
+    )
+    terms = _source_brief_terms(query)
+    relevant_paths = _string_list((role_context or {}).get("relevant_paths"))
+    source_paths = _ranked_source_brief_paths(
+        worktree=worktree,
+        roots=[*task_contract.allowed_paths, *relevant_paths],
+        terms=terms,
+        forbidden_paths=task_contract.forbidden_paths,
+        limit=max_source_files,
+    )
+    test_paths = _ranked_source_brief_paths(
+        worktree=worktree,
+        roots=[*qa_contract.tests_added, *qa_contract.paths_touched],
+        terms=terms,
+        forbidden_paths=[],
+        limit=max_test_files,
+    )
+    remaining = max_total_chars
+    source_files, remaining = _source_brief_entries(
+        worktree,
+        source_paths,
+        max_file_chars=max_file_chars,
+        remaining_chars=remaining,
+    )
+    test_files, remaining = _source_brief_entries(
+        worktree,
+        test_paths,
+        max_file_chars=max_file_chars,
+        remaining_chars=remaining,
+    )
+    return {
+        "contract": "engineering.implementer_source_starter_pack.v1",
+        "purpose": (
+            "Use these bounded excerpts before shelling out to read files. They are "
+            "intended to reduce broad source exploration; read more only when an exact "
+            "symbol or compile error requires it."
+        ),
+        "query_terms": terms[:16],
+        "source_files": source_files,
+        "read_only_qa_test_files": test_files,
+        "omitted": {
+            "source_candidate_count": max(0, len(source_paths) - len(source_files)),
+            "qa_test_candidate_count": max(0, len(test_paths) - len(test_files)),
+            "remaining_chars": remaining,
         },
     }
 
@@ -915,6 +989,127 @@ def _implementer_source_queries(
         if isinstance(path, str) and path:
             queries.append(path)
     return list(dict.fromkeys(query for query in queries if query))[:12]
+
+
+def _source_brief_terms(query: str) -> list[str]:
+    stopwords = {
+        "engineering",
+        "implement",
+        "implementation",
+        "feature",
+        "contract",
+        "expected",
+        "outputs",
+        "tests",
+        "test",
+        "source",
+        "public",
+        "using",
+        "with",
+        "without",
+    }
+    words = [
+        word.lower()
+        for word in re.findall(r"[A-Za-z][A-Za-z0-9_]{3,}", query)
+        if word.lower() not in stopwords
+    ]
+    return list(dict.fromkeys(words))[:32]
+
+
+def _ranked_source_brief_paths(
+    *,
+    worktree: Path,
+    roots: list[str],
+    terms: list[str],
+    forbidden_paths: list[str],
+    limit: int,
+) -> list[str]:
+    candidates: dict[str, int] = {}
+    for raw_root in roots:
+        root = _source_brief_path(raw_root)
+        if not root or _source_brief_forbidden(root, forbidden_paths):
+            continue
+        full = worktree / root
+        paths: list[Path]
+        if full.is_file():
+            paths = [full]
+        elif full.is_dir():
+            paths = [
+                path
+                for path in sorted(full.rglob("*"))
+                if path.is_file() and _source_brief_extension(path)
+            ][:80]
+        else:
+            paths = []
+        for path in paths:
+            rel = path.relative_to(worktree).as_posix()
+            if _source_brief_forbidden(rel, forbidden_paths):
+                continue
+            candidates[rel] = max(candidates.get(rel, 0), _source_brief_score(rel, terms))
+    return [
+        path
+        for path, _score in sorted(
+            candidates.items(),
+            key=lambda item: (-item[1], len(item[0]), item[0]),
+        )[:limit]
+    ]
+
+
+def _source_brief_entries(
+    worktree: Path,
+    paths: list[str],
+    *,
+    max_file_chars: int,
+    remaining_chars: int,
+) -> tuple[list[dict[str, Any]], int]:
+    entries: list[dict[str, Any]] = []
+    remaining = remaining_chars
+    for rel in paths:
+        if remaining <= 0:
+            break
+        full = worktree / rel
+        try:
+            text = full.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        budget = min(max_file_chars, remaining)
+        excerpt = text[:budget]
+        truncated = len(text) > len(excerpt)
+        entries.append(
+            {
+                "path": rel,
+                "chars": len(text),
+                "truncated": truncated,
+                "excerpt": excerpt + ("\n...[truncated]" if truncated else ""),
+            }
+        )
+        remaining -= len(excerpt)
+    return entries, remaining
+
+
+def _source_brief_path(value: str) -> str:
+    path = value.split("#", 1)[0].split("::", 1)[0].strip()
+    return path.strip("/")
+
+
+def _source_brief_extension(path: Path) -> bool:
+    if "/build/" in f"/{path.as_posix()}/":
+        return False
+    return path.suffix in {".java", ".kt", ".py", ".ts", ".tsx", ".js", ".jsx", ".gradle"}
+
+
+def _source_brief_forbidden(path: str, forbidden_paths: list[str]) -> bool:
+    return any(path_matches(path, forbidden) for forbidden in forbidden_paths)
+
+
+def _source_brief_score(path: str, terms: list[str]) -> int:
+    lowered = path.lower()
+    score = sum(5 for term in terms if term and term in lowered)
+    if any(part in lowered for part in ("api", "store", "range", "visitor", "benchmark")):
+        score += 3
+    if lowered.endswith("build.gradle"):
+        score += 2
+    return score
 
 
 def _compact_checks(value: object) -> list[dict[str, Any]]:

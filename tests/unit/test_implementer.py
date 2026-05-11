@@ -24,6 +24,7 @@ from pgloom_engineering.roles.implementer import (
     build_implementer_context_capsule,
     build_implementer_prompt,
     build_implementer_repair_prompt,
+    build_implementer_source_starter_pack,
     implementation_path_violations,
     normalize_task_result_payload,
 )
@@ -775,10 +776,63 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     assert capsule["recall"]["memory_digest"] == "prior decision: preserve zero allocation"
     assert "src/App.java" in capsule["recall"]["source_queries"]
     assert "scope_boundary" in capsule["slice"]
+    assert prompt["source_starter_pack"]["contract"] == (
+        "engineering.implementer_source_starter_pack.v1"
+    )
 
     instructions = " ".join(prompt["instructions"])
     assert "Treat the TaskContract objective as the scope boundary" in instructions
     assert "later plan slices" in instructions
+
+
+def test_implementer_source_starter_pack_includes_bounded_source_and_qa_tests(
+    tmp_path: Path,
+) -> None:
+    tmp_path.joinpath("src/main/java/com/example").mkdir(parents=True)
+    tmp_path.joinpath("src/test/java/com/example").mkdir(parents=True)
+    tmp_path.joinpath("src/main/java/com/example/RangeStore.java").write_text(
+        "class RangeStore {\n  void ascendingRange() {}\n}\n",
+        encoding="utf-8",
+    )
+    tmp_path.joinpath("src/main/java/com/example/Irrelevant.java").write_text(
+        "class Irrelevant {}\n",
+        encoding="utf-8",
+    )
+    tmp_path.joinpath("src/test/java/com/example/RangeStoreTest.java").write_text(
+        "class RangeStoreTest {\n  void prefixMiss() {}\n}\n",
+        encoding="utf-8",
+    )
+    task_contract = _implementer_contract().model_copy(
+        update={
+            "objective": "Implement ascendingRange prefix behavior.",
+            "allowed_paths": ["src/main/java/"],
+            "forbidden_paths": ["src/test/java/"],
+            "expected_outputs": ["RangeStore ascendingRange"],
+        }
+    )
+    qa_contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="qa-1",
+        tests_added=["src/test/java/com/example/RangeStoreTest.java"],
+        paths_touched=["src/test/java/com/example/RangeStoreTest.java"],
+        worktree_path=str(tmp_path),
+    )
+
+    starter = build_implementer_source_starter_pack(
+        worktree=tmp_path,
+        task_contract=task_contract,
+        qa_contract=qa_contract,
+        role_context={"relevant_paths": ["src/main/java/com/example/RangeStore.java"]},
+        max_file_chars=120,
+    )
+
+    assert starter["contract"] == "engineering.implementer_source_starter_pack.v1"
+    assert starter["source_files"][0]["path"] == "src/main/java/com/example/RangeStore.java"
+    assert "ascendingRange" in starter["source_files"][0]["excerpt"]
+    assert starter["read_only_qa_test_files"][0]["path"] == (
+        "src/test/java/com/example/RangeStoreTest.java"
+    )
+    assert "prefixMiss" in starter["read_only_qa_test_files"][0]["excerpt"]
 
 
 def test_implementer_prompt_forbids_extra_broad_project_gates(tmp_path: Path) -> None:
