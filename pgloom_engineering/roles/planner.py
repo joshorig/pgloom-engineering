@@ -877,13 +877,6 @@ def _corrective_path_scope(
         ]
     )
     forbidden = _context_string_list(context, "blocked_slice_forbidden_paths")
-    if _corrective_context_mentions_core_api_compile_failure(context):
-        allowed = _dedupe_path_list([*allowed, "core/src/main/java/"])
-        forbidden = [
-            path
-            for path in forbidden
-            if not _paths_overlap(path, "core/src/main/java/")
-        ]
     forbidden = [
         path
         for path in forbidden
@@ -1350,26 +1343,6 @@ def _benchmark_context_mentions_source_allocation(context_text: str) -> bool:
             ".iterator()",
             "source-level allocation",
             "hot-path allocation source",
-        )
-    )
-
-
-def _corrective_context_mentions_core_api_compile_failure(context: dict[str, Any]) -> bool:
-    context_text = " ".join(
-        str(context.get(key) or "")
-        for key in ("blocker_reason", "failure_context", "summary")
-    ).lower()
-    if "cannot find symbol" not in context_text:
-        return False
-    if "core/src/test" not in context_text and "rangescanapitest" not in context_text:
-        return False
-    return any(
-        signal in context_text
-        for signal in (
-            "storevisitor",
-            "lvcstore",
-            "ascendingrange",
-            "descendingrange",
         )
     )
 

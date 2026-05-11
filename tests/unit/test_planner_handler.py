@@ -569,38 +569,38 @@ def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> N
     assert reviewer.allowed_paths == ["core/src/main/java/", "store/src/main/java/"]
 
 
-def test_apply_corrective_slice_scope_restores_core_paths_for_api_compile_failure() -> None:
+def test_apply_corrective_slice_scope_restores_explicit_source_paths_from_failure() -> None:
     plan = PlanContract(
         feature_id="wf_range",
-        project="lvc-standard",
-        problem_statement="Correct range API implementation.",
+        project="example-library",
+        problem_statement="Correct public API implementation.",
         design_contract=DesignContract(public_api="Range API"),
-        affected_surfaces=["core/", "store/"],
+        affected_surfaces=["api/", "storage/"],
         task_slices=[
             TaskSliceContract(
-                slice_id="impl-range-api-stores",
+                slice_id="impl-api-storage",
                 role="implementer",
                 task_type="engineering.implement",
                 objective=(
-                    "Implement StoreVisitor range scan behavior across core/src/main/java "
-                    "and store/src/main/java."
+                    "Repair the public visitor API and storage implementation named by "
+                    "the failure evidence."
                 ),
                 allowed_paths=[
-                    "store/src/main/java/com/joshorig/ull/lvc/store/",
-                    "docs/Stores.md",
+                    "storage/src/main/java/example/store/",
+                    "docs/Storage.md",
                 ],
                 forbidden_paths=[
-                    "core/src/test/java/",
-                    "core/src/main/java/",
+                    "api/src/test/java/",
+                    "api/src/main/java/",
                     "benchmarks/build.gradle",
                 ],
-                expected_outputs=["StoreVisitorApiImplementation"],
+                expected_outputs=["VisitorApiImplementation"],
                 verification_commands=[
                     [
                         "./gradlew",
-                        ":core:test",
+                        ":api:test",
                         "--tests",
-                        "com.joshorig.ull.lvc.api.RangeScanApiTest",
+                        "example.api.RangeApiTest",
                     ]
                 ],
             ),
@@ -609,9 +609,9 @@ def test_apply_corrective_slice_scope_restores_core_paths_for_api_compile_failur
                 role="reviewer",
                 task_type="engineering.review",
                 objective="Review range API repair.",
-                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
-                forbidden_paths=["core/src/test/java/"],
-                depends_on=["impl-range-api-stores"],
+                allowed_paths=["api/src/main/java/", "storage/src/main/java/"],
+                forbidden_paths=["api/src/test/java/"],
+                depends_on=["impl-api-storage"],
                 expected_outputs=["ReviewVerdictContract"],
             ),
         ],
@@ -628,26 +628,26 @@ def test_apply_corrective_slice_scope_restores_core_paths_for_api_compile_failur
                     "task_type": "engineering.implement",
                 },
                 "blocked_slice_allowed_paths": [
-                    "store/src/main/java/com/joshorig/ull/lvc/store/",
-                    "docs/Stores.md",
+                    "storage/src/main/java/example/store/",
+                    "docs/Storage.md",
                 ],
                 "blocked_slice_forbidden_paths": [
-                    "core/src/test/java/",
-                    "core/src/main/java/",
+                    "api/src/test/java/",
+                    "api/src/main/java/",
                     "benchmarks/build.gradle",
                 ],
                 "failure_context": (
-                    "RangeScanApiTest.java:111: error: cannot find symbol "
-                    "class StoreVisitor; store.ascendingRange(0, 7, visitor)"
+                    "RangeApiTest.java:111: error: cannot find symbol class Visitor; "
+                    "see api/src/main/java/example/api/Visitor.java"
                 ),
             }
         },
     )
 
     implementer = scoped.task_slices[0]
-    assert "core/src/main/java/" in implementer.allowed_paths
-    assert "core/src/main/java/" not in implementer.forbidden_paths
-    assert "core/src/test/java/" in implementer.forbidden_paths
+    assert "api/src/main/java/example/api/Visitor.java" in implementer.allowed_paths
+    assert "api/src/main/java/" not in implementer.forbidden_paths
+    assert "api/src/test/java/" in implementer.forbidden_paths
 
 
 def test_apply_corrective_slice_scope_preserves_planner_added_implementation_paths() -> None:
