@@ -680,6 +680,7 @@ def _apply_corrective_slice_scope(
         "engineering.implementation_path_violation",
         "engineering.implementer_contract_invalid",
         "engineering.invalid_handler_output",
+        "engineering.plan_contract_invalid",
         "engineering.qa_handoff_missing",
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_usertest_contract_invalid",
@@ -972,6 +973,12 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
             "engineering.qa.verify.scrutiny",
             "engineering.qa.verify.usertest",
         }
+    if (
+        blocker_code == "engineering.implementation_verification_failed"
+        and qa_owned
+        and not _implementation_verification_failure_mentions_qa_defect(context)
+    ):
+        return allowed
     if qa_owned:
         return {
             "engineering.qa.author",
@@ -981,6 +988,31 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
             "engineering.qa.verify.usertest",
         }
     return allowed
+
+
+def _implementation_verification_failure_mentions_qa_defect(
+    context: dict[str, Any],
+) -> bool:
+    context_text = " ".join(
+        str(context.get(key) or "")
+        for key in ("blocker_reason", "failure_context", "summary")
+    ).lower()
+    return any(
+        signal in context_text
+        for signal in (
+            "qa-owned",
+            "qa author",
+            "test harness invalid",
+            "invalid test",
+            "invalid benchmark",
+            "benchmark harness",
+            "missing smoke benchmark result",
+            "wrongmethodtypeexception",
+            "classnotfoundexception",
+            "forbidden benchmark",
+            "forbidden qa",
+        )
+    )
 
 
 def _corrective_context_mentions_qa_owned_paths(context: dict[str, Any]) -> bool:

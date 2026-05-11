@@ -278,6 +278,171 @@ def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:
     ]
 
 
+def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Repair invalid corrective plan.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Rewrite broad QA tests.",
+                allowed_paths=["core/src/test/java/"],
+                forbidden_paths=["core/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair descending empty-intersection behavior.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["qa-author"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review repair.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Run feature-specific verification.",
+                allowed_paths=["core/src/test/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Run user-test journey.",
+                allowed_paths=["core/src/test/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["qa-scrutiny"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        acceptance_test_matrix=["descending empty intersections are safe"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=[
+                    "qa-author",
+                    "impl-fix",
+                    "review",
+                    "qa-scrutiny",
+                    "qa-usertest",
+                ],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.plan_contract_invalid",
+                "blocker_reason": (
+                    "plan contract failed validation: "
+                    "acceptance_assertion_unclaimed"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "impl-fix",
+        "review",
+        "qa-scrutiny",
+        "qa-usertest",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+
+
+def test_apply_corrective_slice_scope_keeps_feature_test_failure_on_implementer() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Repair failed implementer verification.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Rewrite range tests.",
+                allowed_paths=["core/src/test/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair production descending range behavior.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["qa-author"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review repair.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["core/src/test/java/"],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        acceptance_test_matrix=["feature-specific test passes"],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "blocker_reason": (
+                    "implementer verification commands failed: "
+                    "./gradlew :core:test --tests "
+                    "com.example.RangeScanApiTest.storeVisitorIsPublicFunctionalInterface"
+                ),
+                "failure_context": (
+                    "command=./gradlew :core:test --tests "
+                    "com.example.RangeScanApiTest.storeVisitorIsPublicFunctionalInterface "
+                    "changed_files=store/src/main/java/Store.java"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "impl-fix",
+        "review",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+
+
 def test_apply_corrective_slice_scope_preserves_blocked_implementer_paths() -> None:
     plan = PlanContract(
         feature_id="wf_range",
