@@ -137,6 +137,11 @@ class ImplementerHandler:
             task_contract,
             database_url=database_url,
         )
+        prior_feature_changed = _prior_feature_changed_files(
+            feature_id,
+            current_task_id=task_id,
+            database_url=database_url,
+        )
         prompt = build_implementer_prompt(
             plan=plan,
             task_contract=task_contract,
@@ -180,7 +185,10 @@ class ImplementerHandler:
                 *_dirty_forbidden_path_violations(
                     relevant_changed_files(changed_files(worktree), project.metadata),
                     touched=touched,
-                    dependency_changed=dependency_changed,
+                    dependency_changed=[
+                        *dependency_changed,
+                        *prior_feature_changed,
+                    ],
                     task_contract=task_contract,
                     qa_contract=qa_contract,
                 ),
@@ -1272,6 +1280,22 @@ def _dependency_changed_files(
 
     for dependency_id in task_contract.dependencies:
         visit(dependency_id)
+    return changed
+
+
+def _prior_feature_changed_files(
+    feature_id: str,
+    *,
+    current_task_id: str,
+    database_url: str | None,
+) -> list[str]:
+    changed: list[str] = []
+    for row in list_task_contracts(feature_id, database_url=database_url):
+        if str(row.get("task_id") or "") == current_task_id:
+            continue
+        for path in _task_result_changed_files(row.get("output_contract")):
+            if path not in changed:
+                changed.append(path)
     return changed
 
 

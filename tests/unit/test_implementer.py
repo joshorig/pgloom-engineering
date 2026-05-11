@@ -501,6 +501,52 @@ def test_dependency_changed_files_reads_transitive_task_outputs(monkeypatch: Any
     ]
 
 
+def test_prior_feature_changed_files_reads_previous_task_outputs(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        implementer,
+        "list_task_contracts",
+        lambda *args, **kwargs: [
+            {
+                "task_id": "impl-previous",
+                "output_contract": {
+                    "changed_files": [
+                        "core/src/main/java/example/api/PublicApi.java",
+                    ],
+                },
+            },
+            {
+                "task_id": "impl-current",
+                "output_contract": {
+                    "changed_files": [
+                        "store/src/main/java/example/store/Current.java",
+                    ],
+                },
+            },
+            {
+                "task_id": "impl-other",
+                "output_contract": {
+                    "task_result_contract": {
+                        "changed_files": [
+                            "store/src/main/java/example/store/Previous.java",
+                        ],
+                    }
+                },
+            },
+        ],
+    )
+
+    assert implementer._prior_feature_changed_files(  # noqa: SLF001
+        "feature-1",
+        current_task_id="impl-current",
+        database_url=None,
+    ) == [
+        "core/src/main/java/example/api/PublicApi.java",
+        "store/src/main/java/example/store/Previous.java",
+    ]
+
+
 def test_implementer_repairs_contract_path_and_verification_failures(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -1200,6 +1246,7 @@ def _patch_live_contracts(monkeypatch: Any, worktree: Path) -> None:
         "get_project",
         lambda *args, **kwargs: ProjectConfig(name="demo", root=worktree, metadata={}),
     )
+    monkeypatch.setattr(implementer, "list_task_contracts", lambda *args, **kwargs: [])
 
 
 def _task() -> dict[str, Any]:
