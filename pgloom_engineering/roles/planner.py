@@ -368,7 +368,7 @@ def _post_normalization_quality_errors(
     *,
     project: ProjectConfig | None,
     qa_write_paths: list[str] | None,
-    project_metadata: dict[str, Any] | None,
+    project_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     root = project.root if project is not None else None
     report = evaluate_production_grade(

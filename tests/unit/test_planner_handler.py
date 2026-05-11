@@ -2127,6 +2127,22 @@ def test_post_normalization_quality_rejects_broadened_variant_command(
             metadata={},
         ),
         qa_write_paths=[],
+        project_metadata={
+            "qa": {
+                "variant_verification_rules": [
+                    {
+                        "conflicts": {
+                            "single": ["double"],
+                            "double": ["single"],
+                        },
+                        "broad_gate_markers": [
+                            ":conformance-tests:test",
+                            "RangeScanConformanceTest",
+                        ],
+                    }
+                ]
+            }
+        },
     )
 
     assert any(
