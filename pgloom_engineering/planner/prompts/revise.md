@@ -22,6 +22,13 @@ Deterministic validator and critic checks are authoritative. In particular:
   a concrete slice-specific Gradle `--tests Class.method` or class filter that
   the QA-author slice is instructed to create. Do not keep the same broad
   conformance class command on multiple variant slices.
+- If `replan_context.benchmark_allocation_diagnosis` is present, consume it as
+  authoritative evidence. Do not issue another generic implementer repair for a
+  repeated JMH allocation failure. When `diagnostic_required` is true, emit a
+  diagnostic QA-scrutiny/performance slice that profiles only the named failing
+  benchmark(s) and produces an AllocationDiagnosisContract before further code
+  repair. When the diagnosis clearly names material production allocation, emit
+  one file-level implementation slice over the implicated hot-path files only.
 - In corrective-slice recovery, do not invent replacement test class/method
   names unless the revised plan includes a QA-author repair slice that creates
   them. Implementation-only recovery must reuse QA-authored test names from the

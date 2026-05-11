@@ -1098,9 +1098,15 @@ def test_replan_payload_routes_repeated_benchmark_gate_to_harness_repair() -> No
     context = payload["replan_context"]
     assert context["same_blocker_recovery_count"] == 1
     assert context["benchmark_gate_classification"] == "material_allocation"
+    assert context["benchmark_allocation_diagnosis"]["classification"] == (
+        "material_allocation"
+    )
+    assert context["benchmark_allocation_diagnosis"]["threshold_b_op"] == 0.005
+    assert context["benchmark_allocation_diagnosis"]["recommended_owner"] == "diagnostic"
     assert "Repeated implementer verification failure" in context["summary"]
     assert "material benchmark-smoke allocation failure" in context["summary"]
     assert "exactly one narrow implementation slice" in context["summary"]
+    assert "benchmark_allocation_diagnosis" in context["summary"]
     assert "rangeScanSmoke allocated" in payload["feature_goal_contract"]["requirements"][-1]
 
 
@@ -1147,9 +1153,80 @@ def test_replan_payload_classifies_material_benchmark_gate_as_implementation_wor
     assert payload is not None
     context = payload["replan_context"]
     assert context["benchmark_gate_classification"] == "material_allocation"
+    diagnosis = context["benchmark_allocation_diagnosis"]
+    assert diagnosis["classification"] == "material_allocation"
+    assert diagnosis["recommended_owner"] == "diagnostic"
+    assert diagnosis["failing_benchmarks"] == [
+        {
+            "benchmark": "RangeScanBenchmark.ascendingScan",
+            "b_op": 0.031,
+            "threshold_b_op": 0.005,
+            "severity": "near_threshold",
+        }
+    ]
     assert "material benchmark-smoke allocation failure" in context["summary"]
     assert "exactly one narrow implementation slice" in context["summary"]
     assert "do not emit a QA-author repair slice" in context["summary"]
+
+
+def test_replan_payload_requires_diagnostic_after_repeated_material_allocations() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "impl-1",
+                "slot": "implementer",
+                "task_type": "engineering.implement",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.implementation_verification_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": (
+                "benchmark_smoke_diagnostic: RangeScanBenchmark.ascendingRange "
+                "allocated 4.174 B/op, above threshold 0.005 B/op | "
+                "RangeScanBenchmark.prefixAscendingRange allocated 0.719 B/op, "
+                "above threshold 0.005 B/op"
+            ),
+            "result": {
+                "stderr_excerpt": "JMH smoke GC gate failed",
+                "commands": [["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    context = payload["replan_context"]
+    diagnosis = context["benchmark_allocation_diagnosis"]
+    assert diagnosis["classification"] == "material_allocation"
+    assert diagnosis["diagnostic_required"] is True
+    assert diagnosis["recommended_owner"] == "implementer"
+    assert diagnosis["max_b_op"] == 4.174
+    assert diagnosis["failing_benchmarks"][0]["benchmark"] == (
+        "RangeScanBenchmark.ascendingRange"
+    )
+    assert "diagnostic QA-scrutiny/performance slice" in context["summary"]
+    assert "Allocation diagnosis:" in context["summary"]
 
 
 def test_replan_payload_classifies_benchmark_harness_error_as_qa_harness() -> None:
@@ -1194,6 +1271,7 @@ def test_replan_payload_classifies_benchmark_harness_error_as_qa_harness() -> No
     assert payload is not None
     context = payload["replan_context"]
     assert context["benchmark_gate_classification"] == "qa_harness"
+    assert context["benchmark_allocation_diagnosis"]["recommended_owner"] == "qa-author"
     assert "qa-harness benchmark-smoke gate" in context["summary"]
     assert "QA-owned benchmark" in context["summary"]
 

@@ -568,10 +568,17 @@ def _replan_payload(
         blocked_task,
         failure_context,
     )
+    allocation_diagnosis = _benchmark_allocation_diagnosis(
+        blocked_task,
+        failure_context,
+        classification=benchmark_gate_classification,
+        repeat_count=repeat_count,
+    )
     summary = _replan_summary(
         blocked_task,
         repeat_count=repeat_count,
         benchmark_gate_classification=benchmark_gate_classification,
+        allocation_diagnosis=allocation_diagnosis,
     )
     revised_goal = goal.model_copy(
         update={
@@ -614,6 +621,7 @@ def _replan_payload(
             "attempt": int(blocked_task.get("attempt") or 1),
             "same_blocker_recovery_count": repeat_count,
             "benchmark_gate_classification": benchmark_gate_classification,
+            "benchmark_allocation_diagnosis": allocation_diagnosis,
             "summary": summary,
         },
     }
@@ -690,6 +698,7 @@ def _replan_summary(
     *,
     repeat_count: int = 0,
     benchmark_gate_classification: str | None = None,
+    allocation_diagnosis: dict[str, Any] | None = None,
 ) -> str:
     blocker_code = str(blocked_task.get("blocker_code") or "engineering.blocked")
     blocker_reason = str(blocked_task.get("blocker_reason") or "No blocker reason recorded.")
@@ -811,15 +820,23 @@ def _replan_summary(
     if blocker_code == "engineering.implementation_verification_failed":
         if repeat_count >= 1 and "benchmark" in f"{blocker_reason} {detail}".lower():
             if benchmark_gate_classification == "material_allocation":
+                diagnostic_summary = _allocation_diagnosis_summary(
+                    allocation_diagnosis
+                )
                 return (
                     "Repeated implementer verification failure is blocked on a "
                     "material benchmark-smoke allocation failure, not a QA threshold "
-                    "repair. Replan must emit exactly one narrow implementation slice "
-                    "that names the measured allocation signal and the suspected "
+                    "repair. Replan must consume benchmark_allocation_diagnosis before "
+                    "choosing corrective work. If the diagnosis is inconclusive, emit a "
+                    "diagnostic QA-scrutiny/performance slice that profiles only the "
+                    "failing benchmark and writes an AllocationDiagnosisContract. If the "
+                    "diagnosis is sufficient, emit exactly one narrow implementation "
+                    "slice that names the measured allocation signal and suspected "
                     "hot-path allocation source; do not emit a QA-author repair slice "
                     "unless new evidence names an invalid benchmark harness, missing "
-                    "benchmark result, or metadata-disallowed threshold. Preserve these "
-                    f"verification details: {blocker_reason}{detail}"
+                    "benchmark result, or metadata-disallowed threshold. "
+                    f"{diagnostic_summary} Preserve these verification details: "
+                    f"{blocker_reason}{detail}"
                 )
             if benchmark_gate_classification in {"near_threshold", "qa_harness"}:
                 return (
@@ -1034,6 +1051,157 @@ def _benchmark_gate_classification(
     if b_op_values and max(b_op_values) <= 0.005:
         return "near_threshold"
     return "unknown"
+
+
+def _benchmark_allocation_diagnosis(
+    blocked_task: dict[str, Any],
+    failure_context: str,
+    *,
+    classification: str | None,
+    repeat_count: int,
+) -> dict[str, Any] | None:
+    if classification is None:
+        return None
+    text = " ".join(
+        part
+        for part in (
+            str(blocked_task.get("blocker_reason") or ""),
+            failure_context,
+        )
+        if part
+    )
+    threshold = _benchmark_threshold_b_op(text)
+    failures = _benchmark_allocation_failures(text, threshold=threshold)
+    max_b_op = max((item["b_op"] for item in failures), default=None)
+    diagnosis: dict[str, Any] = {
+        "contract_type": "AllocationDiagnosisContract",
+        "classification": classification,
+        "threshold_b_op": threshold,
+        "max_b_op": max_b_op,
+        "failing_benchmarks": failures[:20],
+        "repeat_count": repeat_count,
+        "recommended_owner": _benchmark_diagnosis_owner(classification, failures),
+        "diagnostic_required": bool(
+            classification == "material_allocation" and repeat_count >= 2
+        ),
+        "evidence_source": "workflow_driver.failure_context",
+    }
+    if classification == "material_allocation":
+        diagnosis["repair_directive"] = (
+            "Do not relax thresholds or route to QA-author unless the next diagnostic "
+            "proves a harness defect. Identify the allocation source for the listed "
+            "benchmark/mode/variant tuples before another broad implementation repair."
+        )
+    elif classification == "qa_harness":
+        diagnosis["repair_directive"] = (
+            "Repair benchmark harness/result discovery under project-approved QA paths "
+            "before assigning more production implementation work."
+        )
+    else:
+        diagnosis["repair_directive"] = (
+            "Run a focused benchmark allocation diagnostic before choosing QA or "
+            "implementation ownership."
+        )
+    return diagnosis
+
+
+def _allocation_diagnosis_summary(diagnosis: dict[str, Any] | None) -> str:
+    if not diagnosis:
+        return ""
+    failures = diagnosis.get("failing_benchmarks")
+    rendered: list[str] = []
+    if isinstance(failures, list):
+        for item in failures[:6]:
+            if not isinstance(item, dict):
+                continue
+            benchmark = item.get("benchmark")
+            b_op = item.get("b_op")
+            threshold = diagnosis.get("threshold_b_op")
+            if benchmark and b_op is not None:
+                rendered.append(f"{benchmark}={b_op} B/op over {threshold} B/op")
+    if not rendered:
+        return ""
+    owner = diagnosis.get("recommended_owner")
+    diagnostic_required = diagnosis.get("diagnostic_required")
+    return (
+        "Allocation diagnosis: "
+        + "; ".join(rendered)
+        + f". Recommended owner={owner}; diagnostic_required={diagnostic_required}."
+    )
+
+
+def _benchmark_threshold_b_op(text: str) -> float:
+    threshold_values = [
+        float(match.group(1))
+        for match in re.finditer(
+            r"(?:threshold|above)\s+([0-9]+(?:\.[0-9]+)?)\s*b/op",
+            text,
+            flags=re.IGNORECASE,
+        )
+    ]
+    return min(threshold_values) if threshold_values else 0.005
+
+
+def _benchmark_allocation_failures(
+    text: str,
+    *,
+    threshold: float,
+) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    pattern = re.compile(
+        r"(?P<benchmark>[A-Za-z0-9_.$:-]*(?:Benchmark|benchmark)[A-Za-z0-9_.$:-]*)"
+        r"[^|\\n;]*?allocated\s+(?P<bop>[0-9]+(?:\.[0-9]+)?)\s*B/op",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        b_op = float(match.group("bop"))
+        if b_op <= threshold:
+            continue
+        benchmark = match.group("benchmark").strip(" .:-")
+        if not benchmark:
+            benchmark = "unknown"
+        failures.append(
+            {
+                "benchmark": benchmark,
+                "b_op": b_op,
+                "threshold_b_op": threshold,
+                "severity": (
+                    "material" if b_op >= max(0.5, threshold * 100) else "near_threshold"
+                ),
+            }
+        )
+    if failures:
+        return failures
+    for value in _benchmark_b_op_values(text):
+        if value > threshold:
+            failures.append(
+                {
+                    "benchmark": "unknown",
+                    "b_op": value,
+                    "threshold_b_op": threshold,
+                    "severity": (
+                        "material"
+                        if value >= max(0.5, threshold * 100)
+                        else "near_threshold"
+                    ),
+                }
+            )
+    return failures
+
+
+def _benchmark_diagnosis_owner(
+    classification: str,
+    failures: list[dict[str, Any]],
+) -> str:
+    if classification == "qa_harness":
+        return "qa-author"
+    if classification != "material_allocation":
+        return "diagnostic"
+    if not failures:
+        return "diagnostic"
+    if any(str(item.get("severity")) == "material" for item in failures):
+        return "implementer"
+    return "diagnostic"
 
 
 def _benchmark_b_op_values(text: str) -> list[float]:
