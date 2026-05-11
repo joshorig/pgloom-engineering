@@ -1474,3 +1474,32 @@ def test_semantic_review_accepts_range_prefix_skip_nonmatch_helper() -> None:
         for finding in findings
         if finding.code == "qa_semantic_range_prefix_behavior_missing"
     ]
+
+
+def test_semantic_review_accepts_camel_case_matching_prefix_variables() -> None:
+    findings = review_semantic_quality(
+        files={
+            "changed-files/conformance-tests/src/test/java/RangeScanConformanceTest.java": """
+            class RangeScanConformanceTest {
+                @Test
+                void prefixFilterMatchesAndRejectsKeys() {
+                    VisitedRecords matchingPrefix = new VisitedRecords();
+                    store.ascendingRange(0x10, 0x21, 0x10, 0xF0, matchingPrefix);
+                    VisitedRecords nonMatchingPrefix = new VisitedRecords();
+                    store.ascendingRange(0x10, 0x21, 0x30, 0xF0, nonMatchingPrefix);
+                    assertKeys(matchingPrefix, 0x10, 0x11);
+                    assertKeys(nonMatchingPrefix);
+                }
+            }
+            """
+        },
+        plan_text="Range scans must support matching and non-matching prefix filters.",
+        task_text="Write conformance tests for range prefix behavior.",
+        project_metadata={},
+    )
+
+    assert not [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_behavior_missing"
+    ]

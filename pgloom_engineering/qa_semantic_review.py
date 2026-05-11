@@ -616,6 +616,7 @@ def _range_prefix_behavior_findings(
         for marker in [
             "prefix_match",
             "prefixmatch",
+            "matchingprefix",
             "matching prefix",
             "match prefix",
             "matching-prefix",
@@ -626,6 +627,7 @@ def _range_prefix_behavior_findings(
         for marker in [
             "prefix_non_match",
             "prefixnonmatch",
+            "nonmatchingprefix",
             "prefix_miss",
             "prefixmiss",
             "non-matching prefix",
