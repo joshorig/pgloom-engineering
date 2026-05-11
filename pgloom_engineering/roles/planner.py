@@ -400,6 +400,7 @@ def _feature_scoped_verification_commands(
     *,
     plan: PlanContract,
     task_objective: str,
+    task_type: str | None = None,
     project_metadata: dict[str, Any],
 ) -> list[list[str]]:
     qa = project_metadata.get("qa") if isinstance(project_metadata, dict) else None
@@ -418,7 +419,12 @@ def _feature_scoped_verification_commands(
     ).lower()
     scoped: list[list[str]] = []
     for command in commands:
-        replacement = _feature_smoke_replacement(command, rules, feature_text)
+        replacement = _feature_smoke_replacement(
+            command,
+            rules,
+            feature_text,
+            preserve_method_filters=task_type == "engineering.implement",
+        )
         scoped.extend(replacement or [command])
     return _drop_redundant_gradle_wildcard_test_filters(_dedupe_commands(scoped))
 
@@ -457,6 +463,7 @@ def _normalize_feature_scoped_plan_verification(
                         task_slice.verification_commands,
                         plan=contract,
                         task_objective=task_slice.objective,
+                        task_type=task_slice.task_type,
                         project_metadata=project_metadata,
                     )
                 }
@@ -502,6 +509,7 @@ def _normalize_validation_contract_required_gates(
             [command],
             plan=plan,
             task_objective=" ".join(plan.acceptance_assertions),
+            task_type="engineering.qa.verify.scrutiny",
             project_metadata=project_metadata,
         )
         normalized_gates.extend(" ".join(item) for item in replacements)
@@ -523,6 +531,8 @@ def _feature_smoke_replacement(
     command: list[str],
     rules: list[Any],
     feature_text: str,
+    *,
+    preserve_method_filters: bool = False,
 ) -> list[list[str]]:
     command_text = " ".join(command)
     for rule in rules:
@@ -545,6 +555,11 @@ def _feature_smoke_replacement(
             if isinstance(raw_commands, list)
             else []
         )
+        if preserve_method_filters and _configured_class_covers_method_filter(
+            command,
+            parsed,
+        ):
+            return [command]
         class_filter_replacement = _feature_smoke_class_filter_replacement(
             command,
             parsed,
@@ -557,6 +572,25 @@ def _feature_smoke_replacement(
         if parsed:
             return parsed
     return []
+
+
+def _configured_class_covers_method_filter(
+    command: list[str],
+    configured_commands: list[list[str]],
+) -> bool:
+    test_filter = _gradle_test_filter(command)
+    task_key = _gradle_test_task_key(command)
+    if not test_filter or not task_key or not _looks_like_method_test_filter(test_filter):
+        return False
+    for configured in configured_commands:
+        configured_filter = _gradle_test_filter(configured)
+        if not configured_filter or _looks_like_method_test_filter(configured_filter):
+            continue
+        if _gradle_test_task_key(configured) != task_key:
+            continue
+        if test_filter.startswith(f"{configured_filter}."):
+            return True
+    return False
 
 
 def _feature_smoke_class_filter_replacement(

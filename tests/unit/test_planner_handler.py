@@ -1934,6 +1934,51 @@ def test_feature_scoped_verification_commands_replace_invented_method_with_proje
     ]
 
 
+def test_feature_scoped_verification_commands_preserve_implementer_method_filter() -> None:
+    plan = PlanContract(
+        feature_id="wf_feature",
+        project="example-library",
+        problem_statement="Implement a scoped public API behavior.",
+        design_contract=DesignContract(acceptance_tests=["Feature conformance smoke"]),
+        affected_surfaces=["src/"],
+        task_slices=[],
+        acceptance_test_matrix=["scoped feature behavior"],
+    )
+    method_command = [
+        "./gradlew",
+        ":feature-tests:test",
+        "--tests",
+        "com.example.FeatureConformanceTest.scopedBehaviorPasses",
+    ]
+
+    commands = _feature_scoped_verification_commands(
+        [method_command],
+        plan=plan,
+        task_objective="Implement the scoped production slice.",
+        task_type="engineering.implement",
+        project_metadata={
+            "qa": {
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["public API", "behavior"],
+                        "replaces": [":feature-tests:test"],
+                        "commands": [
+                            [
+                                "./gradlew",
+                                ":feature-tests:test",
+                                "--tests",
+                                "com.example.FeatureConformanceTest",
+                            ]
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+
+    assert commands == [method_command]
+
+
 def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:
     plan = PlanContract(
         feature_id="wf_range",
