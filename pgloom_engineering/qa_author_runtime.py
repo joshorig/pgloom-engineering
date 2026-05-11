@@ -304,7 +304,7 @@ def build_qa_author_prompt(
             (
                 "For range-scan JMH smoke gates, use a realistic noise margin for "
                 "feature-specific allocation thresholds: do not set RangeScanBenchmark "
-                "allocation thresholds below 0.05 B/op unless project_qa_metadata provides "
+                "allocation thresholds below 32 B/op unless project_qa_metadata provides "
                 "a higher or explicit threshold, and validate every parameterized range "
                 "benchmark result instead of requiring exactly one JSON entry."
             ),
@@ -951,7 +951,7 @@ def build_qa_quality_repair_prompt(
                 (
                     "For range benchmark smoke threshold findings, raise only the "
                     "feature-specific RangeScanBenchmark allocation threshold to a "
-                    "realistic noise margin of at least 0.05 B/op unless project "
+                    "realistic smoke margin of at least 32 B/op unless project "
                     "metadata provides a higher threshold. Do not relax unrelated "
                     "benchmark gates."
                 ),

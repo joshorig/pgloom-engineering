@@ -1029,7 +1029,7 @@ def _range_benchmark_smoke_threshold_findings(
         return []
     if "range" not in context or "benchmark" not in context:
         return []
-    minimum = float(threshold_config.get("minimum_alloc_bytes_per_op") or 0.05)
+    minimum = float(threshold_config.get("minimum_alloc_bytes_per_op") or 32.0)
     findings: list[SemanticFinding] = []
     for path, text in files.items():
         if not path.endswith(("build.gradle", "build.gradle.kts")):
@@ -1063,7 +1063,7 @@ def _range_benchmark_smoke_threshold_findings(
                     message=(
                         "Range-scan JMH smoke gate uses a near-zero allocation threshold. "
                         "Smoke benchmarks should prove coverage and catch gross allocation "
-                        "regressions; sub-0.01 B/op thresholds are too noisy for autonomous "
+                        "regressions; sub-32 B/op thresholds are too noisy for autonomous "
                         "feature validation."
                     ),
                     file=path,

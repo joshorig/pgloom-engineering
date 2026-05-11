@@ -798,7 +798,7 @@ def test_semantic_review_accepts_range_benchmark_smoke_threshold_with_noise_marg
             tasks.register('jmhSmokeCheck') {
                 def smokeBenchmarkThresholds = [
                     'com.example.CiSmokeBenchmark.rangeScanSmoke': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.050d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -836,7 +836,7 @@ def test_semantic_review_blocks_parameterized_range_benchmark_single_entry_gate(
             tasks.register('jmhSmokeCheck') {
                 def smokeBenchmarkThresholds = [
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRangeScan': [
-                        allocBytesPerOp: 0.050d,
+                        allocBytesPerOp: 32.0d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -900,7 +900,7 @@ def test_semantic_review_blocks_relaxing_existing_ci_smoke_thresholds() -> None:
                         gcCount: 0.000d
                     ],
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRange': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.050d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
                         gcCount: 0.000d
                     ]
                 ]
@@ -945,7 +945,7 @@ def test_semantic_review_allows_range_only_smoke_threshold_noise_margin() -> Non
                         gcCount: 0.000d
                     ],
                     'com.joshorig.ull.lvc.bench.RangeScanBenchmark.ascendingRange': [
-                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 0.050d,
+                        allocBytesPerOp: smokeAllocThresholdBytesPerOp ?: 32.0d,
                         gcCount: 0.000d
                     ]
                 ]

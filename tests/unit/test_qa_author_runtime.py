@@ -72,7 +72,7 @@ def test_qa_author_runtime_builds_shared_prompt_shape() -> None:
         for instruction in payload["instructions"]
     )
     assert any(
-        "RangeScanBenchmark allocation thresholds below 0.05 B/op" in instruction
+        "RangeScanBenchmark allocation thresholds below 32 B/op" in instruction
         and "validate every parameterized range benchmark result" in instruction
         for instruction in payload["instructions"]
     )
@@ -325,7 +325,7 @@ def test_quality_repair_prompt_includes_range_threshold_repair_guidance(
     )
 
     assert any(
-        "at least 0.05 B/op" in item and "Do not relax unrelated benchmark gates" in item
+        "at least 32 B/op" in item and "Do not relax unrelated benchmark gates" in item
         for item in payload["instructions"]
     )
 
