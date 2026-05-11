@@ -1079,9 +1079,8 @@ def _role_command(*, backend: str, model: str, reasoning: str, planner: bool) ->
     elif backend == "codex":
         command = [
             "codex",
-            "--ask-for-approval",
-            "never",
             "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
             "-m",
             model,
             "-c",
@@ -1093,7 +1092,10 @@ def _role_command(*, backend: str, model: str, reasoning: str, planner: bool) ->
             "-",
         ]
         if not planner:
-            command[8:8] = ["-C", "{worktree}"]
+            command[command.index("--ephemeral") : command.index("--ephemeral")] = [
+                "-C",
+                "{worktree}",
+            ]
         return command
     else:
         raise ValueError(f"unsupported backend: {backend}")

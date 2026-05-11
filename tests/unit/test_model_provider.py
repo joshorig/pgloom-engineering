@@ -207,11 +207,14 @@ def test_codex_commands_disable_approval_prompts() -> None:
         ]
     )
 
-    assert command[command.index("--ask-for-approval") + 1] == "never"
-    assert command.index("--ask-for-approval") < command.index("exec")
+    assert "--ask-for-approval" not in command
+    assert "--dangerously-bypass-approvals-and-sandbox" in command
+    assert command.index("--dangerously-bypass-approvals-and-sandbox") > command.index(
+        "exec"
+    )
 
 
-def test_codex_commands_keep_existing_approval_policy() -> None:
+def test_codex_commands_replace_unsupported_exec_approval_policy() -> None:
     command = model_provider._codex_no_approval_command(  # noqa: SLF001
         [
             "codex",
@@ -225,9 +228,8 @@ def test_codex_commands_keep_existing_approval_policy() -> None:
 
     assert command == [
         "codex",
-        "--ask-for-approval",
-        "never",
         "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
         "-m",
         "gpt-5.5",
     ]

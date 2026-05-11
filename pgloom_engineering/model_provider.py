@@ -251,8 +251,12 @@ def _codex_no_approval_command(command: list[str]) -> list[str]:
     if "exec" not in command:
         return command
     hardened = _without_flag_value(command, "--ask-for-approval")
-    hardened.insert(hardened.index("exec"), "--ask-for-approval")
-    hardened.insert(hardened.index("--ask-for-approval") + 1, "never")
+    if "--dangerously-bypass-approvals-and-sandbox" in hardened:
+        return hardened
+    hardened.insert(
+        hardened.index("exec") + 1,
+        "--dangerously-bypass-approvals-and-sandbox",
+    )
     return hardened
 
 
