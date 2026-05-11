@@ -1080,6 +1080,8 @@ def _role_command(*, backend: str, model: str, reasoning: str, planner: bool) ->
         command = [
             "codex",
             "exec",
+            "--ask-for-approval",
+            "never",
             "-m",
             model,
             "-c",

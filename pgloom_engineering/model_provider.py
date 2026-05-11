@@ -39,8 +39,9 @@ class EngineeringCLIModelProvider:
         workflow_id: str | None = None,
         task_id: str | None = None,
     ) -> EngineeringModelInvocationResult:
+        command = _codex_no_approval_command(profile.command)
         completed = run_bounded(
-            profile.command,
+            command,
             timeout_seconds=profile.timeout_seconds,
             stdin=prompt.encode("utf-8"),
         )
@@ -242,6 +243,25 @@ def _command_route_metadata(command: list[str]) -> dict[str, Any]:
             if config.startswith("model_reasoning_effort="):
                 metadata["reasoning_level"] = config.split("=", 1)[1].strip('"')
     return metadata
+
+
+def _codex_no_approval_command(command: list[str]) -> list[str]:
+    if not _is_codex_command(command):
+        return command
+    if "--ask-for-approval" in command:
+        return command
+    if "exec" not in command:
+        return command
+    hardened = list(command)
+    hardened.insert(hardened.index("exec") + 1, "--ask-for-approval")
+    hardened.insert(hardened.index("--ask-for-approval") + 1, "never")
+    return hardened
+
+
+def _is_codex_command(command: list[str]) -> bool:
+    return bool(command) and (
+        "codex" in command[0] or any(part == "codex" for part in command)
+    )
 
 
 def _command_value(command: list[str], flag: str) -> str | None:

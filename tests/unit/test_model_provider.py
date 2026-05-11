@@ -9,6 +9,7 @@ import pytest
 from pgloom.db.postgres import connect
 from pgloom.models.cli import CLIModelProfile
 
+from pgloom_engineering import model_provider
 from pgloom_engineering.model_provider import EngineeringCLIModelProvider
 
 
@@ -190,6 +191,46 @@ def test_engineering_provider_reprices_zero_codex_cost(
     assert result.model_usage_id is not None
     row = _usage_row(database_url, result.model_usage_id)
     assert float(row["cost_usd"]) == pytest.approx(0.000455)
+
+
+def test_codex_commands_disable_approval_prompts() -> None:
+    command = model_provider._codex_no_approval_command(  # noqa: SLF001
+        [
+            "codex",
+            "exec",
+            "-m",
+            "gpt-5.5",
+            "-s",
+            "danger-full-access",
+            "--json",
+            "-",
+        ]
+    )
+
+    assert command[command.index("--ask-for-approval") + 1] == "never"
+    assert command.index("--ask-for-approval") < command.index("-m")
+
+
+def test_codex_commands_keep_existing_approval_policy() -> None:
+    command = model_provider._codex_no_approval_command(  # noqa: SLF001
+        [
+            "codex",
+            "exec",
+            "--ask-for-approval",
+            "never",
+            "-m",
+            "gpt-5.5",
+        ]
+    )
+
+    assert command == [
+        "codex",
+        "exec",
+        "--ask-for-approval",
+        "never",
+        "-m",
+        "gpt-5.5",
+    ]
 
 
 def _usage_row(database_url: str, usage_id: int) -> dict[str, Any]:
