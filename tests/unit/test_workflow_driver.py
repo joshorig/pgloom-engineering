@@ -1449,6 +1449,53 @@ def test_replan_payload_classifies_no_matching_jmh_as_qa_harness() -> None:
     assert "QA-test repair" in context["summary"]
 
 
+def test_replan_payload_directs_implementation_no_matching_jmh_to_qa_discovery_repair() -> None:
+    aggregate = _aggregate(
+        [
+            {
+                "id": "impl-1",
+                "slot": "implementer",
+                "task_type": "engineering.implement",
+                "state": "blocked",
+                "attempt": 1,
+                "blocker_code": "engineering.implementation_verification_failed",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.implementation_verification_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+    ]
+
+    payload = workflow_driver._replan_payload(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        {
+            "id": "impl-1",
+            "attempt": 1,
+            "blocker_code": "engineering.implementation_verification_failed",
+            "blocker_reason": (
+                "implementer verification commands failed: ./gradlew "
+                ":benchmarks:jmhSmokeCheck exited 1"
+            ),
+            "result": {
+                "stderr_excerpt": "No matching benchmarks. Miss-spelled regexp?",
+                "commands": [["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            },
+        },
+    )
+
+    assert payload is not None
+    diagnosis = payload["replan_context"]["benchmark_allocation_diagnosis"]
+    assert payload["replan_context"]["benchmark_gate_classification"] == "qa_harness"
+    assert diagnosis["recommended_owner"] == "qa-author"
+    assert "benchmark include regex" in diagnosis["repair_directive"]
+    assert "actually discovered and run" in diagnosis["repair_directive"]
+
+
 def test_replan_payload_carries_implementation_artifact_hints() -> None:
     payload = workflow_driver._replan_payload(  # noqa: SLF001
         "feature-1",

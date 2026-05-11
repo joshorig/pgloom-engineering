@@ -1224,10 +1224,19 @@ def _benchmark_allocation_diagnosis(
             "the failure evidence already names a concrete hot-path allocation source."
         )
     elif classification == "qa_harness":
-        diagnosis["repair_directive"] = (
+        directive = (
             "Repair benchmark harness/result discovery under project-approved QA paths "
             "before assigning more production implementation work."
         )
+        if "no matching benchmarks" in text.lower() or "miss-spelled regexp" in text.lower():
+            directive += (
+                " The failure says the benchmark runner discovered no matching "
+                "benchmarks, so the corrective QA slice must fix the benchmark include "
+                "regex or JMH discovery pattern to match the generated fully qualified "
+                "benchmark class/method names; do not route this to production source "
+                "or allocation repair until the benchmark is actually discovered and run."
+            )
+        diagnosis["repair_directive"] = directive
     else:
         diagnosis["repair_directive"] = (
             "Run a focused benchmark allocation diagnostic before choosing QA or "

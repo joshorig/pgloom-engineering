@@ -1317,6 +1317,8 @@ def _implementation_verification_failure_mentions_qa_defect(
             "invalid benchmark",
             "benchmark harness",
             "missing smoke benchmark result",
+            "no matching benchmarks",
+            "miss-spelled regexp",
             "wrongmethodtypeexception",
             "classnotfoundexception",
             "forbidden benchmark",
@@ -1398,6 +1400,8 @@ def _benchmark_gate_classification(context: dict[str, Any]) -> str | None:
             "invalid benchmark",
             "benchmark harness",
             "metadata-disallowed threshold",
+            "no matching benchmarks",
+            "miss-spelled regexp",
         )
     ):
         return "qa_harness"
