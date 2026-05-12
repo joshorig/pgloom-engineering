@@ -857,6 +857,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_java_line_too_long",
         "qa_semantic_nonportable_generated_worktree_path",
+        "qa_semantic_usertest_fixture_observes_without_asserting",
         "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_benchmark_parameterized_gate_mismatch",
         "qa_semantic_range_benchmark_smoke_threshold_too_loose",
@@ -1006,6 +1007,11 @@ def build_qa_quality_repair_prompt(
                     "For build/script string assertion findings, remove the generated test "
                     "that reads build files or QA scripts. Deterministic orchestration validates "
                     "QA gate wiring; model-authored tests must prove product behavior."
+                ),
+                (
+                    "For user-test fixture assertion findings, keep the replay transcript if "
+                    "useful, but add explicit expected key/order/payload/variant checks that "
+                    "throw AssertionError or otherwise fail the fixture when behavior is wrong."
                 ),
                 "Run the narrowest compile/test command for repaired files before returning.",
                 "Return only a valid QAAuthorContract JSON object for the repaired files.",

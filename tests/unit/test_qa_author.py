@@ -2139,6 +2139,14 @@ def test_qa_quality_repairable_accepts_java_line_length_finding() -> None:
                     "line": 4,
                 },
                 {
+                    "code": "qa_semantic_usertest_fixture_observes_without_asserting",
+                    "file": (
+                        "conformance-tests/src/test/java/com/example/"
+                        "RangeScanUsertestMain.java"
+                    ),
+                    "line": 12,
+                },
+                {
                     "code": "qa_semantic_range_prefix_no_seeded_match",
                     "file": "core/src/test/java/com/example/RangeScanApiTest.java",
                     "line": 8,
