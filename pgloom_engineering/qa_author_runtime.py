@@ -189,8 +189,14 @@ def required_qa_fixture_findings(
     *,
     task_contract: TaskContract,
     changed_paths: list[str],
+    project_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    required_paths = _required_qa_fixture_paths(task_contract)
+    required_paths = _dedupe_paths(
+        [
+            *_required_qa_fixture_paths(task_contract),
+            *_metadata_required_qa_fixture_paths(project_metadata or {}),
+        ]
+    )
     if not required_paths:
         return []
     changed = set(changed_paths)
@@ -230,6 +236,26 @@ def _required_qa_fixture_paths(task_contract: TaskContract) -> list[str]:
             path = match.group(0).rstrip(".,;:)")
             if path not in paths:
                 paths.append(path)
+    return paths
+
+
+def _metadata_required_qa_fixture_paths(project_metadata: dict[str, Any]) -> list[str]:
+    qa_metadata = project_qa_metadata(project_metadata)
+    harness = qa_metadata.get("usertest_harness")
+    if not isinstance(harness, dict):
+        return []
+    if harness.get("kind") == "none":
+        return []
+    raw_paths = harness.get("required_fixture_paths")
+    if not isinstance(raw_paths, list):
+        return []
+    paths: list[str] = []
+    for item in raw_paths:
+        if not isinstance(item, str):
+            continue
+        path = item.strip().replace("\\", "/").lstrip("./")
+        if path and path not in paths:
+            paths.append(path)
     return paths
 
 

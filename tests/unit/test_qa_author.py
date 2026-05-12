@@ -2210,6 +2210,26 @@ def test_required_qa_fixture_findings_allow_touched_contract_fixture() -> None:
     )
 
 
+def test_required_qa_fixture_findings_use_project_metadata() -> None:
+    findings = required_qa_fixture_findings(
+        task_contract=_task_contract(),
+        changed_paths=["tests/test_acceptance.py"],
+        project_metadata={
+            "qa": {
+                "usertest_harness": {
+                    "kind": "cli_replay",
+                    "required_fixture_paths": ["qa/fixtures/range_scan_usertest.jsh"],
+                }
+            }
+        },
+    )
+
+    assert [finding["code"] for finding in findings] == [
+        "qa_semantic_required_fixture_missing"
+    ]
+    assert findings[0]["file"] == "qa/fixtures/range_scan_usertest.jsh"
+
+
 def test_qa_quality_repair_prompt_explains_prefix_seed_repair(tmp_path: Path) -> None:
     worktree = tmp_path / "repo"
     worktree.mkdir()

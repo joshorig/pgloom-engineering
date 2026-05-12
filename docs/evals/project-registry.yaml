@@ -52,6 +52,10 @@ projects:
           - benchmarks/build.gradle
         benchmark_frameworks:
           - jmh
+        usertest_harness:
+          kind: cli_replay
+          required_fixture_paths:
+            - qa/fixtures/range_scan_usertest.jsh
         benchmark_variants:
           - single
           - double

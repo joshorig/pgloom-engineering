@@ -47,6 +47,7 @@ def evaluate_production_grade(
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
     findings.extend(_qa_benchmark_output_path_findings(plan))
     findings.extend(_qa_reflective_authoring_findings(plan))
+    findings.extend(_qa_required_usertest_fixture_findings(plan, project_metadata or {}))
     findings.extend(_qa_usertest_command_findings(plan))
     findings.extend(_milestone_signoff_findings(plan))
     findings.extend(_variant_scope_verification_findings(plan, project_metadata or {}))
@@ -517,6 +518,84 @@ def _qa_usertest_command_findings(plan: PlanContract) -> list[ProductionFinding]
             )
             break
     return findings
+
+
+def _qa_required_usertest_fixture_findings(
+    plan: PlanContract,
+    project_metadata: dict[str, object],
+) -> list[ProductionFinding]:
+    required_paths = _metadata_required_usertest_fixture_paths(project_metadata)
+    if not required_paths:
+        return []
+    if not any(
+        task_slice.task_type == "engineering.qa.verify.usertest"
+        for task_slice in plan.task_slices
+    ):
+        return []
+    qa_authors = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.qa.author"
+    ]
+    if not qa_authors:
+        return []
+    findings: list[ProductionFinding] = []
+    for required_path in required_paths:
+        if any(
+            _slice_mentions_path(task_slice, required_path)
+            for task_slice in qa_authors
+        ):
+            continue
+        findings.append(
+            ProductionFinding(
+                severity="blocking",
+                code="qa_author_required_usertest_fixture_missing",
+                slice_id=qa_authors[0].slice_id,
+                message=(
+                    "Project metadata requires a user-test replay fixture, but the "
+                    f"QA author slice does not name {required_path} in its objective, "
+                    "expected_outputs, or handoff requirements. Plans with "
+                    "engineering.qa.verify.usertest must give QA author concrete "
+                    "fixture outputs for downstream model-driven user testing."
+                ),
+            )
+        )
+    return findings
+
+
+def _metadata_required_usertest_fixture_paths(
+    project_metadata: dict[str, object],
+) -> list[str]:
+    qa = project_metadata.get("qa")
+    if not isinstance(qa, dict):
+        return []
+    harness = qa.get("usertest_harness")
+    if not isinstance(harness, dict) or harness.get("kind") == "none":
+        return []
+    raw_paths = harness.get("required_fixture_paths")
+    if not isinstance(raw_paths, list):
+        return []
+    paths: list[str] = []
+    for item in raw_paths:
+        if not isinstance(item, str):
+            continue
+        path = item.strip().replace("\\", "/").lstrip("./")
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def _slice_mentions_path(task_slice: object, required_path: str) -> bool:
+    text = json.dumps(
+        {
+            "objective": getattr(task_slice, "objective", ""),
+            "expected_outputs": getattr(task_slice, "expected_outputs", []),
+            "handoff_requirements": getattr(task_slice, "handoff_requirements", []),
+            "required_procedures": getattr(task_slice, "required_procedures", []),
+        },
+        sort_keys=True,
+    )
+    return required_path in text
 
 
 def _looks_like_deterministic_usertest_substitute(command: list[str]) -> bool:

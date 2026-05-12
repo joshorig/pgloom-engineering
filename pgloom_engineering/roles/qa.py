@@ -663,6 +663,7 @@ class QAHandler:
                 required_qa_fixture_findings(
                     task_contract=task_contract,
                     changed_paths=touched,
+                    project_metadata=project.metadata,
                 )
             )
             blocking_semantic_findings = [

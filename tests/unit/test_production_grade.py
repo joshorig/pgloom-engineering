@@ -31,6 +31,15 @@ VARIANT_RULE_METADATA: dict[str, Any] = {
     }
 }
 
+USERTEST_FIXTURE_METADATA: dict[str, Any] = {
+    "qa": {
+        "usertest_harness": {
+            "kind": "cli_replay",
+            "required_fixture_paths": ["qa/fixtures/range_scan_usertest.jsh"],
+        }
+    }
+}
+
 
 def test_production_grade_requires_qa_roots_for_verification_commands(tmp_path: Path) -> None:
     tmp_path.joinpath("app-api/src/test/java").mkdir(parents=True)
@@ -126,6 +135,39 @@ def test_production_grade_accepts_benchmark_output_with_benchmark_root() -> None
         finding
         for finding in report.blocking_findings
         if finding.code == "qa_benchmark_output_path_not_allowed"
+    ]
+
+
+def test_production_grade_requires_metadata_usertest_fixture_output() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.expected_outputs = [
+        "core/src/test/java/com/example/RangeScanApiTest.java",
+    ]
+
+    report = evaluate_production_grade(plan, project_metadata=USERTEST_FIXTURE_METADATA)
+
+    assert report.verdict == "revise"
+    assert any(
+        finding.code == "qa_author_required_usertest_fixture_missing"
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_accepts_metadata_usertest_fixture_output() -> None:
+    plan = _plan_contract()
+    qa_author = plan.task_slices[1]
+    qa_author.expected_outputs = [
+        "core/src/test/java/com/example/RangeScanApiTest.java",
+        "qa/fixtures/range_scan_usertest.jsh",
+    ]
+
+    report = evaluate_production_grade(plan, project_metadata=USERTEST_FIXTURE_METADATA)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code == "qa_author_required_usertest_fixture_missing"
     ]
 
 
