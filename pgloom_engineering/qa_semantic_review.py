@@ -727,6 +727,8 @@ def _range_benchmark_parameterized_gate_findings(
             continue
         if "entries.size() != 1" not in text and "exactly one smoke result" not in lowered:
             continue
+        if _range_benchmark_gate_allows_parameterized_entries(text):
+            continue
         findings.append(
             SemanticFinding(
                 code="qa_semantic_range_benchmark_parameterized_gate_mismatch",
@@ -745,6 +747,15 @@ def _range_benchmark_parameterized_gate_findings(
             )
         )
     return findings
+
+
+def _range_benchmark_gate_allows_parameterized_entries(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text).lower()
+    return (
+        "parameterized:true" in compact
+        and "thresholds.parameterized" in compact
+        and "if(!parameterized&&entries.size()!=1)" in compact
+    )
 
 
 def _benchmark_visitor_signature_findings(
