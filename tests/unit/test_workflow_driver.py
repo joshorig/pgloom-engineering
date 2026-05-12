@@ -105,6 +105,12 @@ def test_run_workflow_ignores_recovery_abandoned_tasks_when_done(
                     "terminal_reason": "workflow_recovery_replan",
                 },
                 {
+                    "id": "old-stale-worker",
+                    "slot": "qa-engineer",
+                    "state": "abandoned",
+                    "terminal_reason": "stale_live_eval_worker",
+                },
+                {
                     "id": "new-impl",
                     "slot": "implementer",
                     "state": "done",

@@ -143,6 +143,7 @@ def _terminal_task_superseded_by_recovery(task: dict[str, Any]) -> bool:
         return False
     reason = str(task.get("terminal_reason") or "")
     return reason in {
+        "stale_live_eval_worker",
         "workflow_recovery_replan",
         "operator_replan_from_milestone",
     }
