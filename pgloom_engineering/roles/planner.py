@@ -221,6 +221,11 @@ class PlannerHandler:
             allow_diagnostic_corrective_slice=_is_diagnostic_corrective_slice_replan(
                 payload
             ),
+            replan_context=(
+                payload.get("replan_context")
+                if isinstance(payload.get("replan_context"), dict)
+                else None
+            ),
         )
         if normalized_quality_errors:
             return HandlerResult(
@@ -393,6 +398,7 @@ def _post_normalization_quality_errors(
     project_metadata: dict[str, Any] | None = None,
     allow_narrow_corrective_slice: bool = False,
     allow_diagnostic_corrective_slice: bool = False,
+    replan_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     root = project.root if project is not None else None
     report = evaluate_production_grade(
@@ -430,6 +436,21 @@ def _post_normalization_quality_errors(
             for error in errors
             if error.get("code") not in diagnostic_slice_exempt_codes
         ]
+    if _corrective_material_allocation_requires_implementer(replan_context) and not any(
+        task_slice.task_type == "engineering.implement"
+        for task_slice in contract.task_slices
+    ):
+        errors.append(
+            {
+                "source": "planner.corrective_scope",
+                "code": "corrective_implementer_slice_missing",
+                "message": (
+                    "Material allocation gate failures must re-enter an implementer "
+                    "repair slice before review or QA scrutiny."
+                ),
+                "slice_id": None,
+            }
+        )
     return errors
 
 
@@ -1550,10 +1571,32 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
 
 
 def _allocation_diagnostic_required(context: dict[str, Any]) -> bool:
+    if _corrective_material_allocation_requires_implementer(context):
+        return False
     diagnosis = context.get("benchmark_allocation_diagnosis")
     if not isinstance(diagnosis, dict):
         return False
     return bool(diagnosis.get("diagnostic_required"))
+
+
+def _corrective_material_allocation_requires_implementer(
+    context: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(context, dict):
+        return False
+    if str(context.get("blocker_code") or "") not in {
+        "engineering.implementation_verification_failed",
+        "engineering.qa_verify_failed",
+    }:
+        return False
+    if _benchmark_gate_classification(context) != "material_allocation":
+        return False
+    diagnosis = context.get("benchmark_allocation_diagnosis")
+    if isinstance(diagnosis, dict):
+        owner = str(diagnosis.get("recommended_owner") or "")
+        if owner and owner not in {"implementer", "diagnostic"}:
+            return False
+    return True
 
 
 def _implementation_verification_failure_mentions_qa_defect(

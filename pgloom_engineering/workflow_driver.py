@@ -1217,13 +1217,27 @@ def _benchmark_allocation_diagnosis(
     failures = _benchmark_allocation_failures(text, threshold=threshold)
     max_b_op = max((item["b_op"] for item in failures), default=None)
     source_allocation_known = _benchmark_context_mentions_source_allocation(text.lower())
+    blocker_code = str(blocked_task.get("blocker_code") or "")
     diagnostic_required = bool(
-        classification == "material_allocation" and not source_allocation_known
+        classification == "material_allocation"
+        and not source_allocation_known
+        and blocker_code
+        not in {
+            "engineering.implementation_verification_failed",
+            "engineering.qa_verify_failed",
+        }
     )
     recommended_owner = _benchmark_diagnosis_owner(classification, failures)
     if diagnostic_required:
         recommended_owner = "diagnostic"
-    elif classification == "material_allocation" and source_allocation_known:
+    elif classification == "material_allocation" and (
+        source_allocation_known
+        or blocker_code
+        in {
+            "engineering.implementation_verification_failed",
+            "engineering.qa_verify_failed",
+        }
+    ):
         recommended_owner = "implementer"
     diagnosis: dict[str, Any] = {
         "contract_type": "AllocationDiagnosisContract",
@@ -1240,9 +1254,10 @@ def _benchmark_allocation_diagnosis(
     if classification == "material_allocation":
         diagnosis["repair_directive"] = (
             "Do not relax thresholds or route to QA-author unless diagnostic evidence "
-            "proves a harness defect. Identify the allocation source for the listed "
-            "benchmark/mode/variant tuples before another implementation repair unless "
-            "the failure evidence already names a concrete hot-path allocation source."
+            "proves a harness defect. Route material allocation failures from "
+            "implementation or verification gates back to implementer-owned hot-path "
+            "repair, and require the implementer to identify the allocation source for "
+            "the listed benchmark/mode/variant tuples while rerunning the same gate."
         )
     elif classification == "qa_harness":
         directive = (

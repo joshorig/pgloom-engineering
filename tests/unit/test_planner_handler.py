@@ -960,6 +960,76 @@ def test_post_normalization_allows_allocation_diagnostic_without_full_signoff(
     )
 
 
+def test_post_normalization_rejects_material_allocation_without_implementer(
+    tmp_path: Path,
+) -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="example-library",
+        problem_statement="Repair benchmark allocation failure.",
+        design_contract=DesignContract(public_api="HotStore range scan API"),
+        affected_surfaces=["benchmarks/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Rerun benchmark smoke.",
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Confirm public behavior.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                depends_on=["qa-scrutiny"],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        acceptance_test_matrix=["Allocation gate passes."],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["qa-scrutiny", "qa-usertest"],
+                signoff_policy="scrutiny_and_usertest",
+            )
+        ],
+    )
+    project = ProjectConfig(
+        name="example-library",
+        root=tmp_path,
+        base_branch="main",
+        metadata={},
+    )
+
+    errors = _post_normalization_quality_errors(
+        plan,
+        project=project,
+        qa_write_paths=[],
+        allow_narrow_corrective_slice=True,
+        replan_context={
+            "mode": "corrective_slice",
+            "blocker_code": "engineering.implementation_verification_failed",
+            "benchmark_gate_classification": "material_allocation",
+            "benchmark_allocation_diagnosis": {
+                "classification": "material_allocation",
+                "recommended_owner": "diagnostic",
+                "diagnostic_required": True,
+            },
+        },
+    )
+
+    assert any(
+        error["code"] == "corrective_implementer_slice_missing" for error in errors
+    )
+
+
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",
@@ -1586,7 +1656,7 @@ def test_apply_corrective_slice_scope_routes_material_benchmark_gate_to_implemen
     ]
 
 
-def test_apply_corrective_slice_scope_requires_benchmark_allocation_diagnostic() -> None:
+def test_apply_corrective_slice_scope_routes_material_allocation_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",
         project="lvc-standard",
@@ -1674,6 +1744,7 @@ def test_apply_corrective_slice_scope_requires_benchmark_allocation_diagnostic()
                 "benchmark_allocation_diagnosis": {
                     "classification": "material_allocation",
                     "diagnostic_required": True,
+                    "recommended_owner": "diagnostic",
                     "failing_benchmarks": [
                         {
                             "benchmark": "RangeScanBenchmark.ascendingScan",
@@ -1691,14 +1762,25 @@ def test_apply_corrective_slice_scope_requires_benchmark_allocation_diagnostic()
     )
 
     assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
-        "qa-scrutiny-diagnostic"
+        "impl-fix",
+        "review",
+        "qa-scrutiny-diagnostic",
+        "qa-usertest",
     ]
     assert scoped.task_slices[0].depends_on == []
-    assert scoped.task_slices[0].expected_outputs == [
+    assert scoped.task_slices[1].depends_on == ["impl-fix"]
+    assert scoped.task_slices[2].depends_on == ["review"]
+    assert scoped.task_slices[3].depends_on == ["qa-scrutiny-diagnostic"]
+    assert scoped.task_slices[2].expected_outputs == [
         "AllocationDiagnosisContract",
         "QAResultContract",
     ]
-    assert scoped.milestones[0].slice_ids == ["qa-scrutiny-diagnostic"]
+    assert scoped.milestones[0].slice_ids == [
+        "impl-fix",
+        "review",
+        "qa-scrutiny-diagnostic",
+        "qa-usertest",
+    ]
 
 
 def test_apply_corrective_slice_scope_routes_review_benchmark_rejection_to_qa_author() -> None:
