@@ -21,6 +21,7 @@ from pgloom_engineering.contract_store import (
 )
 from pgloom_engineering.contracts import (
     FeatureGoalContract,
+    MilestoneContract,
     PlanContract,
     RecoveryDecisionContract,
     TaskContract,
@@ -995,12 +996,20 @@ def _apply_corrective_slice_scope(
         )
         for task_slice in kept
     ]
+    single_milestone_id = (
+        contract.milestones[0].milestone_id
+        if len(contract.milestones) == 1
+        else None
+    )
     scoped_milestones = [
         milestone.model_copy(
             update={
-                "slice_ids": [
-                    slice_id for slice_id in milestone.slice_ids if slice_id in kept_ids
-                ],
+                "slice_ids": _corrective_milestone_slice_ids(
+                    milestone,
+                    scoped_slices,
+                    kept_ids=kept_ids,
+                    default_milestone_id=single_milestone_id,
+                ),
                 "acceptance_assertions": _corrective_claimed_assertions(
                     milestone.acceptance_assertions,
                     scoped_slices,
@@ -1019,6 +1028,28 @@ def _apply_corrective_slice_scope(
             ),
         }
     )
+
+
+def _corrective_milestone_slice_ids(
+    milestone: MilestoneContract,
+    scoped_slices: list[TaskSliceContract],
+    *,
+    kept_ids: set[str],
+    default_milestone_id: str | None,
+) -> list[str]:
+    milestone_slice_ids = [
+        slice_id for slice_id in milestone.slice_ids if slice_id in kept_ids
+    ]
+    assigned_slice_ids = [
+        task_slice.slice_id
+        for task_slice in scoped_slices
+        if task_slice.milestone_id == milestone.milestone_id
+        or (
+            task_slice.milestone_id is None
+            and default_milestone_id == milestone.milestone_id
+        )
+    ]
+    return list(dict.fromkeys([*milestone_slice_ids, *assigned_slice_ids]))
 
 
 def _corrective_claimed_assertions(

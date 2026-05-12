@@ -331,6 +331,91 @@ def test_apply_corrective_slice_scope_removes_design_and_qa_author() -> None:
     ]
 
 
+def test_apply_corrective_slice_scope_restores_kept_milestone_membership() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct QA scrutiny failure.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["benchmark allocation remains below gate"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix benchmark allocation.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                expected_outputs=["TaskResultContract"],
+                milestone_id="m1",
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review benchmark allocation fix.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+                milestone_id="m1",
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Verify feature gates.",
+                allowed_paths=["core/", "store/", "benchmarks/"],
+                forbidden_paths=[],
+                depends_on=["review"],
+                expected_outputs=["QAResultContract"],
+                milestone_id="m1",
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Exercise public behavior.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=[],
+                depends_on=["qa-scrutiny"],
+                expected_outputs=["QAResultContract"],
+                milestone_id="m1",
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["impl-fix", "review"],
+                signoff_policy="scrutiny_and_usertest",
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.qa_verify_failed",
+                "failure_context": (
+                    "RangeScanBenchmark.ascendingRange allocated 0.207 B/op "
+                    "above the 0.005 B/op threshold"
+                ),
+            }
+        },
+    )
+
+    assert scoped.milestones[0].slice_ids == [
+        "impl-fix",
+        "review",
+        "qa-scrutiny",
+        "qa-usertest",
+    ]
+
+
 def test_apply_corrective_slice_scope_handles_plan_contract_invalid() -> None:
     plan = PlanContract(
         feature_id="wf_range",
