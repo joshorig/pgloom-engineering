@@ -658,6 +658,108 @@ def test_qa_author_does_not_accept_red_proof_with_style_failures(
     assert result.result["quality_failure_commands"] == [["./gradlew", ":core:checkstyleTest"]]
 
 
+def test_qa_author_accepts_checkstyle_command_blocked_only_by_missing_new_api(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan().model_copy(
+        update={
+            "problem_statement": "Add public API contract for StoreVisitor range scan methods.",
+            "acceptance_test_matrix": [
+                "LvcStore exposes new public StoreVisitor range API."
+            ],
+        }
+    )
+    task_contract = _task_contract().model_copy(
+        update={
+            "objective": "Write failing tests for the new public StoreVisitor range API.",
+            "expected_outputs": [
+                "RangeScanApiTest uses StoreVisitor and LvcStore range methods."
+            ],
+        }
+    )
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.red_proof_verification_commands",
+        lambda *args, **kwargs: [
+            ["./gradlew", ":core:test", "--tests", "RangeScanApiTest"],
+            ["./gradlew", ":core:checkstyleTest"],
+        ],
+    )
+
+    def fake_verification(command: list[str], **kwargs: Any) -> QAVerificationResult:
+        del kwargs
+        result = SubprocessResult(
+            argv=command,
+            exit_code=1,
+            stdout=(
+                "> Task :core:compileTestJava FAILED\n"
+                "error: cannot find symbol\n"
+                "  symbol:   class StoreVisitor\n"
+            ),
+            stderr="BUILD FAILED",
+            duration_seconds=0.1,
+            timed_out=False,
+            killed=False,
+        )
+        return QAVerificationResult(
+            original=result,
+            stdout_excerpt="cannot find symbol StoreVisitor",
+            stderr_excerpt="BUILD FAILED",
+            infra_error=None,
+        )
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.run_qa_verification",
+        fake_verification,
+    )
+
+    result = QAHandler(provider=FakeProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    assert result.result["qa_author_contract"]["red_proof"]
+
+
 def test_qa_author_repairs_authored_tests_that_do_not_compile(
     tmp_path: Path,
     monkeypatch: Any,

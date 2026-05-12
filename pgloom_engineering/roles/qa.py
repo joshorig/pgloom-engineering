@@ -801,19 +801,24 @@ class QAHandler:
                         "changed_files": touched,
                     },
                 )
+            qa_task_text = _qa_author_task_text(plan, task_contract)
             red_verifications = [
                 verification
                 for verification in verification_results
                 if is_red_test_failure(verification)
                 or is_expected_missing_api_compile_failure(
                     verification,
-                    task_text=_qa_author_task_text(plan, task_contract),
+                    task_text=qa_task_text,
                 )
             ]
             quality_failures = [
                 verification
                 for verification in verification_results
                 if is_authored_test_quality_failure(verification)
+                and not is_expected_missing_api_compile_failure(
+                    verification,
+                    task_text=qa_task_text,
+                )
             ]
             compile_failures = [
                 verification
@@ -821,7 +826,7 @@ class QAHandler:
                 if is_authored_test_compile_failure(verification)
                 and not is_expected_missing_api_compile_failure(
                     verification,
-                    task_text=_qa_author_task_text(plan, task_contract),
+                    task_text=qa_task_text,
                 )
             ]
             if red_verifications and not quality_failures and not compile_failures:
