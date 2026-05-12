@@ -45,6 +45,7 @@ def review_semantic_quality(
     findings: list[SemanticFinding] = []
     findings.extend(_java_style_findings(files, conventions))
     findings.extend(_java_array_assertion_findings(files, conventions))
+    findings.extend(_fixed_size_payload_write_findings(files, conventions))
     findings.extend(_java_try_resource_close_findings(files, conventions))
     findings.extend(_journal_cursor_findings(files, context, conventions))
     findings.extend(_spring_endpoint_harness_findings(files, conventions))
@@ -267,6 +268,108 @@ def _java_array_assertion_findings(
                 )
             )
     return findings
+
+
+def _fixed_size_payload_write_findings(
+    files: dict[str, str],
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    payload_config = _mapping(conventions.get("fixed_size_payload_writes"))
+    if not payload_config.get("require_full_payload_size"):
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith((".java", ".jsh")):
+            continue
+        constants = _java_int_constants(text)
+        payload_size = _configured_payload_size(text, constants)
+        if payload_size is None:
+            continue
+        payload_lengths = _byte_array_literal_lengths(text, constants)
+        buffer_lengths = _unsafe_buffer_lengths(text, payload_lengths)
+        for match in re.finditer(
+            r"\bwriteBuffer\s*\([^;]*?(?P<buffer>[A-Za-z_][A-Za-z0-9_]*)\s*,"
+            r"\s*0\s*,\s*(?:\1\.(?:capacity|length)\s*\(\s*\)|\1\.length)",
+            text,
+            re.DOTALL,
+        ):
+            buffer_name = match.group("buffer")
+            actual_length = buffer_lengths.get(buffer_name) or payload_lengths.get(buffer_name)
+            if actual_length is None or actual_length >= payload_size:
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_fixed_size_payload_write_too_short",
+                    severity="blocking",
+                    message=(
+                        "QA writes to a fixed-size payload store using a shorter buffer "
+                        "than the configured payload size. Such tests fail the existing "
+                        "store invariant instead of proving the requested feature."
+                    ),
+                    file=path,
+                    line=_line_for_offset(text, match.start()),
+                    details={
+                        "buffer": buffer_name,
+                        "payload_size": payload_size,
+                        "write_length": actual_length,
+                    },
+                )
+            )
+    return findings
+
+
+def _configured_payload_size(text: str, constants: dict[str, int]) -> int | None:
+    for match in re.finditer(r"\.payloadSize\s*\(\s*(?P<size>[^)]+)\)", text):
+        size = _java_int_token(match.group("size"), constants)
+        if size is not None:
+            return size
+    return None
+
+
+def _byte_array_literal_lengths(text: str, constants: dict[str, int]) -> dict[str, int]:
+    lengths: dict[str, int] = {}
+    literal_pattern = re.compile(
+        r"(?:byte\s*\[\]\s+|(?:final\s+)?byte\s*\[\]\s+)"
+        r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+byte\s*\[\]\s*"
+        r"\{(?P<body>.*?)\}\s*;",
+        re.DOTALL,
+    )
+    for match in literal_pattern.finditer(text):
+        lengths[match.group("name")] = _byte_array_literal_length(match.group("body"))
+    sized_pattern = re.compile(
+        r"byte\s*\[\]\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+byte\s*"
+        r"\[\s*(?P<size>[A-Za-z_][A-Za-z0-9_]*|[-+]?\d+)\s*\]\s*;",
+    )
+    for match in sized_pattern.finditer(text):
+        size = _java_int_token(match.group("size"), constants)
+        if size is not None:
+            lengths[match.group("name")] = size
+    return lengths
+
+
+def _byte_array_literal_length(body: str) -> int:
+    items = [item.strip() for item in body.replace("\n", " ").split(",")]
+    return len([item for item in items if item])
+
+
+def _unsafe_buffer_lengths(text: str, payload_lengths: dict[str, int]) -> dict[str, int]:
+    lengths: dict[str, int] = {}
+    literal_pattern = re.compile(
+        r"UnsafeBuffer\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*"
+        r"new\s+UnsafeBuffer\s*\(\s*new\s+byte\s*\[\]\s*\{(?P<body>.*?)\}\s*\)\s*;",
+        re.DOTALL,
+    )
+    for match in literal_pattern.finditer(text):
+        lengths[match.group("name")] = _byte_array_literal_length(match.group("body"))
+    variable_pattern = re.compile(
+        r"UnsafeBuffer\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*"
+        r"new\s+UnsafeBuffer\s*\(\s*(?P<payload>[A-Za-z_][A-Za-z0-9_]*)\s*\)\s*;"
+    )
+    for match in variable_pattern.finditer(text):
+        payload_length = payload_lengths.get(match.group("payload"))
+        if payload_length is not None:
+            lengths[match.group("name")] = payload_length
+    return lengths
 
 
 def _java_try_resource_close_findings(

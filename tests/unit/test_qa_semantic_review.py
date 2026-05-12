@@ -40,6 +40,105 @@ def test_semantic_review_allows_java_imports_over_line_limit() -> None:
     assert findings == []
 
 
+def test_semantic_review_blocks_short_fixed_size_payload_writes() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                void apiSmoke() {
+                    LvcStore store = DirectStores.singleBuilder()
+                        .slotCount(8)
+                        .payloadSize(16)
+                        .build();
+                    UnsafeBuffer payload = new UnsafeBuffer(new byte[] { 1, 2, 3, 0 });
+                    store.writeBuffer(3, payload, 0, payload.capacity());
+                }
+            }
+            """
+        },
+        plan_text="Byte payloads must preserve fixed-size store semantics.",
+        task_text="Write Java QA tests.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "fixed_size_payload_writes": {"require_full_payload_size": True}
+                }
+            }
+        },
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_fixed_size_payload_write_too_short"
+    ]
+    assert findings[0].details["payload_size"] == 16
+    assert findings[0].details["write_length"] == 4
+
+
+def test_semantic_review_allows_full_fixed_size_payload_writes() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                private static final int PAYLOAD_SIZE = 8;
+
+                void apiSmoke() {
+                    LvcStore store = DirectStores.singleBuilder()
+                        .slotCount(8)
+                        .payloadSize(PAYLOAD_SIZE)
+                        .build();
+                    byte[] bytes = new byte[] { 1, 2, 3, 4, 5, 6, 7, 0 };
+                    UnsafeBuffer payload = new UnsafeBuffer(bytes);
+                    store.writeBuffer(3, payload, 0, payload.capacity());
+                }
+            }
+            """
+        },
+        plan_text="Byte payloads must preserve fixed-size store semantics.",
+        task_text="Write Java QA tests.",
+        project_metadata={
+            "qa": {
+                "semantic_conventions": {
+                    "fixed_size_payload_writes": {"require_full_payload_size": True}
+                }
+            }
+        },
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_fixed_size_payload_write_too_short"
+    ] == []
+
+
+def test_semantic_review_ignores_fixed_payload_rule_without_metadata() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                void apiSmoke() {
+                    LvcStore store = DirectStores.singleBuilder()
+                        .slotCount(8)
+                        .payloadSize(16)
+                        .build();
+                    UnsafeBuffer payload = new UnsafeBuffer(new byte[] { 1, 2, 3, 0 });
+                    store.writeBuffer(3, payload, 0, payload.capacity());
+                }
+            }
+            """
+        },
+        plan_text="Byte payloads.",
+        task_text="Write Java QA tests.",
+        project_metadata={},
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_fixed_size_payload_write_too_short"
+    ] == []
+
+
 def test_semantic_review_blocks_generated_worktree_paths_in_qa_fixtures() -> None:
     findings = review_semantic_quality(
         files={

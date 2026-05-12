@@ -162,6 +162,8 @@ projects:
             fresh_target_strategy: preallocated_target_pool
           binary_assertions:
             prefer_assert_array_equals: true
+          fixed_size_payload_writes:
+            require_full_payload_size: true
           build_hook_tests:
             allow_build_file_string_assertions: false
             deterministic_gate_validation_required: true
