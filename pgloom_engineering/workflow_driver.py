@@ -218,7 +218,7 @@ def _maybe_replan_blocked_feature(
         blocker_code=str(candidate.get("blocker_code") or "engineering.blocked"),
         action=recovery_action,
         rationale=str(payload["replan_context"]["summary"]),
-        attempt=int(candidate.get("attempt") or 1),
+        attempt=_recovery_attempt(candidate, aggregate),
         max_attempts=int(settings.workflow_replan_after_blocked_attempts),
     )
     record_recovery_action(
@@ -258,13 +258,18 @@ def _recoverable_blocked_task(
         blocker_code = str(task.get("blocker_code") or "")
         if state != "blocked" or blocker_code not in recoverable_codes:
             continue
+        completed_recoveries = _completed_recovery_count(aggregate, blocker_code)
+        attempt = max(int(task.get("attempt") or 1), completed_recoveries + 1)
+        if attempt > int(settings.workflow_replan_after_blocked_attempts):
+            continue
+        candidate = dict(task)
+        candidate["recovery_attempt"] = attempt
         if blocker_code in immediate_codes:
-            return dict(task)
-        attempt = int(task.get("attempt") or 1)
+            return candidate
         if attempt >= int(settings.workflow_replan_after_blocked_attempts):
-            return dict(task)
+            return candidate
         if total_input_tokens >= int(settings.workflow_replan_after_input_tokens):
-            return dict(task)
+            return candidate
     return None
 
 
@@ -619,7 +624,7 @@ def _replan_payload(
                 "forbidden_paths",
             ),
             "blocked_slice_id": _blocked_slice_id(blocked_contract),
-            "attempt": int(blocked_task.get("attempt") or 1),
+            "attempt": _recovery_attempt(blocked_task, aggregate),
             "same_blocker_recovery_count": repeat_count,
             "benchmark_gate_classification": benchmark_gate_classification,
             "benchmark_allocation_diagnosis": allocation_diagnosis,
@@ -653,6 +658,22 @@ def _completed_recovery_count(aggregate: dict[str, Any], blocker_code: str) -> i
             continue
         count += 1
     return count
+
+
+def _recovery_attempt(
+    blocked_task: dict[str, Any],
+    aggregate: dict[str, Any],
+) -> int:
+    explicit = blocked_task.get("recovery_attempt")
+    if explicit is not None:
+        try:
+            return max(1, int(explicit))
+        except (TypeError, ValueError):
+            pass
+    blocker_code = str(blocked_task.get("blocker_code") or "")
+    completed_recoveries = _completed_recovery_count(aggregate, blocker_code)
+    task_attempt = int(blocked_task.get("attempt") or 1)
+    return max(task_attempt, completed_recoveries + 1)
 
 
 def _task_contract_for_task(
@@ -727,7 +748,7 @@ def _replan_summary(
         return (
             "Previous QA author output did not compile. Replan must include compile-first "
             "QA self-validation and line-level repair requirements before reviewer handoff: "
-            f"{blocker_reason}"
+            f"{blocker_reason}{detail}"
         )
     if blocker_code == "engineering.qa_tests_not_red":
         return (

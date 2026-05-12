@@ -779,6 +779,107 @@ def test_implementation_path_violation_replans_immediately(monkeypatch: Any) -> 
     )
 
 
+def test_repeated_same_blocker_recovery_records_incremented_attempt(
+    monkeypatch: Any,
+) -> None:
+    enqueued: list[dict[str, Any]] = []
+    decisions: list[Any] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: decisions.append(decision) or {},
+    )
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-1",
+                "slot": "qa-engineer",
+                "task_type": "engineering.qa.author",
+                "state": "blocked",
+                "attempt": 1,
+                "priority": 3,
+                "blocker_code": "engineering.qa_tests_do_not_compile",
+                "blocker_reason": "checkstyle failure in QA-authored test",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.qa_tests_do_not_compile",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+        {
+            "blocker_code": "engineering.qa_tests_do_not_compile",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+    ]
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        None,
+    )
+
+    assert result is not None
+    assert enqueued[0]["payload"]["replan_context"]["attempt"] == 3
+    assert decisions[0].attempt == 3
+
+
+def test_repeated_same_blocker_recovery_stops_after_attempt_cap(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-1",
+                "slot": "qa-engineer",
+                "task_type": "engineering.qa.author",
+                "state": "blocked",
+                "attempt": 1,
+                "priority": 3,
+                "blocker_code": "engineering.qa_tests_do_not_compile",
+                "blocker_reason": "checkstyle failure in QA-authored test",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "blocker_code": "engineering.qa_tests_do_not_compile",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+        {
+            "blocker_code": "engineering.qa_tests_do_not_compile",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+        {
+            "blocker_code": "engineering.qa_tests_do_not_compile",
+            "action": "corrective_slice",
+            "status": "completed",
+        },
+    ]
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        None,
+    )
+
+    assert result is None
+
+
 def test_repeated_qa_semantic_failure_escalates_replan_instruction(
     monkeypatch: Any,
 ) -> None:
@@ -1686,6 +1787,7 @@ def _settings() -> SimpleNamespace:
         ],
         workflow_replan_blocker_codes=[
             "engineering.qa_semantic_quality_failed",
+            "engineering.qa_tests_do_not_compile",
             "engineering.qa_tests_not_red",
             "engineering.qa_path_violation",
             "engineering.implementer_contract_invalid",
