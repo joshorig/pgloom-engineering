@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from fastapi import HTTPException, Request, WebSocket, status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
 
 LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 DEV_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
@@ -115,7 +116,7 @@ class LoopbackOnlyMiddleware(BaseHTTPMiddleware):
 class HostAllowlistMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app: object,
+        app: ASGIApp,
         *,
         allowed_hosts: set[str] | None = None,
     ) -> None:
