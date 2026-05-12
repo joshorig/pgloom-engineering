@@ -14,6 +14,8 @@ EventKind = Literal[
     "recovery.update",
     "plan.update",
     "task.update",
+    "council.update",
+    "council_panelist.update",
     "resync",
 ]
 

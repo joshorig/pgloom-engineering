@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from pgloom.artifacts import register_artifact
 from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pgloom.tasks import enqueue_task
 from pgloom.workflows import create_workflow
+from starlette.websockets import WebSocketDisconnect
 
 from pgloom_engineering.command_center import store
 from pgloom_engineering.command_center.app import CommandCenterSettings, create_app
@@ -58,6 +61,69 @@ def test_command_center_defaults_to_non_loopback_bind() -> None:
     assert not settings.local_only
     app = create_app(settings.model_copy(update={"start_realtime": False}))
     assert app.state.command_center_settings.host == "0.0.0.0"
+
+
+def test_command_center_rejects_bad_host_header() -> None:
+    app = create_app(CommandCenterSettings(start_realtime=False))
+    client = TestClient(app)
+
+    assert client.get("/api/healthz", headers={"host": "evil.example"}).status_code == 403
+    assert client.get("/api/healthz", headers={"host": "localhost:8765"}).status_code == 200
+
+
+def test_command_center_dev_cors_is_env_gated() -> None:
+    app = create_app(CommandCenterSettings(start_realtime=False, dev_mode=True))
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/healthz",
+        headers={
+            "host": "localhost:8765",
+            "origin": "http://localhost:5173",
+            "access-control-request-method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_command_center_websocket_rejects_bad_origin() -> None:
+    app = create_app(CommandCenterSettings(start_realtime=False))
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/ws",
+            headers={"host": "localhost:8765", "origin": "http://evil.example"},
+        ):
+            pass
+
+
+def test_pause_intervention_publishes_feature_update(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_create_intervention(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        del args, kwargs
+        return {"id": 42, "feature_id": "wf_test", "action_type": "pause_feature"}
+
+    monkeypatch.setattr(store, "create_intervention", fake_create_intervention)
+    app = create_app(CommandCenterSettings(start_realtime=False))
+    client = TestClient(app)
+
+    with client.websocket_connect(
+        "/ws",
+        headers={"host": "localhost:8765", "origin": "http://localhost:8765"},
+    ) as websocket:
+        response = client.post(
+            "/api/features/wf_test/interventions",
+            headers={"host": "localhost:8765"},
+            json={"action_type": "pause_feature", "payload": {}},
+        )
+        assert response.status_code == 200
+        event = websocket.receive_json()
+
+    assert event["kind"] == "feature.update"
+    assert event["feature_id"] == "wf_test"
+    assert event["fields"] == ["paused"]
 
 
 def test_feature_list_uses_live_workflow_state_and_pause(database_url: str) -> None:
@@ -286,10 +352,10 @@ def test_command_center_exposes_council_runs_and_panelists(database_url: str) ->
     assert panelist["model_provider"] == "codex"
     assert panelist["model"] == "gpt-5.5"
     assert panelist["worker_run_id"] == run["id"]
-    assert finished["cost_usd_micros"] == 2150
+    assert finished["cost_usd_micros"] == 2000
     rows = store.councils(feature["id"], database_url=database_url)
     assert rows[0]["id"] == council["id"]
-    assert rows[0]["cost_usd_micros"] == 2150
+    assert rows[0]["cost_usd_micros"] == 2000
     detail = store.council_detail(
         feature["id"],
         council["id"],

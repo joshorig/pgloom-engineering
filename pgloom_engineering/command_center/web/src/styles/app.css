@@ -154,6 +154,7 @@ th[style*="right"] .cc-sort {
   color: inherit;
   font: inherit;
   text-align: left;
+  cursor: pointer;
 }
 
 .cc-h-row:not(.is-selected):hover {
@@ -198,6 +199,44 @@ th[style*="right"] .cc-sort {
 
 .cc-break {
   overflow-wrap: anywhere;
+}
+
+.cc-tasklink {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--accent-line);
+  border-radius: 2px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.cc-tasklink:hover {
+  border-color: var(--accent);
+  background: oklch(from var(--accent) l c h / 0.16);
+}
+
+.cc-tasklink.is-subtle {
+  color: var(--t2);
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+.cc-tasklink.is-subtle:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.cc-tasklink .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cc-state-dag-empty {

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { postIntervention, useApi, type ModelUsageRow, type RealtimeStatus, type RunRow, type SlotRow, type TokenSaviorRow } from "../api";
 import type { RealtimeConnectionState } from "../realtime";
-import { CostCell, Panel, RoleBadge, Stat, StatusPill, TokenCell } from "../components/primitives";
+import { CostCell, Panel, RoleBadge, Stat, StatusPill, TaskLink, TokenCell } from "../components/primitives";
 import { formatMicros, formatTokens } from "../lib/money";
 
 type Row = Record<string, unknown>;
@@ -26,7 +26,9 @@ function renderValue(value: unknown) {
 
 export function HandoffView({ featureId }: { featureId: string }) {
   const { data } = useApi<Row[]>(`/api/features/${featureId}/handoffs`);
+  const { data: runs } = useApi<RunRow[]>(`/api/features/${featureId}/runs`);
   const rows = data || [];
+  const runRows = runs || [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = useMemo(() => rows.find((row) => String(row.id) === selectedId) || rows[0], [rows, selectedId]);
   if (!rows.length) return <EmptyContractView kicker="HANDOFFS" title="No handoffs yet" desc="Handoff rows appear after planner, worker, reviewer, and QA contracts begin passing state between roles." />;
@@ -47,13 +49,13 @@ export function HandoffView({ featureId }: { featureId: string }) {
           const h = handoffDetails(row);
           const isSelected = selected ? String(row.id) === String(selected.id) : idx === 0;
           return (
-            <button key={String(row.id)} className={`cc-h-row ${isSelected ? "is-selected" : ""}`} onClick={() => setSelectedId(String(row.id))} type="button">
+            <div key={String(row.id)} className={`cc-h-row ${isSelected ? "is-selected" : ""}`} onClick={() => setSelectedId(String(row.id))} role="button" tabIndex={0}>
               <div className="cc-h-row-l">
                 <div className="mono cc-h-row-id">{shortId(String(row.id))}</div>
                 <div className="cc-h-row-pair mono">
-                  <span className="cc-dim">{shortId(h.fromTask)}</span>
+                  <TaskLink featureId={featureId} taskId={h.fromTask === "-" ? null : h.fromTask} label={shortId(h.fromTask)} subtle />
                   <span style={{ color: "var(--accent)" }}>→</span>
-                  <span className="cc-dim">{shortId(h.toTask)}</span>
+                  <TaskLink featureId={featureId} taskId={h.toTask === "-" ? null : h.toTask} label={shortId(h.toTask)} subtle />
                 </div>
                 <div className="cc-h-row-kind mono">{h.kind}</div>
                 <div className="cc-h-row-roles">
@@ -64,9 +66,9 @@ export function HandoffView({ featureId }: { featureId: string }) {
               </div>
               <div className="cc-h-row-r">
                 <span className="mono cc-dim cc-h-row-files">{h.files}p · {h.outputs} out</span>
-                <StatusPill status={statusForHandoff(h.status)} />
+                <StatusPill status={effectiveHandoffStatus(h, runRows)} />
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -89,10 +91,10 @@ export function HandoffView({ featureId }: { featureId: string }) {
           <div className="cc-h-d-bar">
             <div className="cc-h-d-pair">
               <RoleBadge role={details.fromRole} full />
-              <span className="mono cc-dim">{shortId(details.fromTask)}</span>
+              <TaskLink featureId={featureId} taskId={details.fromTask === "-" ? null : details.fromTask} subtle />
               <span className="cc-h-arrow">→</span>
               <RoleBadge role={details.toRole} full />
-              <span className="mono cc-dim">{shortId(details.toTask)}</span>
+              <TaskLink featureId={featureId} taskId={details.toTask === "-" ? null : details.toTask} subtle />
             </div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 18 }}>
               <KV k="paths" v={<span className="mono">{details.files}</span>} />
@@ -545,7 +547,7 @@ function ValidationRunFallback({ runs }: { runs: RunRow[] }) {
             {runs.map((run) => (
               <tr key={run.id}>
                 <td className="mono">{run.id}</td>
-                <td className="mono cc-dim cc-ellipsis">{run.task_id || "-"}</td>
+                <td className="mono cc-dim cc-ellipsis"><TaskLink featureId={run.feature_id} taskId={run.task_id} subtle /></td>
                 <td><RoleBadge role={run.role} /></td>
                 <td className="mono cc-dim">{run.phase}</td>
                 <td><StatusPill status={run.status} /></td>
@@ -641,6 +643,23 @@ function statusForHandoff(status: string) {
   if (status === "ready") return "queued";
   if (status === "approved") return "passed";
   return status;
+}
+
+function effectiveHandoffStatus(details: ReturnType<typeof handoffDetails>, runs: RunRow[]) {
+  if (["approved", "passed", "failed", "blocked", "superseded"].includes(details.status)) {
+    return statusForHandoff(details.status);
+  }
+  const toRun = latestRunForTask(runs, details.toTask);
+  const fromRun = latestRunForTask(runs, details.fromTask);
+  if (toRun?.status) return toRun.status;
+  if (fromRun?.status && ["failed", "blocked"].includes(fromRun.status)) return fromRun.status;
+  return statusForHandoff(details.status);
+}
+
+function latestRunForTask(runs: RunRow[], taskId: string) {
+  return runs
+    .filter((run) => run.task_id === taskId)
+    .sort((a, b) => String(b.started_at || b.id).localeCompare(String(a.started_at || a.id)))[0];
 }
 
 function roleFromKind(kind: string) {

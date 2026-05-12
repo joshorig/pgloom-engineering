@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { postIntervention, useApi, type CCEvent, type DagPayload, type FeatureRow, type RunRow } from "../api";
-import { CostCell, LiveEventStrip, Panel, PauseButton, RoleBadge, Stat, StatusPill } from "../components/primitives";
+import { CostCell, LiveEventStrip, Panel, PauseButton, RoleBadge, Stat, StatusPill, TaskLink } from "../components/primitives";
 import { formatSeconds, formatTokens } from "../lib/money";
 
 type Props = { featureId: string; events: CCEvent[] };
@@ -22,7 +22,7 @@ export function FeatureOverview({ featureId, events }: Props) {
   }), { queue: 0, lease: 0, model: 0, verify: 0, blocked: 0 });
   const progression = progressionItems(dag);
   const currentMilestone = currentProgressionId(progression.items);
-  const nextTask = dag?.tasks.find((task) => !["completed", "complete", "done", "passed"].includes(task.status)) || dag?.tasks[0];
+  const nextTask = dag?.tasks.find((task) => !isDoneStatus(effectiveTaskStatus(task))) || dag?.tasks[0];
   const togglePause = async () => {
     setBusy(true);
     try {
@@ -40,6 +40,12 @@ export function FeatureOverview({ featureId, events }: Props) {
           <span className="mono cc-banner-tag">PAUSED</span>
           <div style={{ flex: 1 }}>New dispatch is blocked at the worker pre-gate. In-flight runs continue to completion.</div>
           <PauseButton paused onClick={togglePause} />
+        </div>
+      )}
+      {data?.state === "aborted" && (
+        <div className="cc-banner cc-banner-pause">
+          <span className="mono cc-banner-tag">{data.abort_reason || "unknown"}</span>
+          <div style={{ flex: 1 }}>{data.abort_detail || "Feature aborted without additional detail."}</div>
         </div>
       )}
       <div className="cc-hero">
@@ -64,7 +70,7 @@ export function FeatureOverview({ featureId, events }: Props) {
         <Stat k="elapsed wall-clock" v={formatSeconds(data?.running_seconds)} d={<span className="cc-dim">{wallSummary(wallMix)}</span>} />
         <Stat k="runs · attempts" v={`${data?.runs || 0} · ${runRows.reduce((sum, row) => sum + Number(row.attempt || 0), 0)}`} d={<span className="cc-dim">all roles</span>} />
         <Stat k="tokens in" v={formatTokens(data?.input_tokens)} d={<span className="cc-tok-cached">{formatTokens(data?.cached_input_tokens)} cached</span>} />
-        <Stat k="next claimable" v={nextTask ? shortId(nextTask.id) : "-"} d={nextTask ? <RoleBadge role={nextTask.role} /> : <span className="cc-dim">none</span>} />
+        <Stat k="next claimable" v={nextTask ? <TaskLink featureId={featureId} taskId={nextTask.id} /> : "-"} d={nextTask ? <RoleBadge role={nextTask.role} /> : <span className="cc-dim">none</span>} />
         <Stat k="savings" v={formatTokens((data?.token_savior_saved_tokens || 0) + (data?.rtk_saved_tokens || 0))} d={<span className="cc-dim">Token Savior + RTK</span>} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, minHeight: 0, flex: 1 }}>
@@ -72,8 +78,8 @@ export function FeatureOverview({ featureId, events }: Props) {
           <div className="cc-ms-track">
             {progression.items.map((milestone) => {
               const tasks = milestone.tasks;
-              const passed = tasks.filter((task) => ["completed", "complete", "done", "passed"].includes(task.status)).length;
-              const running = tasks.filter((task) => ["active", "running"].includes(task.status)).length;
+              const passed = tasks.filter((task) => isDoneStatus(effectiveTaskStatus(task))).length;
+              const running = tasks.filter((task) => ["active", "running", "leased"].includes(effectiveTaskStatus(task))).length;
               const cur = milestone.id === currentMilestone;
               return (
                 <div className={`cc-ms ${isMilestoneSigned(tasks) ? "is-signed" : cur ? "is-current" : ""}`} key={milestone.id}>
@@ -83,7 +89,7 @@ export function FeatureOverview({ featureId, events }: Props) {
                   </div>
                   <div className="cc-ms-label">{milestone.label}</div>
                   <div className="cc-ms-bar">
-                    {tasks.map((task) => <i key={task.id} className={`cc-ms-dot st-${statusClass(task.status)}`} title={`${task.id} · ${task.role}`} />)}
+                    {tasks.map((task) => <i key={task.id} className={`cc-ms-dot st-${statusClass(effectiveTaskStatus(task))}`} title={`${task.id} · ${task.role} · ${effectiveTaskStatus(task)}`} />)}
                   </div>
                   <div className="cc-ms-meta mono cc-dim">{passed}/{tasks.length} done{running ? ` · ${running} active` : ""}{isMilestoneSigned(tasks) ? " · signed" : cur ? " · in progress" : " · locked"}</div>
                 </div>
@@ -122,8 +128,16 @@ function statusClass(status: string) {
   return "queue";
 }
 
-function isMilestoneSigned(tasks: Array<{ status: string }>) {
-  return tasks.length > 0 && tasks.every((task) => ["completed", "complete", "done", "passed", "pass"].includes(task.status));
+function isDoneStatus(status: string) {
+  return ["completed", "complete", "done", "passed", "pass"].includes(status);
+}
+
+function effectiveTaskStatus(task: DagPayload["tasks"][number]) {
+  return String(task.last_run?.status || task.status || "queued");
+}
+
+function isMilestoneSigned(tasks: DagPayload["tasks"]) {
+  return tasks.length > 0 && tasks.every((task) => isDoneStatus(effectiveTaskStatus(task)));
 }
 
 function signedMilestones(dag?: DagPayload) {
@@ -168,7 +182,7 @@ function signedProgression(items: ProgressionItem[]) {
 }
 
 function currentProgressionId(items: ProgressionItem[]) {
-  return items.find((item) => item.tasks.some((task) => ["active", "running", "blocked"].includes(task.status)))?.id || items[0]?.id;
+  return items.find((item) => item.tasks.some((task) => ["active", "running", "leased", "blocked"].includes(effectiveTaskStatus(task))))?.id || items[0]?.id;
 }
 
 function sliceLabel(id: string) {

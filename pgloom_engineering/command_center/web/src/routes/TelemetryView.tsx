@@ -1,5 +1,5 @@
 import { useApi, type ModelUsageRow, type RunRow } from "../api";
-import { CostCell, Panel, RoleBadge, Stat, StatusPill, TokenCell, WallClockBar } from "../components/primitives";
+import { CostCell, Panel, RoleBadge, Stat, StatusPill, TaskLink, TokenCell, WallClockBar } from "../components/primitives";
 import { formatMicros, formatSeconds, formatTokens } from "../lib/money";
 
 export function TelemetryView({ featureId }: { featureId: string }) {
@@ -89,7 +89,7 @@ export function TelemetryView({ featureId }: { featureId: string }) {
             {rows.slice().reverse().map((r) => (
               <tr key={r.id}>
                 <td className="mono">{r.id}</td>
-                <td className="mono cc-dim">{r.task_id || "-"}</td>
+                <td><TaskLink featureId={featureId} taskId={r.task_id} subtle /></td>
                 <td><RoleBadge role={r.role} /></td>
                 <td className="mono cc-dim">{r.model || r.model_provider || "-"}</td>
                 <td><StatusPill status={r.status} /></td>

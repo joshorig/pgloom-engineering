@@ -7,6 +7,9 @@ export type FeatureRow = {
   branch?: string;
   state: string;
   paused?: boolean;
+  abort_reason?: string | null;
+  abort_detail?: string | null;
+  aborted_at?: string | null;
   cost_usd_micros?: number;
   runs?: number;
   roles_seen?: string;
@@ -48,6 +51,9 @@ export type RunRow = {
   blocked_seconds?: number | null;
   running_seconds?: number | null;
   cost_usd_micros: number;
+  council_run_id?: string | null;
+  terminal_reason?: string | null;
+  terminal_detail?: string | null;
   started_at?: string | null;
 };
 
@@ -116,6 +122,47 @@ export type DagPayload = {
     last_run?: RunRow;
   }>;
   edges: Array<{ from: string; to: string; kind: string }>;
+};
+
+export type TaskHeader = {
+  task_id: string;
+  feature_id: string;
+  plan_contract_id?: string;
+  role: string;
+  status: string;
+  runtime_state?: string | null;
+  task_type?: string | null;
+  slot?: string | null;
+  milestone_id?: string | null;
+  task_slice_id?: string | null;
+  input_contract?: Record<string, unknown>;
+  output_contract?: Record<string, unknown>;
+  validation_errors?: unknown[];
+  terminal_reason?: string | null;
+  terminal_detail?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CouncilRow = {
+  id: string;
+  feature_id: string;
+  task_id?: string | null;
+  role?: string | null;
+  purpose?: string | null;
+  status?: string | null;
+  legacy?: boolean;
+  critic_verdict?: string | null;
+  cost_usd_micros?: number | null;
+  total_tokens?: number | null;
+  metadata?: Record<string, unknown>;
+  iterations_used?: number | null;
+  iteration_max?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  panelists?: Array<Record<string, unknown>>;
+  worker_runs?: RunRow[];
+  report?: Record<string, unknown>;
 };
 
 export type CCEvent = {

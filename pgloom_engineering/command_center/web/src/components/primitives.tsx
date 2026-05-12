@@ -1,4 +1,4 @@
-import { Activity, Command, GitBranch, LayoutDashboard, Network, Pause, Play, Radio, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { Activity, Command, GitBranch, LayoutDashboard, Network, Pause, Play, Radio, Search, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import type { ReactNode } from "react";
 import { formatMicros, formatSeconds, formatTokens } from "../lib/money";
 
@@ -98,6 +98,7 @@ export function Stat({ k, v, d }: { k: string; v: ReactNode; d?: ReactNode }) {
 export const routeTabs = [
   { id: "", label: "Overview", icon: LayoutDashboard },
   { id: "dag", label: "DAG", icon: Network },
+  { id: "councils", label: "Councils", icon: UsersRound },
   { id: "handoffs", label: "Handoffs", icon: GitBranch },
   { id: "validation", label: "Validation", icon: ShieldCheck },
   { id: "telemetry", label: "Telemetry", icon: Activity },
@@ -164,4 +165,31 @@ export function LiveEventStrip({ events }: { events: Array<{ kind: string; row_i
       ))}
     </div>
   );
+}
+
+export function TaskLink({
+  featureId,
+  taskId,
+  label,
+  subtle = false
+}: {
+  featureId?: string | null;
+  taskId?: string | null;
+  label?: string;
+  subtle?: boolean;
+}) {
+  if (!featureId || !taskId) return <span className="mono cc-dim">-</span>;
+  return (
+    <a
+      className={`cc-tasklink ${subtle ? "is-subtle" : ""}`}
+      href={`/feature/${featureId}/task/${encodeURIComponent(taskId)}`}
+      title={taskId}
+    >
+      <span className="mono">{label || shortTaskId(taskId)}</span>
+    </a>
+  );
+}
+
+function shortTaskId(id: string) {
+  return id.length > 18 ? `${id.slice(0, 8)}...${id.slice(-6)}` : id;
 }
