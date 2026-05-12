@@ -400,10 +400,15 @@ def _post_normalization_quality_errors(
         for finding in report.blocking_findings
     ]
     if allow_narrow_corrective_slice:
+        corrective_slice_exempt_codes = {
+            "hot_path_implementation_surface_missing",
+            "qa_author_missing_before_implementer",
+            "implementer_missing_qa_author_dependency",
+        }
         errors = [
             error
             for error in errors
-            if error.get("code") != "hot_path_implementation_surface_missing"
+            if error.get("code") not in corrective_slice_exempt_codes
         ]
     return errors
 

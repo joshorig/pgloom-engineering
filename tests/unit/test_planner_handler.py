@@ -805,6 +805,14 @@ def test_post_normalization_allows_narrow_corrective_hot_path_slice(
         error["code"] == "hot_path_implementation_surface_missing"
         for error in corrective_errors
     )
+    assert any(
+        error["code"] == "qa_author_missing_before_implementer"
+        for error in strict_errors
+    )
+    assert not any(
+        error["code"] == "qa_author_missing_before_implementer"
+        for error in corrective_errors
+    )
 
 
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
