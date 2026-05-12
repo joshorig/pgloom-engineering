@@ -45,6 +45,7 @@ def evaluate_production_grade(
     findings.extend(_path_scope_findings(plan, root))
     findings.extend(_same_slice_overlap_findings(plan))
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
+    findings.extend(_qa_author_dependency_findings(plan))
     findings.extend(_qa_benchmark_output_path_findings(plan))
     findings.extend(_qa_reflective_authoring_findings(plan))
     findings.extend(_qa_required_usertest_fixture_findings(plan, project_metadata or {}))
@@ -561,6 +562,69 @@ def _qa_required_usertest_fixture_findings(
             )
         )
     return findings
+
+
+def _qa_author_dependency_findings(plan: PlanContract) -> list[ProductionFinding]:
+    implementers = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.implement"
+    ]
+    if not implementers:
+        return []
+    qa_authors = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.qa.author"
+    ]
+    if not qa_authors:
+        return [
+            ProductionFinding(
+                severity="blocking",
+                code="qa_author_missing_before_implementer",
+                slice_id=implementers[0].slice_id,
+                message=(
+                    "Plans with implementer slices must include a QA author slice so "
+                    "implementation starts from authored failing tests and a QA worktree "
+                    "handoff."
+                ),
+            )
+        ]
+    qa_ids = {task_slice.slice_id for task_slice in qa_authors}
+    findings: list[ProductionFinding] = []
+    for implementer in implementers:
+        if any(_depends_on_transitively(plan, implementer.slice_id, qa_id) for qa_id in qa_ids):
+            continue
+        findings.append(
+            ProductionFinding(
+                severity="blocking",
+                code="implementer_missing_qa_author_dependency",
+                slice_id=implementer.slice_id,
+                message=(
+                    "Implementer slices must depend on a QA author slice so the "
+                    "workflow has a QA worktree handoff before implementation."
+                ),
+            )
+        )
+    return findings
+
+
+def _depends_on_transitively(plan: PlanContract, slice_id: str, dependency_id: str) -> bool:
+    by_id = {task_slice.slice_id: task_slice for task_slice in plan.task_slices}
+    seen: set[str] = set()
+    task_slice = by_id.get(slice_id)
+    stack = list(task_slice.depends_on if task_slice is not None else [])
+    while stack:
+        current = stack.pop()
+        if current == dependency_id:
+            return True
+        if current in seen:
+            continue
+        seen.add(current)
+        dependency = by_id.get(current)
+        if dependency is not None:
+            stack.extend(dependency.depends_on)
+    return False
 
 
 def _metadata_required_usertest_fixture_paths(

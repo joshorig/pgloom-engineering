@@ -171,6 +171,39 @@ def test_production_grade_accepts_metadata_usertest_fixture_output() -> None:
     ]
 
 
+def test_production_grade_requires_qa_author_before_implementer() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type != "engineering.qa.author"
+    ]
+
+    report = evaluate_production_grade(plan)
+
+    assert any(
+        finding.code == "qa_author_missing_before_implementer"
+        for finding in report.blocking_findings
+    )
+
+
+def test_production_grade_requires_implementer_dependency_on_qa_author() -> None:
+    plan = _plan_contract()
+    implementer = next(
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type == "engineering.implement"
+    )
+    implementer.depends_on = ["design"]
+
+    report = evaluate_production_grade(plan)
+
+    assert any(
+        finding.code == "implementer_missing_qa_author_dependency"
+        for finding in report.blocking_findings
+    )
+
+
 def test_production_grade_does_not_treat_no_boxing_tests_as_benchmarks() -> None:
     plan = _plan_contract()
     qa_author = plan.task_slices[1]
