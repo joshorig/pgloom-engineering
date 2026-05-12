@@ -178,8 +178,6 @@ def _usertest_fixture_assertion_findings(
         if not _looks_like_qa_fixture_path(path):
             continue
         lowered = text.lower()
-        if "system.out.print" not in lowered:
-            continue
         if not _context_mentions_any(lowered, ["ascendingrange", "descendingrange"]):
             continue
         if _fixture_has_failure_assertion_signal(text):
@@ -197,7 +195,7 @@ def _usertest_fixture_assertion_findings(
                 file=path,
                 line=_first_line_containing_any(
                     text,
-                    ["System.out.print", "System.out.println"],
+                    ["System.out.print", "System.out.println", "ascendingRange", "descendingRange"],
                 ),
             )
         )

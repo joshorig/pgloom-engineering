@@ -271,6 +271,33 @@ def test_semantic_review_blocks_observation_only_usertest_java_outside_qa_dir() 
     ] == ["qa_semantic_usertest_fixture_observes_without_asserting"]
 
 
+def test_semantic_review_blocks_usertest_fixture_without_failure_checks() -> None:
+    findings = review_semantic_quality(
+        files={
+            "tests/range-scan-user-journey.sh": """
+            javac RangeScanJourney.java
+            cat > RangeScanJourney.java <<'JAVA'
+            class RangeScanJourney {
+                void replay(LvcStore store, StoreVisitor visitor) {
+                    store.ascendingRange(0, 10, visitor);
+                    store.descendingRange(10, 0, visitor);
+                }
+            }
+            JAVA
+            """
+        },
+        plan_text="R-003 range scans need user-test replay evidence.",
+        task_text="Write a user journey replay fixture for the public API.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_usertest_fixture_observes_without_asserting"
+    ] == ["qa_semantic_usertest_fixture_observes_without_asserting"]
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={
