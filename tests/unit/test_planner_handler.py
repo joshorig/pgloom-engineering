@@ -11,6 +11,7 @@ from pgloom_engineering.contracts import (
 from pgloom_engineering.projects import ProjectConfig
 from pgloom_engineering.roles.planner import (
     _apply_corrective_slice_scope,
+    _apply_metadata_required_usertest_fixtures,
     _apply_replan_supersession,
     _assign_task_slice_milestones,
     _canonicalize_plan_feature_id,
@@ -1854,6 +1855,65 @@ def test_feature_scoped_verification_commands_drop_redundant_wildcard_test_filte
         ],
         ["./gradlew", ":store:compileJava"],
     ]
+
+
+def test_apply_metadata_required_usertest_fixtures_updates_qa_author() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["Range user-test replay"]),
+        affected_surfaces=["store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Write range scan tests.",
+                allowed_paths=["core/src/test/java/"],
+                forbidden_paths=["core/src/main/java/"],
+                expected_outputs=["core/src/test/java/RangeScanApiTest.java"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Model-drive a CLI replay through the public range API.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=["core/src/main/java/"],
+                depends_on=["qa-author"],
+                expected_outputs=["ValidationEvidence"],
+            ),
+        ],
+        acceptance_test_matrix=["range user-test replay passes"],
+    )
+
+    normalized = _apply_metadata_required_usertest_fixtures(
+        plan,
+        project_metadata={
+            "qa": {
+                "usertest_harness": {
+                    "kind": "cli_replay",
+                    "required_fixture_paths": ["qa/fixtures/range_scan_usertest.jsh"],
+                }
+            }
+        },
+    )
+
+    qa_author = normalized.task_slices[0]
+    assert "qa/fixtures/" in qa_author.allowed_paths
+    assert any(
+        "qa/fixtures/range_scan_usertest.jsh" in output
+        for output in qa_author.expected_outputs
+    )
+    assert any(
+        "qa/fixtures/range_scan_usertest.jsh" in requirement
+        for requirement in qa_author.handoff_requirements
+    )
+    assert not any(
+        "qa/fixtures/range_scan_usertest.jsh" in output
+        for output in plan.task_slices[0].expected_outputs
+    )
 
 
 def test_feature_scoped_verification_commands_drop_redundant_class_test_filter() -> None:

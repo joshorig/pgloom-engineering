@@ -76,6 +76,7 @@ class TaskSliceContract(BaseModel):
     context_budget: int | None = None
     model_route_hint: str | None = None
     required_procedures: list[str] = Field(default_factory=list)
+    handoff_requirements: list[str] = Field(default_factory=list)
     milestone_id: str | None = None
 
 

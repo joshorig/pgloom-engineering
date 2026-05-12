@@ -202,6 +202,10 @@ class PlannerHandler:
             contract,
             project_metadata=project_metadata,
         )
+        contract = _apply_metadata_required_usertest_fixtures(
+            contract,
+            project_metadata=project_metadata,
+        )
         normalized_quality_errors = _post_normalization_quality_errors(
             contract,
             project=project,
@@ -339,7 +343,14 @@ class PlannerHandler:
                     project_metadata=project_metadata,
                 ),
                 required_procedures=task_slice.required_procedures,
-                handoff_requirements=["produce TaskResultContract"],
+                handoff_requirements=list(
+                    dict.fromkeys(
+                        [
+                            *task_slice.handoff_requirements,
+                            "produce TaskResultContract",
+                        ]
+                    )
+                ),
                 role_gate=gate,
             )
             upsert_task_contract(child["id"], task_contract, database_url=database_url)
@@ -499,6 +510,93 @@ def _normalize_feature_scoped_plan_verification(
             "milestones": milestones,
         }
     )
+
+
+def _apply_metadata_required_usertest_fixtures(
+    contract: PlanContract,
+    *,
+    project_metadata: dict[str, Any],
+) -> PlanContract:
+    required_paths = _required_usertest_fixture_paths(project_metadata)
+    if not required_paths:
+        return contract
+    if not any(
+        task_slice.task_type == "engineering.qa.verify.usertest"
+        for task_slice in contract.task_slices
+    ):
+        return contract
+    task_slices = [task_slice.model_copy(deep=True) for task_slice in contract.task_slices]
+    qa_author = next(
+        (
+            task_slice
+            for task_slice in task_slices
+            if task_slice.task_type == "engineering.qa.author"
+        ),
+        None,
+    )
+    if qa_author is None:
+        return contract
+    for required_path in required_paths:
+        if _task_slice_mentions_text(qa_author, required_path):
+            continue
+        output = (
+            f"{required_path} model-driven user-test replay fixture exercising "
+            "the feature through the public surface"
+        )
+        handoff = (
+            f"handoff {required_path} to engineering.qa.verify.usertest as the "
+            "model-driven replay fixture"
+        )
+        qa_author.expected_outputs = list(
+            dict.fromkeys([*qa_author.expected_outputs, output])
+        )
+        qa_author.handoff_requirements = list(
+            dict.fromkeys([*qa_author.handoff_requirements, handoff])
+        )
+        fixture_root = _fixture_root(required_path)
+        if fixture_root and not any(
+            _path_prefix_overlaps(fixture_root, allowed)
+            for allowed in qa_author.allowed_paths
+        ):
+            qa_author.allowed_paths = list(
+                dict.fromkeys([*qa_author.allowed_paths, fixture_root])
+            )
+    return contract.model_copy(update={"task_slices": task_slices})
+
+
+def _required_usertest_fixture_paths(project_metadata: dict[str, Any]) -> list[str]:
+    qa = project_metadata.get("qa") if isinstance(project_metadata, dict) else None
+    harness = qa.get("usertest_harness") if isinstance(qa, dict) else None
+    if not isinstance(harness, dict) or harness.get("kind") == "none":
+        return []
+    raw_paths = harness.get("required_fixture_paths")
+    if not isinstance(raw_paths, list):
+        return []
+    paths: list[str] = []
+    for item in raw_paths:
+        if not isinstance(item, str):
+            continue
+        path = item.strip().replace("\\", "/").lstrip("./")
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def _task_slice_mentions_text(task_slice: TaskSliceContract, text: str) -> bool:
+    haystack = json.dumps(task_slice.model_dump(mode="json"), sort_keys=True)
+    return text in haystack
+
+
+def _fixture_root(path: str) -> str:
+    if "/" not in path:
+        return ""
+    return path.rsplit("/", 1)[0].rstrip("/") + "/"
+
+
+def _path_prefix_overlaps(left: str, right: str) -> bool:
+    left = left.strip().replace("\\", "/").rstrip("/") + "/"
+    right = right.strip().replace("\\", "/").rstrip("/") + "/"
+    return left.startswith(right) or right.startswith(left)
 
 
 def _normalize_validation_contract_required_gates(
