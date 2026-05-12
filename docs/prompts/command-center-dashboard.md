@@ -1,18 +1,25 @@
 # Implementor brief — Command Center dashboard and operator controls
 
-> **Status: implementor brief.** Command Center is the operator control surface
-> for autonomous engineering. It is not only a status page. It must show
-> progress, evidence, cost, token economy, wall-clock bottlenecks, recovery,
-> and allow audited interventions.
+> **Status: live implementation brief + status ledger (updated 2026-05-12).**
+> Command Center is the operator control surface for autonomous engineering.
+> It is not only a status page. It must show progress, evidence, cost, token
+> economy, wall-clock bottlenecks, recovery, and allow audited interventions.
+>
+> This document now distinguishes **current implementation** from **target
+> architecture**. Do not assume every target item below has shipped; use the
+> status ledger in §0 before planning or reviewing new work.
 >
 > **Locked decisions (Josh, 2026-05-09):**
 > 1. **Stack:** React + frontend build (Vite). Backend serves JSON; the SPA is
 >    its own build artifact.
 > 2. **Realtime:** Postgres `LISTEN/NOTIFY` bridged to a single WebSocket per
 >    client. No polling.
-> 3. **Auth (v1):** Local only. Backend binds `127.0.0.1` and refuses
->    non-loopback peers. No login.
-> 4. **DAG renderer:** Cytoscape.js (with `dagre` or `klay` layout).
+> 3. **Auth (v1):** No login. Current implementation binds `0.0.0.0` for
+>    Codex in-app browser / LAN access, then protects the browser boundary
+>    with Host-header and WebSocket Origin allowlists. Strict loopback bind
+>    remains available through local-only mode.
+> 4. **DAG renderer target:** Cytoscape.js (with `dagre` or `klay` layout).
+>    Current implementation uses an SVG lane DAG; Cytoscape remains open.
 > 5. **Replan-from-milestone semantics:** Planner inherits the prior
 >    consolidated plan as a baseline; it does not start from scratch.
 > 6. **Intervention audit:** Every operator click writes one row. Double-pause
@@ -20,6 +27,76 @@
 > 7. **Cost unit:** `usd_micros` (bigint) on the wire and in all aggregates.
 >    DB float columns are converted at the serializer boundary. Render-side
 >    only.
+
+## 0. Implementation status as of 2026-05-12
+
+### Shipped / live in PR #4
+
+- React + Vite Command Center SPA under
+  `pgloom_engineering/command_center/web/`, with FastAPI serving the built
+  artifact when `web/dist` exists.
+- FastAPI JSON API and WebSocket bridge in
+  `pgloom_engineering/command_center/app.py`, with read-side SQL in
+  `pgloom_engineering/command_center/store.py`.
+- Feature list, Feature overview, DAG, Handoffs, Validation, Telemetry,
+  Interventions, Realtime, global Slot occupancy, global Token economy,
+  Task view, Council list, and Council detail routes.
+- `TaskLink` design-system primitive for task-id cross-links; task IDs in
+  DAG, overview, handoff, validation fallback, Telemetry worker runs, Task
+  view rows, and Council detail use the same route pattern:
+  `/feature/:featureId/task/:taskId`.
+- Plan progression and DAG node status now prefer the latest worker-run status
+  when present, rather than only trusting static task-contract status.
+- Handoff list status now derives from related task run state when the
+  handoff row is stale.
+- Per-task API endpoints for header, runs, handoffs, QA, recovery,
+  interventions, artifacts, and telemetry roll-up.
+- Council list/detail APIs serve first-class `engineering_councils` rows and
+  legacy plan-contract `council_reports` through a read adapter with
+  `legacy: true`.
+- Abort reason columns from migration `016_abort_reason.sql` are read by the
+  API and surfaced on Feature overview and the optional `/features`
+  abort_reason column.
+- Host-header allowlist, WebSocket Origin allowlist, explicit dev CORS
+  (`CC_DEV_MODE=1`), synthetic `feature.update` after pause/resume, and
+  README documentation in `pgloom_engineering/command_center/README.md`.
+- Command Center cost fallback SQL uses
+  `greatest(output_tokens, reasoning_tokens + reasoning_output_tokens)` for
+  Codex fallback billing, avoiding reasoning-token double count.
+- CI-facing UI coverage exists through Playwright e2e and a GitHub Actions
+  workflow.
+
+### Partially implemented / target still open
+
+- DAG target is Cytoscape + dagre/klay. Current implementation is a custom SVG
+  lane DAG with task links and side-panel preview.
+- Backend target layout lists route modules under `command_center/routes/`.
+  Current implementation keeps route definitions in `app.py` and SQL helpers
+  in `store.py`.
+- Task view exists and is useful, but not all target sections are complete:
+  contract diff, self-repair issue thread, feature-wide interventions that
+  bracket task lifetime, full artifact side drawers, split-diff viewer, and
+  file-tree-with-hashes viewer remain open.
+- Council view exists and supports legacy councils, but the target
+  iteration timeline, consolidator diff lane, dissent panel, critic rubric
+  pane, and per-council telemetry breakdown are still shallow placeholders.
+- Replan-from-milestone button and dialog exist on the UI path, but complete
+  workflow consumption depends on the planner/recovery workflow side.
+- Feature list abort_reason is toggleable, not default-visible.
+- Live cache mutation currently refetches relevant SWR keys from event kinds;
+  per-row incremental patching and persisted DAG view state are still open.
+- `/api/features/{id}/councils/{council_id}/panelists`,
+  `/runs`, and `/diffs` are documented target endpoints, but current PR #4
+  serves council detail as one aggregate payload instead.
+
+### Verified on 2026-05-12
+
+- `uv run ruff check pgloom_engineering/command_center tests/unit/test_command_center.py tests/unit/test_model_provider.py`
+- `uv run pytest -q tests/unit/test_command_center.py tests/unit/test_model_provider.py`
+- `cd pgloom_engineering/command_center/web && npm run build`
+- `cd pgloom_engineering/command_center/web && npm run test:e2e`
+- Browser-use live review against `/features`, Feature overview, DAG,
+  Handoffs, Telemetry, Task, and Councils routes.
 
 ## 1. Scope
 
@@ -54,9 +131,9 @@ Use the name **Command Center** everywhere — package, route, page title, docs.
                                   v
 +-------------------+   +---------+----------+   +-------------------+
 |  React SPA (Vite) |<->|  FastAPI backend   |<->|  Operator action  |
-|  Cytoscape DAG    |   |  /api/* (JSON)     |   |  endpoints        |
+|  SVG DAG (now)    |   |  /api/* (JSON)     |   |  endpoints        |
 |  WebSocket client |   |  /ws  (broadcast)  |   |  insert into      |
-|                   |   |  binds 127.0.0.1   |   |  engineering_*    |
+|                   |   |  host/origin guard |   |  engineering_*    |
 +-------------------+   +--------------------+   +-------------------+
 ```
 
@@ -65,11 +142,12 @@ Backend layout (new package, lives inside `pgloom-engineering`):
 ```
 pgloom_engineering/command_center/
   __init__.py
-  app.py                  # FastAPI factory; binds 127.0.0.1 only
-  auth.py                 # loopback check middleware
+  app.py                  # FastAPI factory; current route definitions
+  auth.py                 # Host/Origin guard + optional loopback middleware
   realtime.py             # asyncpg LISTEN bridge -> websocket fan-out
   events.py               # NOTIFY channel + event schema
-  routes/
+  store.py                # current SQL/read-side API helpers
+  routes/                 # target split; not yet implemented as modules
     features.py           # /api/features, /api/features/{id}
     dag.py                # /api/features/{id}/dag
     runs.py               # /api/features/{id}/runs
@@ -106,7 +184,7 @@ pgloom_engineering/command_center/web/
     routes/
       FeaturesList.tsx
       FeatureOverview.tsx
-      DagView.tsx          # Cytoscape canvas
+      DagView.tsx          # current SVG lane DAG; Cytoscape still target
       TaskView.tsx         # per-task detail page
       CouncilView.tsx      # per-council deliberation page
       CouncilsList.tsx     # all councils for a feature
@@ -134,19 +212,23 @@ is `vite dev` with proxy to the API.
 Loopback is necessary but not sufficient — a malicious page in any browser
 the operator opens is also a loopback peer. The v1 hardening list:
 
-- **Bind**: FastAPI app binds `host="127.0.0.1"`. Refuse to start if config
-  requests a non-loopback host in v1.
-- **Peer check**: Middleware inspects `request.client.host` and rejects
-  anything that is not `127.0.0.1` or `::1` with HTTP 403.
-- **Host header check (DNS-rebind defence)**: Middleware rejects requests
-  whose `Host` header is not `127.0.0.1[:<port>]` or `localhost[:<port>]`.
-  This blocks DNS-rebound attacks where a tricked browser resolves an
-  attacker-controlled domain to 127.0.0.1.
-- **WebSocket handshake**: same loopback + Host checks, plus an `Origin`
-  allowlist: only accept WS upgrades whose `Origin` is `http://localhost:<port>`
-  or `http://127.0.0.1:<port>`. WebSockets bypass CORS at the browser, so
-  this Origin allowlist is the only thing stopping a tab on `evil.example`
-  from streaming your run telemetry.
+- **Bind**: current default is `host="0.0.0.0"` so the Codex in-app browser
+  and explicit LAN URL (`http://192.168...`) can reach the UI. Local-only mode
+  still validates loopback-only binds for stricter use.
+- **Peer check**: optional local-only middleware inspects
+  `request.client.host` and rejects anything that is not `127.0.0.1`, `::1`,
+  or `localhost` with HTTP 403.
+- **Host header check (DNS-rebind defence)**: middleware always rejects
+  requests whose `Host` header is not `127.0.0.1[:<port>]`,
+  `localhost[:<port>]`, or a concrete host from `CC_ALLOWED_HOSTS`. This
+  keeps the LAN/in-app browser workflow explicit while still blocking
+  DNS-rebound names.
+- **WebSocket handshake**: same Host check, plus an `Origin` allowlist:
+  accept WS upgrades whose `Origin` host is `localhost`, `127.0.0.1`, or a
+  concrete host from `CC_ALLOWED_HOSTS`. In `CC_DEV_MODE=1`, also accept
+  Vite dev origins `http://localhost:5173` and `http://127.0.0.1:5173`.
+  WebSockets bypass CORS at the browser, so this Origin allowlist is the
+  browser-boundary control.
 - **CORS default-deny**: Do not enable `CORSMiddleware` with permissive
   origins. The SPA is same-origin (served by FastAPI from `web/dist/`), so
   no CORS is needed. If a developer wants to run `vite dev` against the
@@ -217,10 +299,13 @@ performs initial REST fetches, then opens the WebSocket. On `resync` or
 reconnect it refetches. Per-page React Query / SWR caches mutate from the
 incoming events.
 
-## 5. DAG view (Cytoscape)
+## 5. DAG view (current SVG lane DAG; target Cytoscape)
 
-- Renderer: `cytoscape@^3` + `cytoscape-dagre` for layered layout (LR, with
-  milestone columns).
+- Current renderer: custom SVG lane DAG in `web/src/routes/DagView.tsx`.
+  It renders role lanes, milestone/slice columns, dependency edges, a
+  side-panel preview, and Task view links.
+- Target renderer: `cytoscape@^3` + `cytoscape-dagre` for layered layout
+  (LR, with milestone columns). This remains open.
 - Nodes: one per `engineering_task_contracts` row. Style by role (`planner`,
   `implementer`, `reviewer`, `qa.author`, `qa.verify.scrutiny`,
   `qa.verify.usertest`). Status pill via border colour + glyph.
@@ -230,10 +315,10 @@ incoming events.
 - Click a node → opens the Task view (`/feature/:id/task/:taskId`, see §8a).
   A lightweight side-panel preview is acceptable on hover, but the canonical
   detail surface is the dedicated Task view.
-- Live updates: `task.update` events patch the node in place. New tasks
-  trigger an incremental layout (don't relayout the world on every tick).
+- Current live updates: SWR cache refetches relevant feature keys after
+  matching realtime events. Per-node incremental patching is still open.
 - Persist user view state (zoom, pan, expanded milestones) in `localStorage`
-  keyed by feature id.
+  keyed by feature id. This remains open.
 
 The dataset endpoint `/api/features/{id}/dag` returns:
 
@@ -364,7 +449,8 @@ Minimum useful views, each its own route under `/feature/:id/...`:
 - **Feature overview**: requirements snippet, plan hash, current milestone,
   next claimable task, blockers, cumulative cost, elapsed time, paused
   banner if applicable, recent interventions strip.
-- **DAG view**: Cytoscape canvas (see §5) with side panel.
+- **DAG view**: current SVG lane DAG with side panel; Cytoscape target
+  remains open (see §5).
 - **Task view** (see §8a): everything about a single task — contract,
   worker runs, handoffs in/out, QA signoffs, recovery, interventions
   scoped to the task, artifacts, telemetry roll-up.
@@ -384,7 +470,8 @@ Minimum useful views, each its own route under `/feature/:id/...`:
 
 Top-level `/features` route is a sortable table with the columns from
 `pgloom-review.sh list`: feature_id, project, branch, state, runs, cost_usd,
-roles_seen, last_blocker, created_at.
+roles_seen, last_blocker, created_at. Current UI also includes a toggleable
+`abort_reason` column.
 
 ## 8a. Task view
 
@@ -561,7 +648,9 @@ JSONB, with a read-side adapter exposing them through the same API.
 
 ### Route
 
-`/feature/:featureId/council/:councilId`. The feature also exposes
+Current route is `/feature/:featureId/councils/:councilId`. Earlier drafts
+used singular `/council/:councilId`; use the plural route going forward.
+The feature also exposes
 `/feature/:featureId/councils` — a list of every council that has run for
 the feature with role, purpose, status, iteration count, cost, and a link
 in.
@@ -701,6 +790,12 @@ contract for what the API returns. Wrap each section as a dedicated endpoint:
 | `GET /api/features/{id}/self-repair`          | section 11                                 |
 | `GET /api/features/{id}/dag`                  | derived from plans + tasks + worker_runs   |
 
+Current implementation note: PR #4 ships the task endpoints above and the
+aggregate council list/detail endpoints. The separate council `panelists`,
+`runs`, and `diffs` endpoints are still target endpoints; today the detail
+route returns panelists and worker runs inside one payload and does not yet
+serve consolidator diffs.
+
 Every cost field travels as integer `usd_micros` (1 USD = 1_000_000 micros).
 Pick once, document, never mix — micros gives headroom for sub-cent
 reasoning-token charges and avoids float drift in aggregates. Timestamps are
@@ -770,46 +865,46 @@ this slice cost too much, and where did the time go?"
   its own audit semantics.
 - Notifications outside the app (email, Slack). v2.
 
-## 13. Acceptance — done means
+## 13. Acceptance status — 2026-05-12
 
-1. `python -m pgloom_engineering.command_center` starts the API on
-   `127.0.0.1:<port>`, refuses non-loopback peers, and serves the built SPA.
-2. `cd pgloom_engineering/command_center/web && npm run build` produces a
-   working `dist/`.
-3. With one live feature in Postgres, the SPA's feature overview matches
-   `pgloom-review.sh review <id>` for every numeric field.
-4. Inserting a new `engineering_worker_runs` row appears in the open SPA
-   within 1 second without a manual refresh.
-5. Clicking Pause twice writes two rows in `engineering_operator_interventions`.
-6. Triggering replan-from-milestone produces a planner invocation whose input
-   contract carries the prior consolidated plan as baseline, and whose output
-   is rejected if the frozen prefix is mutated.
-7. The Cytoscape DAG renders the R17-shape feature (planner + qa.author +
-   implementer + reviewer + qa.verify.scrutiny + qa.verify.usertest) with
-   correct dependency edges and milestone columns.
-8. The Task view renders for any task_id in the feature and shows: contract,
-   every worker run, in/out handoffs, scoped QA signoffs, scoped recovery,
-   scoped interventions, deduped artifacts, and a per-task telemetry
-   roll-up. A new `engineering_worker_runs` insert for the open task appears
-   live.
-9. The Council view renders for any council_id and shows the iteration
-   timeline with panelist tiles, the consolidator-diff lane between
-   iterations, the dissent panel, the critic verdict pane, joined
-   worker_runs, the outcome pointer, and a per-council telemetry roll-up.
-   Reviewer councils render through the same view with no reviewer-specific
-   code path. Inserting an `engineering_council_panelists` row for an open
-   council updates the relevant iteration column live.
-10. Pre-016 plan councils render through the legacy adapter with a
-    "legacy" badge and "unavailable (legacy)" placeholders for
-    per-panelist timing/cost.
-11. Every `engineering_features.state = 'aborted'` transition writes a
-    structured `abort_reason` (one of: `operator_kill`,
-    `supervisor_timeout`, `lifecycle_error`, `external_signal`, `unknown`)
-    plus a free-text `abort_detail`. Command Center surfaces both on the
-    Feature overview header and in the abort row of the worker-runs
-    timeline. This is the diagnostic that resolves the r38-r57 17/20
-    abort-rate opacity.
-12. `Origin`-header allowlist on WS upgrade rejects connections whose
-    Origin is anything other than `http://localhost:<port>` or
-    `http://127.0.0.1:<port>`. `Host`-header allowlist on every HTTP and
-    WS request rejects DNS-rebound names. Test fixtures cover both.
+1. Done: `python -m pgloom_engineering.command_center` starts the API, serves
+   the built SPA when `dist/` exists, and applies Host / WS Origin guards.
+   Current default bind is `0.0.0.0` for Codex in-app browser and LAN access;
+   local-only loopback mode remains available.
+2. Done: `cd pgloom_engineering/command_center/web && npm run build` produces
+   a working `dist/`.
+3. Partial: live feature, overview, telemetry, token, and slot surfaces read
+   from Postgres. Exact parity against `pgloom-review.sh review <id>` for
+   every numeric field still needs a dedicated comparison test.
+4. Partial: the realtime bridge and SWR refetch are implemented. A full
+   browser assertion that a fresh `engineering_worker_runs` insert appears in
+   the open SPA within 1 second remains open.
+5. Done: Pause / Resume write `engineering_operator_interventions` rows and
+   emit synthetic `feature.update` notifications after successful mutation.
+6. Partial: the UI can post `replan_from_milestone` interventions. Workflow
+   consumption of the baseline consolidated plan and frozen-prefix rejection is
+   workflow-side and remains outside this UI PR.
+7. Partial: the current SVG lane DAG renders task status, dependency edges,
+   stage lanes, milestones, and task links. The original Cytoscape renderer
+   target remains open.
+8. Partial: the Task view renders for task ids and shows contract, worker
+   runs, handoffs, QA, recovery, interventions, artifacts, and telemetry. The
+   richer target is still missing a contract diff, self-repair thread,
+   bracketed feature-wide interventions, artifact drawers / split diff / file
+   tree viewers, and live insert e2e coverage.
+9. Partial: the Council list and detail routes exist, use the legacy adapter,
+   and join panelists / worker runs into the current detail payload. The full
+   target remains open: iteration timeline, consolidator-diff lane, dissent
+   panel, critic verdict pane, per-council telemetry roll-up, separate
+   panelist/run/diff endpoints, and live panelist insert e2e coverage.
+10. Done: pre-016 plan councils render through the legacy adapter with a
+    legacy badge and unavailable placeholders where the historical payload
+    lacks per-panelist timing or cost.
+11. Partial: `abort_reason` and `abort_detail` are read from
+    `engineering_features`, exposed in list / overview surfaces, and can be
+    toggled from the feature list. The worker-runs abort row tooltip / icon is
+    still open.
+12. Done: `Origin`-header allowlist on WS upgrade and `Host`-header allowlist
+    on HTTP / WS requests are implemented and covered by tests, including
+    localhost, `127.0.0.1`, configured LAN hosts, and Vite dev origins when
+    `CC_DEV_MODE=1`.
