@@ -90,6 +90,80 @@ def test_run_workflow_stops_on_blocked_task(monkeypatch: Any) -> None:
     assert states == ["blocked"]
 
 
+def test_run_workflow_ignores_recovery_abandoned_tasks_when_done(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        workflow_driver,
+        "get_feature_aggregate",
+        lambda *args, **kwargs: _aggregate(
+            [
+                {
+                    "id": "old-impl",
+                    "slot": "implementer",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                },
+                {
+                    "id": "new-impl",
+                    "slot": "implementer",
+                    "state": "done",
+                },
+                {
+                    "id": "new-review",
+                    "slot": "reviewer",
+                    "state": "done",
+                },
+                {
+                    "id": "new-scrutiny",
+                    "slot": "qa-scrutiny",
+                    "state": "done",
+                },
+                {
+                    "id": "new-usertest",
+                    "slot": "qa-usertest",
+                    "state": "done",
+                },
+            ]
+        ),
+    )
+    states: list[str] = []
+    monkeypatch.setattr(
+        workflow_driver,
+        "update_feature_state",
+        lambda _feature_id, *, state, database_url=None, **kwargs: states.append(state),
+    )
+
+    result = workflow_driver.run_workflow("feature-1")
+
+    assert result == {"status": "done", "feature_id": "feature-1", "steps": []}
+    assert states == ["ready_for_finalization"]
+
+
+def test_run_workflow_still_fails_unexplained_abandoned_tasks(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        workflow_driver,
+        "get_feature_aggregate",
+        lambda *args, **kwargs: _aggregate(
+            [
+                {"id": "old-impl", "slot": "implementer", "state": "abandoned"},
+                {"id": "new-impl", "slot": "implementer", "state": "done"},
+            ]
+        ),
+    )
+
+    result = workflow_driver.run_workflow("feature-1")
+
+    assert result == {
+        "status": "failed",
+        "feature_id": "feature-1",
+        "task_ids": ["old-impl"],
+        "steps": [],
+    }
+
+
 def test_run_workflow_ignores_dependency_waiting_blocked_tasks(monkeypatch: Any) -> None:
     aggregates = [
         _aggregate(

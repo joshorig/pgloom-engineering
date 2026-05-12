@@ -121,7 +121,12 @@ def _terminal_status(aggregate: dict[str, Any]) -> dict[str, Any] | None:
             "task_ids": [str(task["id"]) for task in human_gate],
         }
     if all(str(task.get("state")) in TERMINAL_STATES for task in tasks):
-        failed = [task for task in tasks if str(task.get("state")) != "done"]
+        failed = [
+            task
+            for task in tasks
+            if str(task.get("state")) != "done"
+            and not _terminal_task_superseded_by_recovery(task)
+        ]
         if failed:
             return {
                 "status": "failed",
@@ -130,6 +135,17 @@ def _terminal_status(aggregate: dict[str, Any]) -> dict[str, Any] | None:
             }
         return {"status": "done", "feature_id": feature_id}
     return None
+
+
+def _terminal_task_superseded_by_recovery(task: dict[str, Any]) -> bool:
+    state = str(task.get("state") or "")
+    if state not in {"abandoned", "superseded"}:
+        return False
+    reason = str(task.get("terminal_reason") or "")
+    return reason in {
+        "workflow_recovery_replan",
+        "operator_replan_from_milestone",
+    }
 
 
 def _ready_slots(aggregate: dict[str, Any]) -> list[str]:
