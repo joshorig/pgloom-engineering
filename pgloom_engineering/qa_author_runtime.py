@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -182,6 +183,54 @@ def semantic_quality_findings(
         project_metadata=project_metadata,
     )
     return [finding.asdict() for finding in findings]
+
+
+def required_qa_fixture_findings(
+    *,
+    task_contract: TaskContract,
+    changed_paths: list[str],
+) -> list[dict[str, Any]]:
+    required_paths = _required_qa_fixture_paths(task_contract)
+    if not required_paths:
+        return []
+    changed = set(changed_paths)
+    findings: list[dict[str, Any]] = []
+    for path in required_paths:
+        if path in changed:
+            continue
+        findings.append(
+            {
+                "code": "qa_semantic_required_fixture_missing",
+                "severity": "blocking",
+                "message": (
+                    "The QA task contract requires a user-test or replay fixture, but "
+                    "qa.author did not create or modify that fixture path. Authored QA "
+                    "must preserve required fixture outputs so downstream user-test "
+                    "validation can exercise the feature through the intended harness."
+                ),
+                "file": path,
+            }
+        )
+    return findings
+
+
+def _required_qa_fixture_paths(task_contract: TaskContract) -> list[str]:
+    texts: list[str] = [
+        task_contract.objective,
+        *task_contract.expected_outputs,
+        *task_contract.handoff_requirements,
+        *task_contract.required_procedures,
+    ]
+    paths: list[str] = []
+    pattern = re.compile(r"\b(?:qa/fixtures|tests/fixtures)/[A-Za-z0-9._/+-]+")
+    for text in texts:
+        if not isinstance(text, str):
+            continue
+        for match in pattern.finditer(text):
+            path = match.group(0).rstrip(".,;:)")
+            if path not in paths:
+                paths.append(path)
+    return paths
 
 
 def add_configured_gate_matrix_coverage(
@@ -857,6 +906,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_restore_target_reuse",
         "qa_semantic_java_line_too_long",
         "qa_semantic_nonportable_generated_worktree_path",
+        "qa_semantic_required_fixture_missing",
         "qa_semantic_usertest_fixture_observes_without_asserting",
         "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_benchmark_parameterized_gate_mismatch",
@@ -1020,6 +1070,12 @@ def build_qa_quality_repair_prompt(
                     "For user-test fixture assertion findings, keep the replay transcript if "
                     "useful, but add explicit expected key/order/payload/variant checks that "
                     "throw AssertionError or otherwise fail the fixture when behavior is wrong."
+                ),
+                (
+                    "For required fixture missing findings, create or modify the exact "
+                    "qa/fixtures or tests/fixtures path named by the finding. Do not replace "
+                    "a required user-test replay fixture with JUnit, Gradle, or benchmark-only "
+                    "coverage."
                 ),
                 "Run the narrowest compile/test command for repaired files before returning.",
                 "Return only a valid QAAuthorContract JSON object for the repaired files.",

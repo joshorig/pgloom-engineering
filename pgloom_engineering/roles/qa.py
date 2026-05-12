@@ -48,6 +48,7 @@ from pgloom_engineering.qa_author_runtime import (
     qa_model_route,
     qa_quality_repairable,
     red_proof_verification_commands,
+    required_qa_fixture_findings,
     route_model_command,
     semantic_quality_findings,
     verification_commands,
@@ -657,6 +658,12 @@ class QAHandler:
                 plan=plan,
                 task_contract=task_contract,
                 project_metadata=project.metadata,
+            )
+            semantic_findings.extend(
+                required_qa_fixture_findings(
+                    task_contract=task_contract,
+                    changed_paths=touched,
+                )
             )
             blocking_semantic_findings = [
                 finding for finding in semantic_findings if finding.get("severity") == "blocking"

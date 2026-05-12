@@ -20,6 +20,7 @@ from pgloom_engineering.qa_author_runtime import (
     build_qa_quality_repair_prompt,
     qa_model_route,
     qa_quality_repairable,
+    required_qa_fixture_findings,
     route_model_command,
 )
 from pgloom_engineering.roles.qa import QAHandler, normalize_qa_result_payload
@@ -2154,6 +2155,58 @@ def test_qa_quality_repairable_accepts_java_line_length_finding() -> None:
                 },
             ]
         }
+    )
+
+
+def test_required_qa_fixture_findings_block_missing_contract_fixture() -> None:
+    task_contract = _task_contract().model_copy(
+        update={
+            "expected_outputs": [
+                "qa/fixtures/range_scan_usertest.jsh public API replay fixture",
+            ],
+            "allowed_paths": ["tests/", "qa/fixtures/"],
+        }
+    )
+
+    findings = required_qa_fixture_findings(
+        task_contract=task_contract,
+        changed_paths=[
+            "core/src/test/java/com/example/RangeScanApiTest.java",
+            "conformance-tests/src/test/java/com/example/RangeScanConformanceTest.java",
+        ],
+    )
+
+    assert findings == [
+        {
+            "code": "qa_semantic_required_fixture_missing",
+            "severity": "blocking",
+            "message": (
+                "The QA task contract requires a user-test or replay fixture, but "
+                "qa.author did not create or modify that fixture path. Authored QA "
+                "must preserve required fixture outputs so downstream user-test "
+                "validation can exercise the feature through the intended harness."
+            ),
+            "file": "qa/fixtures/range_scan_usertest.jsh",
+        }
+    ]
+
+
+def test_required_qa_fixture_findings_allow_touched_contract_fixture() -> None:
+    task_contract = _task_contract().model_copy(
+        update={
+            "expected_outputs": [
+                "qa/fixtures/range_scan_usertest.jsh public API replay fixture",
+            ],
+            "allowed_paths": ["tests/", "qa/fixtures/"],
+        }
+    )
+
+    assert (
+        required_qa_fixture_findings(
+            task_contract=task_contract,
+            changed_paths=["qa/fixtures/range_scan_usertest.jsh"],
+        )
+        == []
     )
 
 
