@@ -75,19 +75,16 @@ projects:
             broad_gate_markers:
               - ":conformance-tests:test"
               - RangeScanConformanceTest
-            broad_gate_exempt_markers:
-              - single
-              - double
-              - direct
-              - mmap
+            broad_gate_exempt_markers: []
         example_tests:
           - store/src/test/java
-          - conformance-tests/src/test/java
         quality_gates:
           - Preserve zero-allocation hot paths for store and publish behavior.
           - Prefer module-local Gradle tests over detached top-level tests.
           - Use feature-scoped Gradle compile/test commands plus direct :benchmarks:jmhSmokeCheck with smoke properties for per-feature allocation-sensitive validation.
           - Treat qa/smoke.sh as a broad project smoke gate, not a per-feature QA scrutiny blocker.
+          - Treat :conformance-tests:test as a broad adapter/conformance gate for this project; do not use it as a per-feature R-003 blocker because it compiles unrelated guaranteed and SBE modules.
+          - Put R-003 range behavior coverage in store/src/test/java module-local tests, with the public API smoke in core/src/test/java.
           - JMH benchmark methods must allocate no garbage after @Setup.
           - Cold restore JMH benchmarks must use SingleShotTime with enough preallocated fresh targets for warmup plus measurement, or an explicit project-approved reset outside measured methods.
           - Failed or staged journal writes must not advance restored durable cursors.
@@ -114,6 +111,8 @@ projects:
               - gradlew test
               - ./gradlew check
               - gradlew check
+              - :conformance-tests:test
+              - RangeScanConformanceTest
               - :benchmarks:jmhSmokeCheck
             commands:
               - - ./gradlew
@@ -123,7 +122,7 @@ projects:
                 - :core:checkstyleMain
                 - :store:checkstyleMain
                 - :core:checkstyleTest
-                - :conformance-tests:checkstyleTest
+                - :store:checkstyleTest
                 - :benchmarks:checkstyleJmh
                 - --continue
               - - ./gradlew
@@ -131,9 +130,9 @@ projects:
                 - --tests
                 - com.joshorig.ull.lvc.api.RangeScanApiTest
               - - ./gradlew
-                - :conformance-tests:test
+                - :store:test
                 - --tests
-                - com.joshorig.ull.lvc.conformance.RangeScanConformanceTest
+                - com.joshorig.ull.lvc.store.RangeScanStoreTest
               - - ./gradlew
                 - --no-daemon
                 - --console=plain
@@ -194,6 +193,7 @@ projects:
               - RangeScanBenchmark must exercise ascending, descending, and prefix-filtered public StoreVisitor scans
               - benchmark visitors, stores, buffers, temp files, and fixture data are created in setup, not benchmark methods
             rejects:
+              - conformance-tests as the per-feature R-003 Gradle test gate; use store/src/test/java/com/joshorig/ull/lvc/store/RangeScanStoreTest.java instead
               - long-key API drift for R-003 integer slot keys
               - StoreVisitor.visit instead of StoreVisitor.onEntry
               - prefix tests that only prove overload presence
@@ -202,6 +202,7 @@ projects:
               - trimming trailing zero bytes to infer payload length
         behavior_coverage_rules:
           - R-003 QA must compile against the typed public API directly; do not use reflection or null receivers for API checks.
+          - R-003 behavior tests must live in store/src/test/java/com/joshorig/ull/lvc/store/RangeScanStoreTest.java for per-feature validation; do not use conformance-tests as the per-feature blocker.
           - R-003 prefix tests must include both matching and non-matching prefixes against logical integer keys.
           - R-003 benchmark smoke must cover ascending, descending, and prefix-filtered visitor scans.
           - R-003 tests must guard existing fixed-slot semantics: invalid/out-of-range slots must not alias valid slots.
