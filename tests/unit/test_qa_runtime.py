@@ -59,6 +59,31 @@ def test_qa_verify_failure_excerpt_preserves_jmh_no_matching_benchmark() -> None
     assert "Miss-spelled regexp" in excerpt
 
 
+def test_qa_verify_failure_excerpt_prioritizes_threshold_diagnostics() -> None:
+    item = SimpleNamespace(
+        stdout_excerpt=(
+            "> Task :benchmarks:jmh\n"
+            "> Task :benchmarks:jmhSmokeCheck FAILED\n"
+            "15 actionable tasks: 5 executed, 10 up-to-date"
+        ),
+        stderr_excerpt=(
+            "Execution failed for task ':benchmarks:jmhSmokeCheck'.\n"
+            "JMH smoke GC gate failed:\n"
+            "- RangeScanBenchmark.ascendingRange [backend=mmap, variant=single] "
+            "allocated 0.178 B/op, above threshold 0.005 B/op\n"
+            "- RangeScanBenchmark.descendingRange [backend=mmap, variant=double] "
+            "allocated 0.283 B/op, above threshold 0.005 B/op\n"
+            "BUILD FAILED in 10s"
+        ),
+    )
+
+    excerpt = _qa_verify_failure_excerpt(item)
+
+    assert excerpt.startswith("- RangeScanBenchmark.ascendingRange")
+    assert "allocated 0.178 B/op" in excerpt
+    assert "above threshold 0.005 B/op" in excerpt
+
+
 def test_run_qa_verification_returns_canonical_red_proof(tmp_path: Path) -> None:
     tmp_path.joinpath("test_red.py").write_text("def test_red():\n    assert False\n")
 

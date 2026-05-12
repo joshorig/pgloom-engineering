@@ -1271,22 +1271,31 @@ def _qa_verify_failure_excerpt(item: Any) -> str:
         return ""
     text = "\n".join(parts)
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    priority_markers = [
+        "above threshold",
+        "allocated",
+        "no matching benchmarks",
+        "miss-spelled regexp",
+        "cannot find symbol",
+        "missing",
+    ]
     diagnostic_markers = [
+        *priority_markers,
         "failed",
         "failure",
         "error",
         "exception",
-        "allocated",
-        "above threshold",
-        "missing",
-        "no matching benchmarks",
-        "miss-spelled regexp",
-        "cannot find symbol",
     ]
-    diagnostic_lines = [
-        line for line in lines if any(marker in line.lower() for marker in diagnostic_markers)
+    priority_lines = [
+        line for line in lines if any(marker in line.lower() for marker in priority_markers)
     ]
-    selected = diagnostic_lines or lines
+    other_diagnostic_lines = [
+        line
+        for line in lines
+        if line not in priority_lines
+        and any(marker in line.lower() for marker in diagnostic_markers)
+    ]
+    selected = [*priority_lines, *other_diagnostic_lines] or lines
     return " ".join(" ".join(selected).split())
 
 
