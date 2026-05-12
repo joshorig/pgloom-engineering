@@ -212,6 +212,65 @@ def test_semantic_review_allows_prefix_range_with_seeded_matching_key() -> None:
     ] == []
 
 
+def test_semantic_review_resolves_constants_for_prefix_seed_checks() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                private static final int PREFIX_VALUE = 0b001010;
+                private static final int PREFIX_BITS = 6;
+                private static final int PREFIX_RANGE_START = 40;
+                private static final int PREFIX_RANGE_END = 63;
+                private static final int PREFIX_MATCHING_KEY = 42;
+
+                void prefixSmoke(LvcStore store, StoreVisitor visitor) {
+                    store.writeBuffer(PREFIX_MATCHING_KEY, payload, 0, 8);
+                    store.ascendingRange(
+                        PREFIX_RANGE_START,
+                        PREFIX_RANGE_END,
+                        PREFIX_VALUE,
+                        PREFIX_BITS,
+                        visitor);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans require prefix filtering.",
+        task_text="Write Java tests for prefix range behavior.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_no_seeded_match"
+    ] == ["qa_semantic_range_prefix_no_seeded_match"]
+
+
+def test_semantic_review_blocks_observation_only_usertest_java_outside_qa_dir() -> None:
+    findings = review_semantic_quality(
+        files={
+            "conformance-tests/src/test/java/com/example/RangeScanUsertestMain.java": """
+            class RangeScanUsertestMain {
+                void replay(LvcStore store, StoreVisitor visitor) {
+                    store.ascendingRange(0, 10, visitor);
+                    System.out.println("keys=" + visitor);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans need user-test replay evidence.",
+        task_text="Write a usertest replay main for the public API.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_usertest_fixture_observes_without_asserting"
+    ] == ["qa_semantic_usertest_fixture_observes_without_asserting"]
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={

@@ -152,6 +152,9 @@ def _looks_like_qa_fixture_path(path: str) -> bool:
         "/qa/" in lowered
         or lowered.startswith("qa/")
         or "/fixtures/" in lowered
+        or "usertest" in lowered
+        or "user-test" in lowered
+        or "replay" in lowered
         or lowered.endswith((".sh", ".bash", ".zsh"))
     )
 
@@ -1084,7 +1087,8 @@ def _range_prefix_seed_findings(
     for path, text in files.items():
         if not path.endswith(".java") or "test" not in path.lower():
             continue
-        written_keys = set(_literal_write_buffer_keys(text))
+        constants = _java_int_constants(text)
+        written_keys = set(_literal_write_buffer_keys(text, constants))
         if not written_keys:
             continue
         for call in _literal_prefix_range_calls(text):
@@ -1121,10 +1125,13 @@ def _range_prefix_seed_findings(
     return findings
 
 
-def _literal_write_buffer_keys(text: str) -> list[int]:
+def _literal_write_buffer_keys(text: str, constants: dict[str, int]) -> list[int]:
     keys: list[int] = []
-    for match in re.finditer(r"\.writeBuffer\s*\(\s*([-+]?0x[0-9a-fA-F]+|[-+]?\d+)", text):
-        keys.append(_java_int_literal(match.group(1)))
+    int_token = r"(?:[A-Za-z_][A-Za-z0-9_]*|0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)"
+    for match in re.finditer(r"\.writeBuffer\s*\(\s*(" + int_token + ")", text):
+        value = _java_int_token(match.group(1), constants)
+        if value is not None:
+            keys.append(value)
     return keys
 
 
