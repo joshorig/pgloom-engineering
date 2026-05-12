@@ -592,7 +592,15 @@ class QAHandler:
                 )
             except Exception as exc:
                 touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
-                if touched and contract_repair_attempts < max_contract_repair_attempts:
+                synthesized = _synthesize_qa_author_contract_from_touched_files(
+                    plan=plan,
+                    task_contract=task_contract,
+                    task_id=task_id,
+                    touched=touched,
+                )
+                if synthesized is not None:
+                    contract = synthesized
+                elif touched and contract_repair_attempts < max_contract_repair_attempts:
                     contract_repair_attempts += 1
                     response = provider.invoke(
                         profile=profile,
@@ -621,17 +629,18 @@ class QAHandler:
                     if usage_id is not None:
                         token_savior_usage_ids.append(usage_id)
                     continue
-                return HandlerResult(
-                    status="blocked",
-                    blocker_code="engineering.qa_author_contract_invalid",
-                    blocker_reason=str(exc),
-                    result={
-                        "raw_response": response.text,
-                        "changed_files": touched,
-                        "contract_repair_attempts": contract_repair_attempts,
-                        "repair_attempts": repair_attempts,
-                    },
-                )
+                elif synthesized is None:
+                    return HandlerResult(
+                        status="blocked",
+                        blocker_code="engineering.qa_author_contract_invalid",
+                        blocker_reason=str(exc),
+                        result={
+                            "raw_response": response.text,
+                            "changed_files": touched,
+                            "contract_repair_attempts": contract_repair_attempts,
+                            "repair_attempts": repair_attempts,
+                        },
+                    )
             touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
             violations = path_violations(touched, task_contract, project.metadata)
             if violations:
@@ -964,6 +973,31 @@ class QAHandler:
                 "token_savior_usage_ids": token_savior_usage_ids,
             }
         )
+
+
+def _synthesize_qa_author_contract_from_touched_files(
+    *,
+    plan: PlanContract,
+    task_contract: TaskContract,
+    task_id: str,
+    touched: list[str],
+) -> QAAuthorContract | None:
+    tests_added = infer_tests_added_from_paths(touched)
+    if not tests_added:
+        return None
+    matrix = {
+        criterion: tests_added
+        for criterion in plan.acceptance_test_matrix
+        if isinstance(criterion, str) and criterion.strip()
+    }
+    return QAAuthorContract(
+        feature_id=task_contract.feature_id,
+        task_id=task_id,
+        tests_added=tests_added,
+        matrix_coverage=matrix,
+        red_proof=[],
+        paths_touched=sorted(set(touched)),
+    )
 
 
 def _qa_verify_worktree(

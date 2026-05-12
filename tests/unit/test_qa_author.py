@@ -161,6 +161,18 @@ class NoChangeProvider(FakeProvider):
         )
 
 
+class FilesOnlyProvider(FakeProvider):
+    def invoke(self, *, profile: Any, prompt: str, **kwargs: Any) -> Any:
+        del prompt, kwargs
+        worktree = Path(profile.command[-1])
+        worktree.joinpath("tests").mkdir(exist_ok=True)
+        worktree.joinpath("tests/test_acceptance.py").write_text(
+            "def test_acceptance():\n    assert False\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(text="I changed the files.", model_usage_id=42)
+
+
 class NoChangeThenRepairProvider(FakeProvider):
     def __init__(self) -> None:
         self.calls = 0
@@ -447,6 +459,66 @@ def test_qa_author_runs_all_verification_commands(tmp_path: Path, monkeypatch: A
         "-q",
     ]
     assert red_proof[0]["exit_code"] == 1
+
+
+def test_qa_author_synthesizes_contract_when_json_missing_but_files_authored(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo = _git_repo(tmp_path)
+    plan = _plan()
+    task_contract = _task_contract()
+
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_settings",
+        lambda: SimpleNamespace(
+            qa_worktree_root=tmp_path / "worktrees",
+            qa_author_profile="qa-author",
+            qa_author_command=["fake-qa", "{worktree}"],
+            qa_author_invocation_timeout_seconds=30.0,
+            qa_author_codex_model="gpt-5.4",
+            qa_author_codex_reasoning="low",
+            qa_author_claude_model="haiku",
+        ),
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_task_contract",
+        lambda *args, **kwargs: {"input_contract": task_contract.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.list_task_handoffs",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_active_plan_contract",
+        lambda *args, **kwargs: {"contract": plan.model_dump(mode="json")},
+    )
+    monkeypatch.setattr(
+        "pgloom_engineering.roles.qa.get_project",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=repo,
+            base_branch="main",
+            metadata={"worktree_root": str(tmp_path / "worktrees")},
+        ),
+    )
+
+    result = QAHandler(provider=FilesOnlyProvider()).handle(
+        {
+            "id": "task-1",
+            "workflow_id": "feature-1",
+            "task_type": "engineering.qa.author",
+            "payload": {"database_url": None},
+        }
+    )
+
+    assert result.status == "done"
+    contract = result.result["qa_author_contract"]
+    assert contract["tests_added"] == ["tests/test_acceptance.py"]
+    assert contract["matrix_coverage"] == {
+        "acceptance criterion": ["tests/test_acceptance.py"]
+    }
+    assert contract["red_proof"][0]["source"] == "orchestrator"
+    assert contract["contract_version"] == "engineering.contracts.v1"
 
 
 def test_qa_author_blocks_non_qa_paths(tmp_path: Path, monkeypatch: Any) -> None:
