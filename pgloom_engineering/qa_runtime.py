@@ -488,6 +488,34 @@ def is_expected_missing_api_compile_failure(
     )
 
 
+def is_authored_test_quality_failure(result: QAVerificationResult) -> bool:
+    if result.infra_error is not None or result.original.exit_code == 0:
+        return False
+    combined = f"{result.original.stdout}\n{result.original.stderr}".lower()
+    command_text = " ".join(result.original.argv).lower()
+    style_signals = (
+        "checkstyle rule violations",
+        "checkstyle violations",
+        "ruff failed",
+        "would reformat",
+        "prettier",
+        "eslint",
+        "lint errors",
+        "lint failed",
+    )
+    if any(signal in combined for signal in style_signals):
+        return True
+    style_commands = (
+        "checkstyle",
+        " ktlint",
+        " spotless",
+        " ruff",
+        " eslint",
+        " prettier",
+    )
+    return any(marker in command_text for marker in style_commands)
+
+
 def _is_pytest_command(command_text: str) -> bool:
     return "pytest" in command_text
 

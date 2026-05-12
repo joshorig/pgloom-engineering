@@ -58,6 +58,7 @@ from pgloom_engineering.qa_runtime import (
     command_with_env,
     hydrate_dependencies,
     is_authored_test_compile_failure,
+    is_authored_test_quality_failure,
     is_expected_missing_api_compile_failure,
     is_red_test_failure,
     qa_env,
@@ -809,8 +810,11 @@ class QAHandler:
                     task_text=_qa_author_task_text(plan, task_contract),
                 )
             ]
-            if red_verifications:
-                break
+            quality_failures = [
+                verification
+                for verification in verification_results
+                if is_authored_test_quality_failure(verification)
+            ]
             compile_failures = [
                 verification
                 for verification in verification_results
@@ -820,12 +824,20 @@ class QAHandler:
                     task_text=_qa_author_task_text(plan, task_contract),
                 )
             ]
-            verification = compile_failures[0] if compile_failures else verification_results[-1]
+            if red_verifications and not quality_failures and not compile_failures:
+                break
+            verification = (
+                quality_failures[0]
+                if quality_failures
+                else compile_failures[0]
+                if compile_failures
+                else verification_results[-1]
+            )
             repair_outcome = {
                 "findings": [
                     {
                         "code": "qa_tests_do_not_compile"
-                        if compile_failures
+                        if quality_failures or compile_failures
                         else "tests_not_red"
                     }
                 ],
@@ -863,13 +875,13 @@ class QAHandler:
                 if usage_id is not None:
                     token_savior_usage_ids.append(usage_id)
                 continue
-            if compile_failures:
+            if quality_failures or compile_failures:
                 return HandlerResult(
                     status="blocked",
                     blocker_code="engineering.qa_tests_do_not_compile",
                     blocker_reason=(
-                        "qa.author produced tests with compile/import/syntax errors; "
-                        "authored tests must compile before review"
+                        "qa.author produced tests with compile/import/syntax/style errors; "
+                        "authored tests must compile and pass lint/style gates before review"
                     ),
                     result={
                         "commands": [
@@ -878,6 +890,9 @@ class QAHandler:
                         "stdout_excerpt": verification.stdout_excerpt,
                         "stderr_excerpt": verification.stderr_excerpt,
                         "changed_files": touched,
+                        "quality_failure_commands": [
+                            item.original.argv for item in quality_failures
+                        ],
                         "repair_attempts": repair_attempts,
                         "quality_repair_attempts": quality_repair_attempts,
                         "contract_repair_attempts": contract_repair_attempts,
