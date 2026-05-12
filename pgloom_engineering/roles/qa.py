@@ -241,7 +241,7 @@ class QAHandler:
                 for item in verification_results
             ],
             evidence=[
-                item.stdout_excerpt or item.stderr_excerpt or f"exit_code={item.original.exit_code}"
+                _qa_verify_evidence_excerpt(item) or f"exit_code={item.original.exit_code}"
                 for item in verification_results
             ],
             validation_evidence=[
@@ -249,8 +249,7 @@ class QAHandler:
                     evidence_id=f"{task_id}:command:{index}",
                     kind="ui_exercise" if validator_type == "usertest" else "test_run",
                     summary=(
-                        item.stdout_excerpt
-                        or item.stderr_excerpt
+                        _qa_verify_evidence_excerpt(item)
                         or f"command exited {item.original.exit_code}"
                     ),
                     verdict="pass" if item.original.exit_code == 0 else "fail",
@@ -1257,7 +1256,7 @@ def _qa_verify_command_findings(verification_results: list[Any]) -> list[str]:
         if excerpt:
             findings.append(
                 f"qa.verify command failed: {command} exited "
-                f"{item.original.exit_code}: {excerpt[:600]}"
+                f"{item.original.exit_code}: {excerpt[:1200]}"
             )
         else:
             findings.append(
@@ -1267,9 +1266,24 @@ def _qa_verify_command_findings(verification_results: list[Any]) -> list[str]:
 
 
 def _qa_verify_failure_excerpt(item: Any) -> str:
+    return _qa_verify_diagnostic_excerpt(item, failure_only=True)
+
+
+def _qa_verify_evidence_excerpt(item: Any) -> str:
+    if item.original.exit_code == 0:
+        return (
+            str(getattr(item, "stdout_excerpt", "") or "").strip()
+            or str(getattr(item, "stderr_excerpt", "") or "").strip()
+        )
+    return _qa_verify_diagnostic_excerpt(item, failure_only=False)
+
+
+def _qa_verify_diagnostic_excerpt(item: Any, *, failure_only: bool) -> str:
     parts = [
         str(value).strip()
         for value in [
+            getattr(getattr(item, "original", None), "stdout", ""),
+            getattr(getattr(item, "original", None), "stderr", ""),
             getattr(item, "stdout_excerpt", ""),
             getattr(item, "stderr_excerpt", ""),
         ]
@@ -1303,7 +1317,7 @@ def _qa_verify_failure_excerpt(item: Any) -> str:
         if line not in priority_lines
         and any(marker in line.lower() for marker in diagnostic_markers)
     ]
-    selected = [*priority_lines, *other_diagnostic_lines] or lines
+    selected = [*priority_lines, *other_diagnostic_lines] or ([] if failure_only else lines)
     return " ".join(" ".join(selected).split())
 
 

@@ -1234,6 +1234,37 @@ def test_qa_verify_failure_reason_preserves_stdout_diagnostics(
     assert "BUILD FAILED" in result.blocker_reason
 
 
+def test_qa_verify_failure_reason_uses_raw_output_when_filter_tail_omits_diagnostics() -> None:
+    from pgloom_engineering.qa_runtime import QAVerificationResult, SubprocessResult
+    from pgloom_engineering.roles.qa import _qa_verify_command_findings
+
+    result = QAVerificationResult(
+        original=SubprocessResult(
+            argv=["./gradlew", ":benchmarks:jmhSmokeCheck"],
+            exit_code=1,
+            stdout=(
+                "JMH smoke GC gate failed:\n"
+                "- RangeScanBenchmark.ascendingRange params=[backend:mmap, variant:single] "
+                "allocated 0.048 B/op, above threshold 0.005 B/op\n"
+            ),
+            stderr="BUILD FAILED in 10s",
+            duration_seconds=10.0,
+            timed_out=False,
+            killed=False,
+        ),
+        stdout_excerpt="> Task :benchmarks:jmhSmokeCheck FAILED",
+        stderr_excerpt="BUILD FAILED in 10s",
+        infra_error=None,
+        artifact_id_unfiltered_stdout=None,
+        artifact_id_unfiltered_stderr=None,
+    )
+
+    findings = _qa_verify_command_findings([result])
+
+    assert "allocated 0.048 B/op" in findings[0]
+    assert "above threshold 0.005 B/op" in findings[0]
+
+
 def test_qa_verify_uses_handoff_worktree(tmp_path: Path, monkeypatch: Any) -> None:
     repo = _git_repo(tmp_path)
     stale_worktree = tmp_path / "stale-worktree"
