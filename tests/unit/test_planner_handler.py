@@ -736,6 +736,76 @@ def test_apply_corrective_slice_scope_preserves_planner_added_implementation_pat
     assert "storage/src/test/java/" in implementer.forbidden_paths
 
 
+def test_post_normalization_allows_narrow_corrective_hot_path_slice(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "core/src/main/java/example/api").mkdir(parents=True)
+    (tmp_path / "store/src/main/java/example/store").mkdir(parents=True)
+    (tmp_path / "core/src/main/java/example/api/HotStore.java").write_text(
+        "package example.api; public interface HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "store/src/main/java/example/store/SingleHotStore.java").write_text(
+        "package example.store; import example.api.HotStore; "
+        "final class SingleHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "store/src/main/java/example/store/DoubleHotStore.java").write_text(
+        "package example.store; import example.api.HotStore; "
+        "final class DoubleHotStore implements HotStore {}\n",
+        encoding="utf-8",
+    )
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="example-library",
+        problem_statement="Repair zero-allocation public API interface HotStore.",
+        design_contract=DesignContract(public_api="HotStore range scan API"),
+        affected_surfaces=["core/", "store/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl-single-hot-store-corrective",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair the SingleHotStore allocation failure.",
+                allowed_paths=[
+                    "store/src/main/java/example/store/SingleHotStore.java",
+                ],
+                forbidden_paths=["core/src/test/java/"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[["./gradlew", ":store:compileJava"]],
+            )
+        ],
+        acceptance_test_matrix=["HotStore range scans remain zero allocation."],
+    )
+    project = ProjectConfig(
+        name="example-library",
+        root=tmp_path,
+        base_branch="main",
+        metadata={},
+    )
+
+    strict_errors = _post_normalization_quality_errors(
+        plan,
+        project=project,
+        qa_write_paths=[],
+    )
+    corrective_errors = _post_normalization_quality_errors(
+        plan,
+        project=project,
+        qa_write_paths=[],
+        allow_narrow_corrective_slice=True,
+    )
+
+    assert any(
+        error["code"] == "hot_path_implementation_surface_missing"
+        for error in strict_errors
+    )
+    assert not any(
+        error["code"] == "hot_path_implementation_surface_missing"
+        for error in corrective_errors
+    )
+
+
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",
