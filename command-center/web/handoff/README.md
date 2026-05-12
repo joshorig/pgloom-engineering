@@ -48,6 +48,9 @@ The `<DesignCanvas>` artboards map 1:1 to React routes under
 | Features list                         | `/features`                          | `FeaturesList.tsx`                |
 | Feature overview                      | `/feature/:id`                       | `FeatureOverview.tsx`             |
 | DAG view                              | `/feature/:id/dag`                   | `DagView.tsx`                     |
+| Tasks list                            | `/feature/:id/tasks`                 | `TasksList.tsx`                   |
+| Task view (read)                      | `/feature/:id/task/:taskId`          | `TaskView.tsx`                    |
+| Task workspace (triage)               | `/feature/:id/task/:taskId/workspace`| `TaskWorkspace.tsx`               |
 | Handoff view                          | `/feature/:id/handoffs`              | `HandoffView.tsx`                 |
 | Validation view                       | `/feature/:id/validation`            | `ValidationView.tsx`              |
 | Telemetry view                        | `/feature/:id/telemetry`             | `TelemetryView.tsx`               |
@@ -68,7 +71,7 @@ The `<DesignCanvas>` artboards map 1:1 to React routes under
 ├─────────────────────────────────────────────────────────────┤ ← FeatureBar (variable)
 │  ⏵ Range API · cross-shard reader (R)   [paused?] · runs..  │
 ├─────────────────────────────────────────────────────────────┤ ← Tabs (38px)
-│  ▼ Overview · DAG · Handoffs · Validation · Telemetry · Int │   border-bottom 1px line
+│  ▼ Overview · DAG · Tasks · Handoffs · Validation · Telemetry · Int │   border-bottom 1px line
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │                       View content                           │ ← scroll region
@@ -279,6 +282,9 @@ design/
   chrome.jsx                   ← TopBar, FeatureBar, Tabs
   data.jsx                     ← synthetic data shaped per §9
   artboards-1.jsx … artboards-6.jsx  ← one or more views per file
+  artboards-7.jsx              ← Tasks list, Task view (§8a), Task workspace
+  data-tasks.jsx               ← per-task fixtures (contract, signoffs, recovery, artifacts)
+  extras-6.css                 ← Tasks-view + Task-workspace styles
   design-canvas.jsx            ← canvas/focus overlay (prototype only — drop in prod)
   tweaks-panel.jsx             ← tweaks UI (prototype only — drop in prod)
 ```
@@ -293,6 +299,78 @@ No third-party brand assets are used. Type loads from Google Fonts
 (`JetBrains Mono`, `Inter Tight`). Status icons are inline SVG glyphs sized to
 the row's mono font size; lift them from the JSX or replace with `lucide-react`
 equivalents (preferred — they are already in the icon vocabulary used).
+
+## Tasks surface — what's new
+
+Three new artboards live in §02 of the canvas, mapped from §8a of the brief:
+
+**1. Tasks list** (`ArtTasksList`, `feature-tasks` artboard).
+Dense table grouped by milestone (m0…m4 + collapsed Superseded section).
+Columns: task_id · role · label · status · attempts · repairs · ±loc · cost ·
+last `blocker_code` + timestamp. Filter chips for status + role; search by
+task_id / role / label / blocker_code. Currently-selected task gets an accent
+rail on the row + `selected` tag. Click row → Task view. ↑/↓ to navigate, ⏎ to
+open.
+
+**2. Task view — reference read** (`ArtTaskView`, `feature-task` artboard).
+The canonical "everything about one task" surface required by §8a. Layout:
+
+- **Hero**: paused banner (if applicable) · kicker (TASK · role · milestone) ·
+  task_id + label + status pill · meta row (milestone, contract_version,
+  input_contract_hash with copy glyph, attempts / max, repairs / max,
+  authored_by, signoff_policy) · action row (Open contract, Comment, Drop &
+  replan, Retry).
+- **6-up stat strip**: cumulative cost (with budget %), tokens in (cached %),
+  tokens out (+reasoning), wall-clock (with phase share), last attempt
+  timestamp, last `blocker_code` (in red mono).
+- **Body grid** (1.55fr / 1fr):
+  - Left col: Contract JSON pane (collapsed / expanded / diff-vs-v1 chips,
+    syntax-styled mono pre with the canonical fields from §8a),
+    Worker-runs timeline (one card per `engineering_worker_runs` row in
+    descending time, with wall-clock bar + run footer showing
+    `blocker_code` or live progress).
+  - Right col: Handoffs in/out · QA signoffs (grouped by `validator_type`,
+    scrutiny + usertest) · Recovery actions scoped to this task · Self-repair
+    issues · Interventions touching this task · Artifacts gallery (3-up grid;
+    `is-live` artifacts tagged with a pulsing LIVE badge).
+- **Telemetry roll-up**: wall-clock mix (full-width stacked), cost by attempt
+  (mini-bars colored by run status), token mix (cached / fresh in / reasoning
+  / output) — same shape as Telemetry view but scoped.
+
+`CC_TASK_DETAIL[taskId]` carries the per-task fixtures (currently task_44 /
+task_42 / task_50 cover running / passed / queued states).
+
+**3. Task workspace — triage workbench** (`ArtTaskWorkspace`,
+`feature-task-workspace` artboard, 1640×1040).
+Action-side companion to the Task view. Three columns:
+
+- **Context (280px)**: mini-DAG (deps → this → dependents, with task_46
+  recovery branch dashed); Blocker card (`blocker_code` + plain-English
+  description); compact Signoffs strip; live Budget bars (cost %, wall %).
+- **Workbench (center, 2 rows)**: Evidence viewer on top — tabs (Diff / Log /
+  Trace / JUnit) + file list (2 active + 1 awaiting-from-recovery) + rendered
+  diff for the actual fix. Live model stream on bottom — pulsing connection
+  dot, scrolling fuzz-case output, tokens + cost + savior delta ticking.
+- **Actions (320px)**: triage Decision cards — one `is-rec` (recommended,
+  accent border + RECOMMENDED tag, with confidence + reasoning) and 2
+  alternatives (Drop & replan, Skip slice); audit-stamped Comment composer
+  (writes `engineering_operator_interventions` with `kind=comment`); Recent
+  ops on the task.
+
+Use the Task view for *reading* the task; use the Task workspace when an
+operator needs to *decide what to do* about it. Both subscribe to the same
+realtime stream filtered to `task_id`.
+
+### Live-pulse animations on data flow
+
+Three places animate (and **only** these — overuse breaks the
+engineering-instrument feel):
+
+1. Status pill dots for `running` rows (1.6s ease-in-out).
+2. Live connection dot in the Task workspace stream header.
+3. The `is-live` badge on artifacts that are still being written.
+
+Gated by `data-pulse="on"` on the body; respect `prefers-reduced-motion`.
 
 ## Out of scope (per §12 of the brief)
 

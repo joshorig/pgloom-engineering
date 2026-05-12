@@ -6,6 +6,7 @@ function CCApp({ tab, paused, accent, feature, onTab, children, hideTabs }) {
   const tabs = [
     { id: 'overview',  label: 'Overview',     icon: 'features'  },
     { id: 'dag',       label: 'DAG',          icon: 'dag', count: 25 },
+    { id: 'tasks',     label: 'Tasks',        icon: 'tasks', count: 25 },
     { id: 'handoffs',  label: 'Handoffs',     icon: 'handoff'  },
     { id: 'validate',  label: 'Validation',   icon: 'validate' },
     { id: 'telemetry', label: 'Telemetry',    icon: 'telemetry'},
