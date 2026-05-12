@@ -32,6 +32,7 @@ def evaluate_production_grade(
     project_root: Path | None = None,
     qa_write_paths: list[str] | None = None,
     project_metadata: dict[str, object] | None = None,
+    allow_narrow_corrective_slice: bool = False,
 ) -> ProductionGradeReport:
     root = project_root or _default_project_root(plan.project)
     qa_roots = (
@@ -45,7 +46,12 @@ def evaluate_production_grade(
     findings.extend(_path_scope_findings(plan, root))
     findings.extend(_same_slice_overlap_findings(plan))
     findings.extend(_qa_verification_path_findings(plan, qa_roots))
-    findings.extend(_qa_author_dependency_findings(plan))
+    findings.extend(
+        _qa_author_dependency_findings(
+            plan,
+            allow_narrow_corrective_slice=allow_narrow_corrective_slice,
+        )
+    )
     findings.extend(_qa_benchmark_output_path_findings(plan))
     findings.extend(_qa_reflective_authoring_findings(plan))
     findings.extend(_qa_required_usertest_fixture_findings(plan, project_metadata or {}))
@@ -564,13 +570,19 @@ def _qa_required_usertest_fixture_findings(
     return findings
 
 
-def _qa_author_dependency_findings(plan: PlanContract) -> list[ProductionFinding]:
+def _qa_author_dependency_findings(
+    plan: PlanContract,
+    *,
+    allow_narrow_corrective_slice: bool = False,
+) -> list[ProductionFinding]:
     implementers = [
         task_slice
         for task_slice in plan.task_slices
         if task_slice.task_type == "engineering.implement"
     ]
     if not implementers:
+        return []
+    if allow_narrow_corrective_slice:
         return []
     qa_authors = [
         task_slice

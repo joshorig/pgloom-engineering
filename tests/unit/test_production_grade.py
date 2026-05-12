@@ -187,6 +187,27 @@ def test_production_grade_requires_qa_author_before_implementer() -> None:
     )
 
 
+def test_production_grade_allows_corrective_implementer_without_qa_author() -> None:
+    plan = _plan_contract()
+    plan.task_slices = [
+        task_slice
+        for task_slice in plan.task_slices
+        if task_slice.task_type != "engineering.qa.author"
+    ]
+
+    report = evaluate_production_grade(plan, allow_narrow_corrective_slice=True)
+
+    assert not [
+        finding
+        for finding in report.blocking_findings
+        if finding.code
+        in {
+            "qa_author_missing_before_implementer",
+            "implementer_missing_qa_author_dependency",
+        }
+    ]
+
+
 def test_production_grade_requires_implementer_dependency_on_qa_author() -> None:
     plan = _plan_contract()
     implementer = next(

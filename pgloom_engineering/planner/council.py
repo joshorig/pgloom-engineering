@@ -85,6 +85,7 @@ class ProjectContext(BaseModel):
     qa_policy_summary: dict[str, Any] = Field(default_factory=dict)
     context_lens: str = "shared"
     lens_focus: list[str] = Field(default_factory=list)
+    allow_narrow_corrective_slice: bool = False
 
 
 class CouncilProposal(BaseModel):
@@ -230,6 +231,9 @@ class PlannerCouncil:
                 project_root=project_context.project_root,
                 qa_write_paths=project_context.qa_write_paths,
                 project_metadata={"qa": project_context.qa_policy_summary},
+                allow_narrow_corrective_slice=(
+                    project_context.allow_narrow_corrective_slice
+                ),
             )
             validator_errors.extend(_production_grade_validator_errors(production_grade))
             substance = evaluate_planner_substance(

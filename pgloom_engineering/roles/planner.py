@@ -96,6 +96,11 @@ class PlannerHandler:
             database_url,
             workflow_id=str(task.get("workflow_id") or ""),
         )
+        project_context = project_context.model_copy(
+            update={
+                "allow_narrow_corrective_slice": _is_corrective_slice_replan(payload)
+            }
+        )
         council = self._council or _build_council(
             database_url=database_url,
             payload=payload,
