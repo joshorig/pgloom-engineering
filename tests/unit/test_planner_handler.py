@@ -1588,6 +1588,79 @@ def test_apply_corrective_slice_scope_routes_path_violation_to_qa_author() -> No
     assert scoped.task_slices[2].depends_on == ["impl-fix"]
 
 
+def test_apply_corrective_slice_scope_routes_qa_compile_failure_to_qa_author() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Correct QA compile failure.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        acceptance_test_matrix=["QA-authored tests compile"],
+        acceptance_assertions=["QA-authored tests compile"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-author-repair",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair QA-owned JMH compile failure.",
+                allowed_paths=["benchmarks/src/jmh/java/", "core/src/test/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-fix",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix production behavior if still needed.",
+                allowed_paths=["core/src/main/java/", "store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                depends_on=["qa-author-repair"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review fix.",
+                allowed_paths=["core/", "store/", "benchmarks/"],
+                forbidden_paths=[],
+                depends_on=["impl-fix"],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+        ],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=["qa-author-repair", "impl-fix", "review"],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.qa_tests_do_not_compile",
+                "failure_context": (
+                    "command=./gradlew :benchmarks:compileJmhJava "
+                    "changed_files=benchmarks/src/jmh/java/RangeScanBenchmark.java"
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "qa-author-repair",
+        "impl-fix",
+        "review",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["qa-author-repair"]
+    assert scoped.task_slices[2].depends_on == ["impl-fix"]
+
+
 def test_apply_corrective_slice_scope_repairs_qa_semantic_failure_with_impl_handoff() -> None:
     plan = PlanContract(
         feature_id="wf_range",

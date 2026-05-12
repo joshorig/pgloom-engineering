@@ -961,6 +961,7 @@ def _apply_corrective_slice_scope(
         "engineering.plan_contract_invalid",
         "engineering.qa_handoff_missing",
         "engineering.qa_semantic_quality_failed",
+        "engineering.qa_tests_do_not_compile",
         "engineering.qa_usertest_contract_invalid",
         "engineering.review_rejected",
         "engineering.qa_verify_failed",
@@ -1196,6 +1197,7 @@ def _narrow_corrective_slice_chain(
     if blocker_code in {
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_handoff_missing",
+        "engineering.qa_tests_do_not_compile",
     } or (
         benchmark_classification != "material_allocation"
         and (
@@ -1332,15 +1334,11 @@ def _corrective_dependencies(
 def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     if _allocation_diagnostic_required(context):
         return {"engineering.qa.verify.scrutiny"}
-    if str(context.get("blocker_code") or "") == "engineering.qa_semantic_quality_failed":
-        return {
-            "engineering.qa.author",
-            "engineering.implement",
-            "engineering.review",
-            "engineering.qa.verify.scrutiny",
-            "engineering.qa.verify.usertest",
-        }
-    if str(context.get("blocker_code") or "") == "engineering.qa_handoff_missing":
+    if str(context.get("blocker_code") or "") in {
+        "engineering.qa_handoff_missing",
+        "engineering.qa_semantic_quality_failed",
+        "engineering.qa_tests_do_not_compile",
+    }:
         return {
             "engineering.qa.author",
             "engineering.implement",

@@ -164,6 +164,24 @@ def test_commands_run_from_result_uses_qa_author_red_proof_artifacts() -> None:
     ]
 
 
+def test_commands_run_from_result_uses_blocked_command_excerpts() -> None:
+    assert _commands_run_from_result(
+        {
+            "commands": [["./gradlew", ":benchmarks:compileJmhJava"]],
+            "stdout_excerpt": "> Task :benchmarks:compileJmhJava FAILED",
+            "stderr_excerpt": "Compilation failed",
+        }
+    ) == [
+        {
+            "cmd": ["./gradlew", ":benchmarks:compileJmhJava"],
+            "exit_code": 1,
+            "duration_s": 0.0,
+            "stdout_excerpt": "> Task :benchmarks:compileJmhJava FAILED",
+            "stderr_excerpt": "Compilation failed",
+        }
+    ]
+
+
 def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch: Any) -> None:
     handoffs: list[dict[str, Any]] = []
     monkeypatch.setattr(

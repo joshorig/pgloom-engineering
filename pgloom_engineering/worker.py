@@ -841,7 +841,33 @@ def _commands_run_from_result(result: dict[str, Any] | None) -> list[dict[str, A
             commands = _commands_run_from_checks(payload["checks"])
             if commands:
                 return commands
+    commands = _commands_run_from_blocked_result(result)
+    if commands:
+        return commands
     return []
+
+
+def _commands_run_from_blocked_result(result: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_commands = result.get("commands")
+    if not isinstance(raw_commands, list):
+        return []
+    stdout_excerpt = result.get("stdout_excerpt")
+    stderr_excerpt = result.get("stderr_excerpt")
+    commands: list[dict[str, Any]] = []
+    for command in raw_commands:
+        if not isinstance(command, list):
+            continue
+        payload: dict[str, Any] = {
+            "cmd": [str(part) for part in command],
+            "exit_code": 1,
+            "duration_s": 0.0,
+        }
+        if isinstance(stdout_excerpt, str) and stdout_excerpt.strip():
+            payload["stdout_excerpt"] = stdout_excerpt[:1200]
+        if isinstance(stderr_excerpt, str) and stderr_excerpt.strip():
+            payload["stderr_excerpt"] = stderr_excerpt[:1200]
+        commands.append(payload)
+    return commands
 
 
 def _commands_run_from_red_proof(red_proof: Any) -> list[dict[str, Any]]:
