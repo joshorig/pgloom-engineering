@@ -64,6 +64,7 @@ def review_semantic_quality(
     findings.extend(_range_regression_guard_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     findings.extend(_portable_fixture_findings(files, conventions))
+    findings.extend(_usertest_fixture_assertion_findings(files, context, conventions))
     return findings
 
 
@@ -156,6 +157,66 @@ def _looks_like_qa_fixture_path(path: str) -> bool:
 
 def _line_for_offset(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
+
+
+def _usertest_fixture_assertion_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    fixture_config = _mapping(conventions.get("user_test_fixtures"))
+    if fixture_config.get("allow_observation_only") is True:
+        return []
+    if not _context_mentions_any(context, ["user journey", "usertest", "user-test", "replay"]):
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not _looks_like_qa_fixture_path(path):
+            continue
+        lowered = text.lower()
+        if "system.out.print" not in lowered:
+            continue
+        if not _context_mentions_any(lowered, ["ascendingrange", "descendingrange"]):
+            continue
+        if _fixture_has_failure_assertion_signal(text):
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_usertest_fixture_observes_without_asserting",
+                severity="blocking",
+                message=(
+                    "User-test replay fixtures must fail on incorrect feature behavior, "
+                    "not only print an observation transcript. Add explicit expected key, "
+                    "payload, and variant checks that throw/assert when the public API "
+                    "journey is wrong."
+                ),
+                file=path,
+                line=_first_line_containing_any(
+                    text,
+                    ["System.out.print", "System.out.println"],
+                ),
+            )
+        )
+    return findings
+
+
+def _fixture_has_failure_assertion_signal(text: str) -> bool:
+    lowered = text.lower()
+    return _context_mentions_any(
+        lowered,
+        [
+            "assert",
+            "throw new assertionerror",
+            "throw new illegalstateexception",
+            "throw new illegalargumentexception",
+            "expected",
+            "mismatch",
+        ],
+    )
+
+
+def _context_mentions_any(text: str, needles: list[str]) -> bool:
+    return any(needle in text for needle in needles)
 
 
 def _qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:

@@ -80,6 +80,53 @@ def test_semantic_review_allows_portable_qa_fixture_root_resolution() -> None:
     assert findings == []
 
 
+def test_semantic_review_blocks_observation_only_usertest_fixture() -> None:
+    findings = review_semantic_quality(
+        files={
+            "qa/fixtures/com/example/RangeReplayHarness.java": """
+            class RangeReplayHarness {
+                void replay(LvcStore store, StoreVisitor visitor) {
+                    store.ascendingRange(0, 10, visitor);
+                    store.descendingRange(10, 0, visitor);
+                    System.out.println("keys=" + visitor);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans need user-test replay evidence.",
+        task_text="Write a user journey replay fixture for the public API.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_usertest_fixture_observes_without_asserting"
+    ]
+    assert findings[0].severity == "blocking"
+
+
+def test_semantic_review_allows_usertest_fixture_with_failure_checks() -> None:
+    findings = review_semantic_quality(
+        files={
+            "qa/fixtures/com/example/RangeReplayHarness.java": """
+            class RangeReplayHarness {
+                void replay(LvcStore store, RecordingVisitor visitor) {
+                    store.ascendingRange(0, 10, visitor);
+                    System.out.println("keys=" + visitor.keys());
+                    if (!visitor.keys().equals(List.of(1, 2))) {
+                        throw new AssertionError("range mismatch");
+                    }
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans need user-test replay evidence.",
+        task_text="Write a user journey replay fixture for the public API.",
+        project_metadata={},
+    )
+
+    assert findings == []
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={
