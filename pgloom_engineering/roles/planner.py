@@ -218,6 +218,9 @@ class PlannerHandler:
             qa_write_paths=qa_write_paths,
             project_metadata=project_metadata,
             allow_narrow_corrective_slice=_is_corrective_slice_replan(payload),
+            allow_diagnostic_corrective_slice=_is_diagnostic_corrective_slice_replan(
+                payload
+            ),
         )
         if normalized_quality_errors:
             return HandlerResult(
@@ -389,6 +392,7 @@ def _post_normalization_quality_errors(
     qa_write_paths: list[str] | None,
     project_metadata: dict[str, Any] | None = None,
     allow_narrow_corrective_slice: bool = False,
+    allow_diagnostic_corrective_slice: bool = False,
 ) -> list[dict[str, Any]]:
     root = project.root if project is not None else None
     report = evaluate_production_grade(
@@ -416,6 +420,15 @@ def _post_normalization_quality_errors(
             error
             for error in errors
             if error.get("code") not in corrective_slice_exempt_codes
+        ]
+    if allow_diagnostic_corrective_slice:
+        diagnostic_slice_exempt_codes = {
+            "milestone_signoff_incomplete",
+        }
+        errors = [
+            error
+            for error in errors
+            if error.get("code") not in diagnostic_slice_exempt_codes
         ]
     return errors
 
@@ -894,6 +907,15 @@ def _replan_from_milestone_id(payload: dict[str, Any]) -> str | None:
 def _is_corrective_slice_replan(payload: dict[str, Any]) -> bool:
     context = payload.get("replan_context")
     return isinstance(context, dict) and context.get("mode") == "corrective_slice"
+
+
+def _is_diagnostic_corrective_slice_replan(payload: dict[str, Any]) -> bool:
+    context = payload.get("replan_context")
+    return (
+        isinstance(context, dict)
+        and context.get("mode") == "corrective_slice"
+        and _allocation_diagnostic_required(context)
+    )
 
 
 def _task_replan_context_payload(payload: dict[str, Any]) -> dict[str, Any] | None:

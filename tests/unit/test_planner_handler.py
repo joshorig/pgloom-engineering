@@ -900,6 +900,66 @@ def test_post_normalization_allows_narrow_corrective_hot_path_slice(
     )
 
 
+def test_post_normalization_allows_allocation_diagnostic_without_full_signoff(
+    tmp_path: Path,
+) -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="example-library",
+        problem_statement="Diagnose repeated benchmark allocation failure.",
+        design_contract=DesignContract(public_api="HotStore range scan API"),
+        affected_surfaces=["benchmarks/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="qa-scrutiny-diagnostic",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Name the allocation source before another repair.",
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["core/src/main/java/", "store/src/main/java/"],
+                expected_outputs=["AllocationDiagnosisContract", "QAResultContract"],
+                verification_commands=[["./gradlew", ":benchmarks:jmhSmokeCheck"]],
+            )
+        ],
+        acceptance_test_matrix=["Allocation source is diagnosed."],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Diagnose",
+                slice_ids=["qa-scrutiny-diagnostic"],
+                signoff_policy="scrutiny_and_usertest",
+            )
+        ],
+    )
+    project = ProjectConfig(
+        name="example-library",
+        root=tmp_path,
+        base_branch="main",
+        metadata={},
+    )
+
+    strict_errors = _post_normalization_quality_errors(
+        plan,
+        project=project,
+        qa_write_paths=[],
+    )
+    diagnostic_errors = _post_normalization_quality_errors(
+        plan,
+        project=project,
+        qa_write_paths=[],
+        allow_narrow_corrective_slice=True,
+        allow_diagnostic_corrective_slice=True,
+    )
+
+    assert any(
+        error["code"] == "milestone_signoff_incomplete" for error in strict_errors
+    )
+    assert not any(
+        error["code"] == "milestone_signoff_incomplete"
+        for error in diagnostic_errors
+    )
+
+
 def test_apply_corrective_slice_scope_does_not_give_qa_paths_to_implementer() -> None:
     plan = PlanContract(
         feature_id="wf_range",
