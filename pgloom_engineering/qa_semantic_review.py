@@ -1273,6 +1273,26 @@ def _literal_write_buffer_keys(text: str, constants: dict[str, int]) -> list[int
         value = _java_int_token(match.group(1), constants)
         if value is not None:
             keys.append(value)
+    arrays = _java_int_arrays(text, constants)
+    for match in re.finditer(
+        r"for\s*\(\s*int\s+(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*"
+        r"(?P<source>[A-Za-z_][A-Za-z0-9_]*|new\s+int\s*\[\]\s*\{[^}]*\}|\{[^}]*\})"
+        r"\s*\)\s*\{(?P<body>.*?)\n\s*\}",
+        text,
+        re.MULTILINE | re.DOTALL,
+    ):
+        var_name = match.group("var")
+        write_pattern = r"\.writeBuffer\s*\(\s*" + re.escape(var_name) + r"\b"
+        if not re.search(write_pattern, match.group("body")):
+            continue
+        source = match.group("source").strip()
+        values = arrays.get(source)
+        if values is None and source.startswith("new int"):
+            values = _java_int_array_values(source, constants)
+        if values is None and source.startswith("{"):
+            values = _java_int_array_values(source, constants)
+        if values:
+            keys.extend(values)
     return keys
 
 
@@ -1334,6 +1354,37 @@ def _java_int_constants(text: str) -> dict[str, int]:
     ):
         constants[match.group("name")] = _java_int_literal(match.group("value"))
     return constants
+
+
+def _java_int_arrays(text: str, constants: dict[str, int]) -> dict[str, list[int]]:
+    arrays: dict[str, list[int]] = {}
+    for match in re.finditer(
+        r"\b(?:private|public|protected)?\s*(?:static\s+)?(?:final\s+)?"
+        r"(?:int\s*\[\]\s+(?P<name1>[A-Za-z_][A-Za-z0-9_]*)|"
+        r"int\s+(?P<name2>[A-Za-z_][A-Za-z0-9_]*)\s*\[\])\s*=\s*"
+        r"(?:new\s+int\s*\[\]\s*)?\{(?P<values>[^}]*)\}\s*;",
+        text,
+        re.MULTILINE | re.DOTALL,
+    ):
+        name = match.group("name1") or match.group("name2")
+        arrays[name] = _java_int_array_values(match.group("values"), constants)
+    return arrays
+
+
+def _java_int_array_values(value: str, constants: dict[str, int]) -> list[int]:
+    body = value.strip()
+    if body.startswith("new int"):
+        body = re.sub(r"^new\s+int\s*\[\]\s*", "", body).strip()
+    body = body.strip("{}")
+    values: list[int] = []
+    for item in body.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        parsed = _java_int_token(token, constants)
+        if parsed is not None:
+            values.append(parsed)
+    return values
 
 
 def _java_int_token(value: str, constants: dict[str, int]) -> int | None:

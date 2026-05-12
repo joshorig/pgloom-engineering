@@ -311,6 +311,43 @@ def test_semantic_review_allows_prefix_range_with_seeded_matching_key() -> None:
     ] == []
 
 
+def test_semantic_review_allows_prefix_range_with_enhanced_for_array_seeded_keys() -> None:
+    findings = review_semantic_quality(
+        files={
+            "store/src/test/java/com/example/RangeScanStoreTest.java": """
+            class RangeScanStoreTest {
+                private static final int PREFIX_RANGE_START = 0x40;
+                private static final int PREFIX_RANGE_END = 0x5f;
+                private static final int PREFIX_VALUE = 0b0101;
+                private static final int PREFIX_BITS = 4;
+                private static final int[] PREFIX_KEYS = {0x47, 0x55, 0x5a};
+
+                void prefixPopulatedStore(LvcStore store, StoreVisitor visitor) {
+                    for (int key : PREFIX_KEYS) {
+                        store.writeBuffer(key, payloadForKey(key), 0, 8);
+                    }
+                    store.ascendingRange(
+                        PREFIX_RANGE_START,
+                        PREFIX_RANGE_END,
+                        PREFIX_VALUE,
+                        PREFIX_BITS,
+                        visitor);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans require prefix filtering.",
+        task_text="Write Java tests for prefix range behavior.",
+        project_metadata={},
+    )
+
+    assert [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_no_seeded_match"
+    ] == []
+
+
 def test_semantic_review_allows_literal_non_matching_prefix_without_seeded_match() -> None:
     findings = review_semantic_quality(
         files={
