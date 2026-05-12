@@ -1098,6 +1098,8 @@ def _range_prefix_seed_findings(
         if not written_keys:
             continue
         for call in _literal_prefix_range_calls(text):
+            if _prefix_call_is_explicit_miss(call):
+                continue
             matching_keys = [
                 key
                 for key in written_keys
@@ -1141,8 +1143,8 @@ def _literal_write_buffer_keys(text: str, constants: dict[str, int]) -> list[int
     return keys
 
 
-def _literal_prefix_range_calls(text: str) -> list[dict[str, int]]:
-    calls: list[dict[str, int]] = []
+def _literal_prefix_range_calls(text: str) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
     constants = _java_int_constants(text)
     int_token = r"(?:[A-Za-z_][A-Za-z0-9_]*|0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)"
     prefix_call = re.compile(
@@ -1171,10 +1173,22 @@ def _literal_prefix_range_calls(text: str) -> list[dict[str, int]]:
                 "to": max(from_key, to_key),
                 "prefix_value": prefix_value,
                 "prefix_bits": prefix_bits,
+                "prefix_token": match.group("prefix"),
                 "line": _line_for_offset(text, match.start()),
             }
         )
     return calls
+
+
+def _prefix_call_is_explicit_miss(call: dict[str, int | str]) -> bool:
+    token = str(call.get("prefix_token") or "").lower()
+    normalized = token.replace("_", "").replace("-", "")
+    return (
+        "nonmatch" in normalized
+        or "nomatch" in normalized
+        or "miss" in normalized
+        or "absent" in normalized
+    )
 
 
 def _java_int_constants(text: str) -> dict[str, int]:
