@@ -176,10 +176,11 @@ def _action_for_code(code: str) -> str:
         ),
         "variant_slice_uses_broad_conformance_gate": (
             "If implementer slices are split by SINGLE/DOUBLE/direct/mmap variant, replace "
-            "broad conformance-class verification with slice-specific Gradle --tests "
-            "Class.method or class filters that the QA-author slice creates. If no "
-            "slice-specific test exists, merge the variant slices into one implementer "
-            "slice so one worker owns the broad all-variant gate."
+            "broad conformance-class verification with slice-specific Gradle class-level "
+            "filters supplied by project metadata, or exact Class.method selectors only "
+            "when the QA-author slice is explicitly instructed to create those methods. "
+            "If no slice-specific test exists, merge the variant slices into one "
+            "implementer slice so one worker owns the broad all-variant gate."
         ),
         "qa_benchmark_output_path_not_allowed": (
             "If the QA author slice is expected to author JMH or benchmark artifacts, include "

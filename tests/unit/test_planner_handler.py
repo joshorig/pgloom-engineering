@@ -2072,7 +2072,7 @@ def test_feature_scoped_verification_commands_replace_invented_method_with_proje
     ]
 
 
-def test_feature_scoped_verification_commands_preserve_implementer_method_filter() -> None:
+def test_feature_scoped_verification_commands_replace_implementer_method_filter() -> None:
     plan = PlanContract(
         feature_id="wf_feature",
         project="example-library",
@@ -2114,7 +2114,14 @@ def test_feature_scoped_verification_commands_preserve_implementer_method_filter
         },
     )
 
-    assert commands == [method_command]
+    assert commands == [
+        [
+            "./gradlew",
+            ":feature-tests:test",
+            "--tests",
+            "com.example.FeatureConformanceTest",
+        ]
+    ]
 
 
 def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> None:

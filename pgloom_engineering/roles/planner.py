@@ -457,7 +457,6 @@ def _feature_scoped_verification_commands(
             command,
             rules,
             feature_text,
-            preserve_method_filters=task_type == "engineering.implement",
         )
         scoped.extend(replacement or [command])
     return _drop_redundant_gradle_wildcard_test_filters(_dedupe_commands(scoped))
@@ -652,8 +651,6 @@ def _feature_smoke_replacement(
     command: list[str],
     rules: list[Any],
     feature_text: str,
-    *,
-    preserve_method_filters: bool = False,
 ) -> list[list[str]]:
     command_text = " ".join(command)
     for rule in rules:
@@ -676,11 +673,6 @@ def _feature_smoke_replacement(
             if isinstance(raw_commands, list)
             else []
         )
-        if preserve_method_filters and _configured_class_covers_method_filter(
-            command,
-            parsed,
-        ):
-            return [command]
         class_filter_replacement = _feature_smoke_class_filter_replacement(
             command,
             parsed,
@@ -693,25 +685,6 @@ def _feature_smoke_replacement(
         if parsed:
             return parsed
     return []
-
-
-def _configured_class_covers_method_filter(
-    command: list[str],
-    configured_commands: list[list[str]],
-) -> bool:
-    test_filter = _gradle_test_filter(command)
-    task_key = _gradle_test_task_key(command)
-    if not test_filter or not task_key or not _looks_like_method_test_filter(test_filter):
-        return False
-    for configured in configured_commands:
-        configured_filter = _gradle_test_filter(configured)
-        if not configured_filter or _looks_like_method_test_filter(configured_filter):
-            continue
-        if _gradle_test_task_key(configured) != task_key:
-            continue
-        if test_filter.startswith(f"{configured_filter}."):
-            return True
-    return False
 
 
 def _feature_smoke_class_filter_replacement(

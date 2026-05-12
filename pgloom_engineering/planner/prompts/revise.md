@@ -19,9 +19,10 @@ Deterministic validator and critic checks are authoritative. In particular:
 - If a prior validator error says `variant_slice_uses_broad_conformance_gate`,
   fix it directly: either merge the variant-scoped implementer slices into one
   broader implementer slice, or keep the split only when each variant slice has
-  a concrete slice-specific Gradle `--tests Class.method` or class filter that
-  the QA-author slice is instructed to create. Do not keep the same broad
-  conformance class command on multiple variant slices.
+  a concrete slice-specific Gradle class-level filter supplied by project
+  metadata, or an exact `Class.method` selector that the QA-author slice is
+  explicitly instructed to create. Do not keep the same broad conformance class
+  command on multiple variant slices.
 - If a prior validator error says `qa_usertest_uses_deterministic_command`,
   move Gradle/test/check/JMH/smoke/regression commands to
   `engineering.qa.verify.scrutiny`. The user-test slice must be model-driven:

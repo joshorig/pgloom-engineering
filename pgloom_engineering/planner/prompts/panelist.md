@@ -128,10 +128,13 @@ Rules:
   sweeps as per-feature validation blockers; those are periodic or broad
   project gates unless project metadata explicitly supplies a feature-scoped
   replacement command.
-- Gradle `--tests` filters are case-sensitive. Use concrete class or
-  class.method identifiers that the QA-author slice is instructed to create.
-  Do not use a variant wildcard such as `*Mmap*RangeScan*` unless the QA-author
-  objective explicitly creates a matching `Mmap...RangeScan...` class or method.
+- Gradle `--tests` filters are case-sensitive. Prefer class-level filters from
+  project metadata unless exact method names are part of the QA-author contract.
+  Downstream implementer, reviewer, and validator slices must not invent
+  `Class.method` selectors that QA author was not explicitly instructed to
+  create. Do not use a variant wildcard such as `*Mmap*RangeScan*` unless the
+  QA-author objective explicitly creates a matching `Mmap...RangeScan...` class
+  or method.
 - Do not use `grep`, `cat`, `echo`, list-only, or dry-run commands as the only
   verification evidence for any slice.
 - Dependency IDs must refer only to earlier slices.

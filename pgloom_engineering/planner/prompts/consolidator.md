@@ -114,10 +114,13 @@ Rules:
   sweeps as per-feature blockers; those are project-scheduled periodic or
   broad project gates unless project metadata explicitly supplies a
   feature-scoped replacement command.
-- Gradle `--tests` filters are case-sensitive. Keep concrete class or
-  class.method identifiers that the QA-author slice is instructed to create.
-  Do not preserve variant wildcards such as `*Mmap*RangeScan*` unless the final
-  QA-author objective names a matching `Mmap...RangeScan...` class or method.
+- Gradle `--tests` filters are case-sensitive. Prefer class-level filters from
+  project metadata unless exact method names are part of the QA-author contract.
+  Do not preserve or invent `Class.method` selectors for downstream implementer,
+  reviewer, or validator slices unless the final QA-author objective names that
+  exact method. Do not preserve variant wildcards such as `*Mmap*RangeScan*`
+  unless the final QA-author objective names a matching `Mmap...RangeScan...`
+  class or method.
 - QA user-test is not another broad gate runner. It must specify a
   user-facing CLI/API/browser/app flow, or for a pure library a focused
   consumer-style command/harness using the public API. Do not put `qa/smoke.sh`,

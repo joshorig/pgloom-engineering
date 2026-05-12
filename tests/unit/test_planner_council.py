@@ -1756,7 +1756,7 @@ def test_planner_prompts_repair_variant_scoped_broad_conformance_gates() -> None
 
     for prompt in [panelist, consolidator, revise]:
         assert "variant" in prompt
-        assert "Class.method" in prompt
+        assert "class-level" in prompt
         assert "broad" in prompt
 
 
@@ -1775,5 +1775,5 @@ def test_planner_repair_brief_explains_variant_broad_gate_repair() -> None:
     brief = build_repair_brief(prior_iteration)
 
     assert brief["must_fix_codes"] == ["variant_slice_uses_broad_conformance_gate"]
-    assert "Class.method" in brief["required_repairs"][0]
+    assert "class-level" in brief["required_repairs"][0]
     assert "merge the variant slices" in brief["required_repairs"][0]
