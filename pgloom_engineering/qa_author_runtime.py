@@ -868,6 +868,7 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_range_key_prefix_not_payload_prefix",
         "qa_semantic_range_key_prefix_too_narrow",
         "qa_semantic_range_regression_guards_missing",
+        "qa_semantic_range_prefix_no_seeded_match",
         "qa_semantic_build_file_string_assertion",
     }
     codes = {finding.get("code") for finding in findings if isinstance(finding, dict)}

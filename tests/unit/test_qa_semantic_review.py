@@ -154,6 +154,38 @@ def test_semantic_review_blocks_prefix_range_without_seeded_matching_key() -> No
     assert seeded_findings[0].details["written_keys"] == [3]
 
 
+def test_semantic_review_blocks_prefix_range_without_seeded_constant_match() -> None:
+    findings = review_semantic_quality(
+        files={
+            "core/src/test/java/com/example/RangeScanApiTest.java": """
+            class RangeScanApiTest {
+                private static final int PREFIX_VALUE = 0b10;
+                private static final int PREFIX_BITS = 2;
+
+                void prefixSmoke(LvcStore store, StoreVisitor visitor) {
+                    store.writeBuffer(3, payload, 0, 16);
+                    store.ascendingRange(8, 11, PREFIX_VALUE, PREFIX_BITS, visitor);
+                    store.descendingRange(8, 11, PREFIX_VALUE, PREFIX_BITS, visitor);
+                }
+            }
+            """
+        },
+        plan_text="R-003 range scans require prefix filtering.",
+        task_text="Write Java tests for prefix range behavior.",
+        project_metadata={},
+    )
+
+    seeded_findings = [
+        finding
+        for finding in findings
+        if finding.code == "qa_semantic_range_prefix_no_seeded_match"
+    ]
+    assert len(seeded_findings) == 1
+    assert seeded_findings[0].details["prefix_value"] == 0b10
+    assert seeded_findings[0].details["prefix_bits"] == 2
+    assert seeded_findings[0].details["written_keys"] == [3]
+
+
 def test_semantic_review_allows_prefix_range_with_seeded_matching_key() -> None:
     findings = review_semantic_quality(
         files={

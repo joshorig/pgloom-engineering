@@ -2138,6 +2138,11 @@ def test_qa_quality_repairable_accepts_java_line_length_finding() -> None:
                     "file": "qa/fixtures/run-range-scan-user-journey.sh",
                     "line": 4,
                 },
+                {
+                    "code": "qa_semantic_range_prefix_no_seeded_match",
+                    "file": "core/src/test/java/com/example/RangeScanApiTest.java",
+                    "line": 8,
+                },
             ]
         }
     )

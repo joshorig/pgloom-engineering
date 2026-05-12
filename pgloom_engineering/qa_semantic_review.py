@@ -1130,27 +1130,57 @@ def _literal_write_buffer_keys(text: str) -> list[int]:
 
 def _literal_prefix_range_calls(text: str) -> list[dict[str, int]]:
     calls: list[dict[str, int]] = []
+    constants = _java_int_constants(text)
+    int_token = r"(?:[A-Za-z_][A-Za-z0-9_]*|0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)"
     prefix_call = re.compile(
         r"\.(?:ascendingRange|descendingRange)\s*\(\s*"
-        r"(?P<from>[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
-        r"(?P<to>[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
-        r"(?P<prefix>0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
-        r"(?P<bits>[-+]?\d+)\s*,",
+        rf"(?P<from>{int_token})\s*,\s*"
+        rf"(?P<to>{int_token})\s*,\s*"
+        rf"(?P<prefix>{int_token})\s*,\s*"
+        rf"(?P<bits>{int_token})\s*,",
         re.MULTILINE | re.DOTALL,
     )
     for match in prefix_call.finditer(text):
-        from_key = _java_int_literal(match.group("from"))
-        to_key = _java_int_literal(match.group("to"))
+        from_key = _java_int_token(match.group("from"), constants)
+        to_key = _java_int_token(match.group("to"), constants)
+        prefix_value = _java_int_token(match.group("prefix"), constants)
+        prefix_bits = _java_int_token(match.group("bits"), constants)
+        if (
+            from_key is None
+            or to_key is None
+            or prefix_value is None
+            or prefix_bits is None
+        ):
+            continue
         calls.append(
             {
                 "from": min(from_key, to_key),
                 "to": max(from_key, to_key),
-                "prefix_value": _java_int_literal(match.group("prefix")),
-                "prefix_bits": _java_int_literal(match.group("bits")),
+                "prefix_value": prefix_value,
+                "prefix_bits": prefix_bits,
                 "line": _line_for_offset(text, match.start()),
             }
         )
     return calls
+
+
+def _java_int_constants(text: str) -> dict[str, int]:
+    constants: dict[str, int] = {}
+    for match in re.finditer(
+        r"\b(?:private|public|protected)?\s*(?:static\s+)?(?:final\s+)?int\s+"
+        r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*"
+        r"(?P<value>0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*;",
+        text,
+    ):
+        constants[match.group("name")] = _java_int_literal(match.group("value"))
+    return constants
+
+
+def _java_int_token(value: str, constants: dict[str, int]) -> int | None:
+    stripped = value.strip()
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", stripped):
+        return constants.get(stripped)
+    return _java_int_literal(stripped)
 
 
 def _java_int_literal(value: str) -> int:
