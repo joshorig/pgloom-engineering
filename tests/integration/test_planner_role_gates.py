@@ -117,7 +117,7 @@ def test_planner_enqueues_implementer_when_role_gate_enabled(
     ]
 
 
-def test_planner_dispatch_preserves_implementer_method_scoped_commands(
+def test_planner_dispatch_replaces_implementer_method_scoped_commands(
     database_url: str,
     tmp_path: Path,
 ) -> None:
@@ -164,7 +164,14 @@ def test_planner_dispatch_preserves_implementer_method_scoped_commands(
     impl_contract = next(
         row for row in contracts if row["input_contract"]["task_type"] == "engineering.implement"
     )
-    assert impl_contract["input_contract"]["verification_commands"] == [method_command]
+    assert impl_contract["input_contract"]["verification_commands"] == [
+        [
+            "./gradlew",
+            ":store:test",
+            "--tests",
+            "com.example.SnapshotRestoreTest",
+        ]
+    ]
 
 
 def test_planner_persistence_uses_metadata_qa_write_paths(
