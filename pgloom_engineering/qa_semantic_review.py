@@ -61,6 +61,7 @@ def review_semantic_quality(
     findings.extend(_range_test_null_receiver_findings(files, context, conventions))
     findings.extend(_range_prefix_behavior_findings(files, context, conventions))
     findings.extend(_range_key_prefix_semantics_findings(files, context, conventions))
+    findings.extend(_range_prefix_seed_findings(files, context, conventions))
     findings.extend(_range_regression_guard_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
     findings.extend(_portable_fixture_findings(files, conventions))
@@ -1066,6 +1067,101 @@ def _key_prefix_multi_match_signal(text: str) -> bool:
     if re.search(r"newbyte\[[123]\]", compact):
         return True
     return False
+
+
+def _range_prefix_seed_findings(
+    files: dict[str, str],
+    context: str,
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    range_config = _mapping(conventions.get("range_prefix_behavior"))
+    if range_config.get("required") is False:
+        return []
+    normalized_context = context.lower()
+    if "range" not in normalized_context or "prefix" not in normalized_context:
+        return []
+    findings: list[SemanticFinding] = []
+    for path, text in files.items():
+        if not path.endswith(".java") or "test" not in path.lower():
+            continue
+        written_keys = set(_literal_write_buffer_keys(text))
+        if not written_keys:
+            continue
+        for call in _literal_prefix_range_calls(text):
+            matching_keys = [
+                key
+                for key in written_keys
+                if call["from"] <= key <= call["to"]
+                and (key >> call["prefix_bits"]) == call["prefix_value"]
+            ]
+            if matching_keys:
+                continue
+            findings.append(
+                SemanticFinding(
+                    code="qa_semantic_range_prefix_no_seeded_match",
+                    severity="blocking",
+                    message=(
+                        "Prefix range tests call a literal prefix-filtered range without "
+                        "seeding any written key that is inside that range and matches the "
+                        "prefix. Such a test can fail a correct implementation or pass for "
+                        "the wrong reason; seed explicit matching and non-matching keys."
+                    ),
+                    file=path,
+                    line=call["line"],
+                    details={
+                        "from_key": call["from"],
+                        "to_key": call["to"],
+                        "prefix_value": call["prefix_value"],
+                        "prefix_bits": call["prefix_bits"],
+                        "written_keys": sorted(written_keys),
+                    },
+                )
+            )
+            break
+    return findings
+
+
+def _literal_write_buffer_keys(text: str) -> list[int]:
+    keys: list[int] = []
+    for match in re.finditer(r"\.writeBuffer\s*\(\s*([-+]?0x[0-9a-fA-F]+|[-+]?\d+)", text):
+        keys.append(_java_int_literal(match.group(1)))
+    return keys
+
+
+def _literal_prefix_range_calls(text: str) -> list[dict[str, int]]:
+    calls: list[dict[str, int]] = []
+    prefix_call = re.compile(
+        r"\.(?:ascendingRange|descendingRange)\s*\(\s*"
+        r"(?P<from>[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
+        r"(?P<to>[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
+        r"(?P<prefix>0b[01]+|[-+]?0x[0-9a-fA-F]+|[-+]?\d+)\s*,\s*"
+        r"(?P<bits>[-+]?\d+)\s*,",
+        re.MULTILINE | re.DOTALL,
+    )
+    for match in prefix_call.finditer(text):
+        from_key = _java_int_literal(match.group("from"))
+        to_key = _java_int_literal(match.group("to"))
+        calls.append(
+            {
+                "from": min(from_key, to_key),
+                "to": max(from_key, to_key),
+                "prefix_value": _java_int_literal(match.group("prefix")),
+                "prefix_bits": _java_int_literal(match.group("bits")),
+                "line": _line_for_offset(text, match.start()),
+            }
+        )
+    return calls
+
+
+def _java_int_literal(value: str) -> int:
+    stripped = value.strip().replace("_", "")
+    sign = -1 if stripped.startswith("-") else 1
+    unsigned = stripped[1:] if stripped.startswith(("+", "-")) else stripped
+    if unsigned.startswith(("0x", "0X")):
+        return sign * int(unsigned, 16)
+    if unsigned.startswith(("0b", "0B")):
+        return sign * int(unsigned, 2)
+    return sign * int(unsigned, 10)
 
 
 def _payload_prefix_seed_signal(text: str) -> bool:
