@@ -209,10 +209,9 @@ def _fixture_has_failure_assertion_signal(text: str) -> bool:
         [
             "assert",
             "throw new assertionerror",
-            "throw new illegalstateexception",
-            "throw new illegalargumentexception",
             "expected",
             "mismatch",
+            "unexpected",
         ],
     )
 

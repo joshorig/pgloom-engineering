@@ -298,6 +298,32 @@ def test_semantic_review_blocks_usertest_fixture_without_failure_checks() -> Non
     ] == ["qa_semantic_usertest_fixture_observes_without_asserting"]
 
 
+def test_semantic_review_ignores_write_failure_as_usertest_assertion() -> None:
+    findings = review_semantic_quality(
+        files={
+            "qa/fixtures/range-scan-usertest.jsh": """
+            void writePayload(LvcStore store, int key, byte[] payload) {
+                if (!store.writeBuffer(key, source, 0, payload.length)) {
+                    throw new IllegalStateException("write failed for key " + key);
+                }
+            }
+            RecordingVisitor visitor = new RecordingVisitor();
+            store.ascendingRange(4, 7, prefixValue, prefixBits, visitor);
+            System.out.println("prefix match: " + visitor.keys);
+            """
+        },
+        plan_text="R-003 range scans need user-test replay evidence.",
+        task_text="Write a user journey replay fixture for the public API.",
+        project_metadata={},
+    )
+
+    assert [
+        finding.code
+        for finding in findings
+        if finding.code == "qa_semantic_usertest_fixture_observes_without_asserting"
+    ] == ["qa_semantic_usertest_fixture_observes_without_asserting"]
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={
