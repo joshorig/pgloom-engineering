@@ -2119,6 +2119,30 @@ def test_qa_quality_repairable_accepts_range_prefix_coverage_finding() -> None:
     )
 
 
+def test_qa_quality_repairable_accepts_java_line_length_finding() -> None:
+    assert qa_quality_repairable(
+        {
+            "blocking_findings": [
+                {
+                    "code": "qa_semantic_java_line_too_long",
+                    "file": "core/src/test/java/com/example/RangeScanApiTest.java",
+                    "line": 23,
+                },
+                {
+                    "code": "qa_semantic_range_benchmark_parameterized_gate_mismatch",
+                    "file": "benchmarks/build.gradle",
+                    "line": 134,
+                },
+                {
+                    "code": "qa_semantic_nonportable_generated_worktree_path",
+                    "file": "qa/fixtures/run-range-scan-user-journey.sh",
+                    "line": 4,
+                },
+            ]
+        }
+    )
+
+
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:
     prompt = build_qa_author_prompt(
         _plan(),

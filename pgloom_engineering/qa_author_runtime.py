@@ -855,6 +855,8 @@ def qa_quality_repairable(quality_review: dict[str, Any]) -> bool:
         "qa_semantic_jmh_reflective_invocation",
         "qa_semantic_jmh_restore_not_cold",
         "qa_semantic_jmh_restore_target_reuse",
+        "qa_semantic_java_line_too_long",
+        "qa_semantic_nonportable_generated_worktree_path",
         "qa_semantic_range_benchmark_behavior_gap",
         "qa_semantic_range_benchmark_parameterized_gate_mismatch",
         "qa_semantic_range_benchmark_smoke_threshold_too_loose",

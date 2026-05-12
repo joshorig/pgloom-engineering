@@ -63,6 +63,7 @@ def review_semantic_quality(
     findings.extend(_range_key_prefix_semantics_findings(files, context, conventions))
     findings.extend(_range_regression_guard_findings(files, context, conventions))
     findings.extend(_build_file_hook_findings(files, conventions))
+    findings.extend(_portable_fixture_findings(files, conventions))
     return findings
 
 
@@ -105,6 +106,56 @@ def _java_style_findings(
 def _java_long_line_exempt(line: str) -> bool:
     stripped = line.strip()
     return stripped.startswith("package ") or stripped.startswith("import ")
+
+
+def _portable_fixture_findings(
+    files: dict[str, str],
+    conventions: dict[str, Any],
+) -> list[SemanticFinding]:
+    fixture_config = _mapping(conventions.get("portable_fixtures"))
+    if fixture_config.get("allow_generated_worktree_paths") is True:
+        return []
+    findings: list[SemanticFinding] = []
+    generated_path_pattern = re.compile(
+        r"(?P<path>(?:/Volumes|/Users|/private|/tmp)[^\s\"']*"
+        r"(?:/\.local/worktrees/pgloom__|/pgloom__)[^\s\"']*)"
+    )
+    for path, text in files.items():
+        if not _looks_like_qa_fixture_path(path):
+            continue
+        match = generated_path_pattern.search(text)
+        if match is None:
+            continue
+        findings.append(
+            SemanticFinding(
+                code="qa_semantic_nonportable_generated_worktree_path",
+                severity="blocking",
+                message=(
+                    "QA fixtures must be reusable from the checked-out project and must "
+                    "not hardcode generated pgloom role worktree paths. Resolve the "
+                    "project root from the script location, cwd, or an overridable "
+                    "environment variable instead."
+                ),
+                file=path,
+                line=_line_for_offset(text, match.start()),
+                details={"matched_path": match.group("path")},
+            )
+        )
+    return findings
+
+
+def _looks_like_qa_fixture_path(path: str) -> bool:
+    lowered = path.lower()
+    return (
+        "/qa/" in lowered
+        or lowered.startswith("qa/")
+        or "/fixtures/" in lowered
+        or lowered.endswith((".sh", ".bash", ".zsh"))
+    )
+
+
+def _line_for_offset(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
 
 
 def _qa_metadata(project_metadata: dict[str, Any]) -> dict[str, Any]:

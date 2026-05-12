@@ -40,6 +40,46 @@ def test_semantic_review_allows_java_imports_over_line_limit() -> None:
     assert findings == []
 
 
+def test_semantic_review_blocks_generated_worktree_paths_in_qa_fixtures() -> None:
+    findings = review_semantic_quality(
+        files={
+            "qa/fixtures/run-range-scan-user-journey.sh": (
+                "#!/usr/bin/env bash\n"
+                "WORKTREE=\"/Volumes/devssd/repos/ull/lvc-standard/.local/worktrees/"
+                "pgloom__wf_123__qa-author__task_456\"\n"
+                "\"$WORKTREE/gradlew\" :conformance-tests:testClasses\n"
+            )
+        },
+        plan_text="R-003 range scans need a replayable user journey fixture.",
+        task_text="Write a CLI fixture that exercises the public API.",
+        project_metadata={},
+    )
+
+    assert [finding.code for finding in findings] == [
+        "qa_semantic_nonportable_generated_worktree_path"
+    ]
+    assert findings[0].severity == "blocking"
+    assert findings[0].line == 2
+
+
+def test_semantic_review_allows_portable_qa_fixture_root_resolution() -> None:
+    findings = review_semantic_quality(
+        files={
+            "qa/fixtures/run-range-scan-user-journey.sh": (
+                "#!/usr/bin/env bash\n"
+                "SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n"
+                "PROJECT_ROOT=\"${PROJECT_ROOT:-$(cd \"$SCRIPT_DIR/../..\" && pwd)}\"\n"
+                "\"$PROJECT_ROOT/gradlew\" :conformance-tests:testClasses\n"
+            )
+        },
+        plan_text="R-003 range scans need a replayable user journey fixture.",
+        task_text="Write a CLI fixture that exercises the public API.",
+        project_metadata={},
+    )
+
+    assert findings == []
+
+
 def test_semantic_review_blocks_direct_spring_controller_when_http_harness_required() -> None:
     findings = review_semantic_quality(
         files={
