@@ -1043,6 +1043,41 @@ def test_implementer_prompt_forbids_extra_broad_project_gates(tmp_path: Path) ->
     assert "./qa/regression.sh" in instructions
 
 
+def test_implementer_prompt_requires_jmh_allocation_self_validation(
+    tmp_path: Path,
+) -> None:
+    prompt = json.loads(
+        build_implementer_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract().model_copy(
+                update={
+                    "verification_commands": [
+                        ["./gradlew", ":benchmarks:jmhSmokeCheck"],
+                    ]
+                }
+            ),
+            qa_contract=QAAuthorContract(
+                feature_id="feature-1",
+                task_id="qa-1",
+                worktree_path=str(tmp_path),
+            ),
+            worktree=tmp_path,
+            project_metadata={},
+            task_id="impl-1",
+            role_context={},
+        )
+    )
+
+    instructions = " ".join(prompt["instructions"])
+    assert "JMH smoke" in instructions
+    assert "allocation-threshold failure" in instructions
+    assert "repair the hot path" in instructions
+
+
+def test_implementer_defaults_to_inline_verification_repair() -> None:
+    assert EngineeringSettings().implementer_inline_repair_attempts >= 1
+
+
 def test_implementer_prompt_preserves_store_invariants(tmp_path: Path) -> None:
     prompt = json.loads(
         build_implementer_prompt(
@@ -1093,6 +1128,7 @@ def test_implementer_repair_prompt_forbids_extra_broad_project_gates(
     assert "Rerun only the TaskContract verification_commands" in instructions
     assert "./gradlew check" in instructions
     assert "full JMH sweeps" in instructions
+    assert "Do not claim done while the listed allocation gate still fails" in instructions
 
 
 def test_implementer_repair_prompt_preserves_store_invariants(tmp_path: Path) -> None:

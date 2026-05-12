@@ -249,7 +249,7 @@ class ImplementerHandler:
 
             reported_blockers = output.blockers if output is not None else []
             if (
-                (contract_error or failed_verifications or reported_blockers)
+                (contract_error or failed_verifications)
                 and repair_attempts < max_repair_attempts
             ):
                 repair_attempts += 1
@@ -264,8 +264,7 @@ class ImplementerHandler:
                         changed_files=touched,
                         path_violations=[],
                         failed_verifications=failed_verifications,
-                        contract_error=contract_error
-                        or _reported_blockers_error(reported_blockers),
+                        contract_error=contract_error,
                         raw_response=response.text,
                         role_context=role_context.prompt_payload(),
                     ),
@@ -406,6 +405,13 @@ def build_implementer_prompt(
                     "unless that exact command is listed in the TaskContract."
                 ),
                 (
+                    "If a listed verification command is a JMH smoke, benchmark smoke, "
+                    "allocation, or B/op gate, it is an implementer self-validation gate. "
+                    "Run it before handoff, treat any nonzero exit or allocation-threshold "
+                    "failure as a production implementation defect, repair the hot path, "
+                    "and rerun the same command until it passes or you must report a blocker."
+                ),
+                (
                     "Preserve existing storage invariants while implementing new access "
                     "patterns: do not wrap raw slot ids modulo slotCount, do not widen point "
                     "APIs to accept invalid or out-of-range slots, do not accept partial "
@@ -497,6 +503,11 @@ def build_implementer_repair_prompt(
                     "project gates such as ./gradlew test, ./gradlew check, ./qa/smoke.sh, "
                     "./qa/regression.sh, or full JMH sweeps unless that exact command is "
                     "listed in the TaskContract."
+                ),
+                (
+                    "If the failing command is a JMH smoke, benchmark smoke, allocation, "
+                    "or B/op gate, fix the implementation hot path before handoff. Do not "
+                    "claim done while the listed allocation gate still fails."
                 ),
                 (
                     "When repairing range, visitor, or read/write behavior, preserve existing "
@@ -755,15 +766,6 @@ def _normalize_check_items(value: object) -> list[dict[str, Any]]:
         elif item is not None:
             normalized.append({"name": str(item), "status": "reported"})
     return normalized
-
-
-def _reported_blockers_error(blockers: list[str]) -> str | None:
-    if not blockers:
-        return None
-    return (
-        "TaskResultContract.blockers must be empty when orchestrator verification "
-        f"passes; reported blockers: {blockers}"
-    )
 
 
 def _verification_blocker_reason(item: Any, *, worktree: Path | None = None) -> str:

@@ -26,6 +26,7 @@ from pgloom_engineering.role_payloads import compact_plan_payload
 MAX_REPAIR_FILE_CHARS = 12000
 MAX_REPAIR_TOTAL_FILE_CHARS = 36000
 MAX_REPAIR_RESPONSE_CHARS = 12000
+MAX_QA_ROLE_CONTEXT_TEXT_CHARS = 2200
 
 
 def command_for_worktree(command: list[str], worktree: Path) -> list[str]:
@@ -450,7 +451,7 @@ def build_qa_author_prompt(
         ),
         "project_authorized_test_support_paths": _metadata_test_support_paths(qa_metadata),
         "worktree": str(project_root),
-        "role_context": role_context or {},
+        "role_context": compact_qa_author_role_context(role_context),
         "route_coverage_requirements": route_requirements,
         "benchmark_requirements": benchmark_requirements,
         "deterministic_test_skeleton": deterministic_test_skeleton(
@@ -485,6 +486,64 @@ def build_qa_author_prompt(
         },
     }
     return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def compact_qa_author_role_context(
+    role_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(role_context, dict):
+        return {}
+    compact: dict[str, Any] = {
+        "contract": role_context.get("contract"),
+        "role": role_context.get("role"),
+        "query": _compact_prompt_text(role_context.get("query"), limit=900),
+        "relevant_paths": _compact_string_list(role_context.get("relevant_paths"), limit=30),
+        "qa_write_paths": _compact_string_list(role_context.get("qa_write_paths"), limit=30),
+        "memory_digest": _compact_prompt_text(
+            role_context.get("memory_digest"),
+            limit=MAX_QA_ROLE_CONTEXT_TEXT_CHARS,
+        ),
+        "packed_context": _compact_prompt_text(
+            role_context.get("packed_context"),
+            limit=MAX_QA_ROLE_CONTEXT_TEXT_CHARS,
+        ),
+    }
+    token_savior = role_context.get("token_savior")
+    if isinstance(token_savior, dict):
+        compact["token_savior"] = {
+            key: token_savior.get(key)
+            for key in [
+                "method",
+                "input_tokens_original",
+                "input_tokens_after_savior",
+                "tokens_saved",
+                "reduction_ratio",
+            ]
+            if key in token_savior
+        }
+    compact["compaction"] = {
+        "contract": "qa_author_role_context_compaction.v1",
+        "policy": (
+            "Large recall text is capped for QA author prompts; use relevant_paths "
+            "and qa_context_capsule first, then inspect exact files on demand."
+        ),
+    }
+    return {key: value for key, value in compact.items() if value not in (None, "", [])}
+
+
+def _compact_prompt_text(value: object, *, limit: int) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n...[truncated for qa author prompt]"
+
+
+def _compact_string_list(value: object, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value[:limit] if str(item)]
 
 
 def build_qa_context_capsule(

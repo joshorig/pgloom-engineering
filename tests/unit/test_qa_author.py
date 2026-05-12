@@ -8,6 +8,7 @@ from typing import Any
 
 from pgloom.harness.subprocess import SubprocessResult, run_bounded
 
+from pgloom_engineering.config import EngineeringSettings
 from pgloom_engineering.contracts import (
     DesignContract,
     PlanContract,
@@ -2602,6 +2603,47 @@ def test_qa_author_prompt_includes_project_qa_metadata() -> None:
         "test_roots": ["app-api/src/test/java", "ui/tests/e2e"],
     }
     assert "qa_context_capsule" in payload
+
+
+def test_qa_author_prompt_compacts_large_role_context() -> None:
+    prompt = build_qa_author_prompt(
+        _plan(),
+        _task_contract(),
+        project_root=Path("."),
+        project_metadata={},
+        role_context={
+            "contract": "engineering.role_context.v1",
+            "role": "qa.author",
+            "query": "range scan QA",
+            "packed_context": "p" * 10_000,
+            "memory_digest": "m" * 10_000,
+            "relevant_paths": [f"src/{index}.java" for index in range(80)],
+            "qa_write_paths": [f"tests/{index}.java" for index in range(80)],
+            "token_savior": {
+                "method": "recall",
+                "tokens_saved": 1234,
+                "large_unused_blob": "x" * 10_000,
+            },
+        },
+    )
+    payload = json.loads(prompt)
+    role_context = payload["role_context"]
+
+    assert role_context["contract"] == "engineering.role_context.v1"
+    assert len(role_context["packed_context"]) < 2400
+    assert len(role_context["memory_digest"]) < 2400
+    assert len(role_context["relevant_paths"]) == 30
+    assert len(role_context["qa_write_paths"]) == 30
+    assert role_context["token_savior"] == {
+        "method": "recall",
+        "tokens_saved": 1234,
+    }
+    assert "large_unused_blob" not in json.dumps(role_context)
+    assert "qa_author_role_context_compaction.v1" in json.dumps(role_context)
+
+
+def test_qa_author_model_context_does_not_eager_add_worktree_by_default() -> None:
+    assert EngineeringSettings().qa_author_model_context_add_dir_enabled is False
 
 
 def test_qa_author_model_routing_updates_codex_command() -> None:

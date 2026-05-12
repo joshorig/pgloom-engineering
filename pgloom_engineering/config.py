@@ -38,7 +38,7 @@ class EngineeringSettings(BaseSettings):
     role_context_capsule_version: str = "role-context-capsule.v1"
     role_model_context_isolation_enabled: bool = False
     qa_author_model_context_isolation_enabled: bool = False
-    qa_author_model_context_add_dir_enabled: bool = True
+    qa_author_model_context_add_dir_enabled: bool = False
     qa_validation_model_context_isolation_enabled: bool = False
     qa_validation_model_context_add_dir_enabled: bool = True
     implementer_model_context_isolation_enabled: bool = False
@@ -122,7 +122,7 @@ class EngineeringSettings(BaseSettings):
     implementer_profile: str = "implementer"
     implementer_command: list[str] = Field(default_factory=lambda: ["cat"])
     implementer_invocation_timeout_seconds: float = 600.0
-    implementer_inline_repair_attempts: int = 0
+    implementer_inline_repair_attempts: int = 2
     implementer_codex_model: str = "gpt-5.4"
     implementer_codex_reasoning: str = "medium"
     implementer_claude_model: str = "sonnet"
