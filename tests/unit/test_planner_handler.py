@@ -1125,6 +1125,130 @@ def test_apply_corrective_slice_scope_keeps_one_best_implementer_slice() -> None
     ]
 
 
+def test_apply_corrective_slice_scope_narrows_exhausted_planner_to_production_repair() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Retry corrective replan.",
+        design_contract=DesignContract(public_api="Range API"),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="design",
+                role="designer",
+                task_type="engineering.design",
+                objective="Restate the design contract.",
+                allowed_paths=["docs/"],
+                forbidden_paths=["store/src/main/java/"],
+                expected_outputs=["DesignContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-author",
+                role="qa",
+                task_type="engineering.qa.author",
+                objective="Repair benchmark coverage.",
+                allowed_paths=["benchmarks/src/jmh/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                expected_outputs=["QAAuthorContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-single",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair SINGLE store behavior.",
+                allowed_paths=["store/src/main/java/com/example/SingleStore.java"],
+                forbidden_paths=["benchmarks/"],
+                expected_outputs=["TaskResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="impl-double-mmap",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Repair DoubleMmapStore mapped-file lifecycle.",
+                allowed_paths=["store/src/main/java/com/example/DoubleMmapStore.java"],
+                forbidden_paths=["benchmarks/"],
+                expected_outputs=["DoubleMmapStore uses mapped storage"],
+            ),
+            TaskSliceContract(
+                slice_id="review",
+                role="reviewer",
+                task_type="engineering.review",
+                objective="Review repair.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=[],
+                expected_outputs=["ReviewVerdictContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Verify repair.",
+                allowed_paths=["benchmarks/"],
+                forbidden_paths=[],
+                expected_outputs=["QAResultContract"],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Exercise public behavior.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=[],
+                expected_outputs=["QAResultContract"],
+            ),
+        ],
+        acceptance_test_matrix=["reviewer finding fixed"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Repair",
+                slice_ids=[
+                    "design",
+                    "qa-author",
+                    "impl-single",
+                    "impl-double-mmap",
+                    "review",
+                    "qa-scrutiny",
+                    "qa-usertest",
+                ],
+            )
+        ],
+    )
+
+    scoped = _apply_corrective_slice_scope(
+        plan,
+        {
+            "replan_context": {
+                "mode": "corrective_slice",
+                "blocker_code": "engineering.planner_council_exhausted",
+                "blocker_reason": "planner council exhausted",
+                "failure_context": (
+                    "Reviewer rejected store/src/main/java/com/example/"
+                    "DoubleMmapStore.java because it still uses transient storage; "
+                    "benchmark smoke was present but not the defect."
+                ),
+            }
+        },
+    )
+
+    assert [task_slice.slice_id for task_slice in scoped.task_slices] == [
+        "impl-double-mmap",
+        "review",
+        "qa-scrutiny",
+        "qa-usertest",
+    ]
+    assert scoped.task_slices[0].depends_on == []
+    assert scoped.task_slices[1].depends_on == ["impl-double-mmap"]
+    assert scoped.task_slices[2].depends_on == ["review"]
+    assert scoped.task_slices[3].depends_on == ["qa-scrutiny"]
+    assert scoped.milestones[0].slice_ids == [
+        "impl-double-mmap",
+        "review",
+        "qa-scrutiny",
+        "qa-usertest",
+    ]
+
+
 def test_apply_corrective_slice_scope_routes_qa_owned_review_rejection_to_qa_author() -> None:
     plan = PlanContract(
         feature_id="wf_range",

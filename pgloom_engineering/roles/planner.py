@@ -1055,6 +1055,7 @@ def _apply_corrective_slice_scope(
         "engineering.review_rejected",
         "engineering.qa_verify_failed",
         "engineering.qa_usertest_failed",
+        "engineering.planner_council_exhausted",
     }:
         return contract
     allowed_task_types = _corrective_allowed_task_types(context)
@@ -1313,12 +1314,17 @@ def _narrow_corrective_slice_chain(
     )
     if benchmark_classification in {"near_threshold", "qa_harness"}:
         primary_types = ["engineering.qa.author"]
+    planner_exhausted = blocker_code == "engineering.planner_council_exhausted"
+    planner_exhausted_production_repair = (
+        planner_exhausted and _corrective_context_mentions_production_defect(context)
+    )
     if blocker_code in {
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_handoff_missing",
         "engineering.qa_tests_do_not_compile",
     } or (
-        benchmark_classification != "material_allocation"
+        not planner_exhausted_production_repair
+        and benchmark_classification != "material_allocation"
         and (
             _corrective_context_mentions_qa_owned_paths(context)
             or any(
@@ -1473,6 +1479,16 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     }
     blocker_code = str(context.get("blocker_code") or "")
     qa_owned = _corrective_context_mentions_qa_owned_paths(context)
+    if blocker_code == "engineering.planner_council_exhausted":
+        if qa_owned and not _corrective_context_mentions_production_defect(context):
+            return {
+                "engineering.qa.author",
+                "engineering.implement",
+                "engineering.review",
+                "engineering.qa.verify.scrutiny",
+                "engineering.qa.verify.usertest",
+            }
+        return allowed
     if blocker_code == "engineering.review_rejected" and qa_owned:
         if not _corrective_context_mentions_production_defect(context):
             return {
