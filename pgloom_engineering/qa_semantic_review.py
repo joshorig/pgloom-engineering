@@ -171,11 +171,15 @@ def _usertest_fixture_assertion_findings(
     fixture_config = _mapping(conventions.get("user_test_fixtures"))
     if fixture_config.get("allow_observation_only") is True:
         return []
-    if not _context_mentions_any(context, ["user journey", "usertest", "user-test", "replay"]):
-        return []
+    context_mentions_usertest = _context_mentions_any(
+        context, ["user journey", "usertest", "user-test", "replay"]
+    )
     findings: list[SemanticFinding] = []
     for path, text in files.items():
         if not _looks_like_qa_fixture_path(path):
+            continue
+        path_mentions_usertest = _path_mentions_usertest(path)
+        if not context_mentions_usertest and not path_mentions_usertest:
             continue
         lowered = text.lower()
         if not _context_mentions_any(lowered, ["ascendingrange", "descendingrange"]):
@@ -200,6 +204,11 @@ def _usertest_fixture_assertion_findings(
             )
         )
     return findings
+
+
+def _path_mentions_usertest(path: str) -> bool:
+    lowered = path.lower()
+    return "usertest" in lowered or "user-test" in lowered or "replay" in lowered
 
 
 def _fixture_has_failure_assertion_signal(text: str) -> bool:
