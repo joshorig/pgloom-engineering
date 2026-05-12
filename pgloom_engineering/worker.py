@@ -473,12 +473,15 @@ def _post_execution_gate(
                     status="completed",
                     database_url=database_url,
                 )
-                _record_dependency_handoffs(
-                    feature_id=feature_id,
-                    from_task_id=str(task["id"]),
-                    handoff_type="task_result",
-                    contract=contract.model_dump(mode="json"),
-                    database_url=database_url,
+                _attach_handoff_ids(
+                    result,
+                    _record_dependency_handoffs(
+                        feature_id=feature_id,
+                        from_task_id=str(task["id"]),
+                        handoff_type="task_result",
+                        contract=contract.model_dump(mode="json"),
+                        database_url=database_url,
+                    ),
                 )
         elif task["task_type"] == "engineering.review":
             review_verdict_contract = ReviewVerdictContract.model_validate(
@@ -496,12 +499,15 @@ def _post_execution_gate(
                     status="completed",
                     database_url=database_url,
                 )
-                _record_dependency_handoffs(
-                    feature_id=feature_id,
-                    from_task_id=str(task["id"]),
-                    handoff_type="review",
-                    contract=output_contract,
-                    database_url=database_url,
+                _attach_handoff_ids(
+                    result,
+                    _record_dependency_handoffs(
+                        feature_id=feature_id,
+                        from_task_id=str(task["id"]),
+                        handoff_type="review",
+                        contract=output_contract,
+                        database_url=database_url,
+                    ),
                 )
                 if review_verdict_contract.verdict != "approve":
                     return _blocked_with_recovery(
@@ -528,12 +534,15 @@ def _post_execution_gate(
                     status="completed",
                     database_url=database_url,
                 )
-                _record_dependency_handoffs(
-                    feature_id=feature_id,
-                    from_task_id=str(task["id"]),
-                    handoff_type="qa_author_contract",
-                    contract=output_contract,
-                    database_url=database_url,
+                _attach_handoff_ids(
+                    result,
+                    _record_dependency_handoffs(
+                        feature_id=feature_id,
+                        from_task_id=str(task["id"]),
+                        handoff_type="qa_author_contract",
+                        contract=output_contract,
+                        database_url=database_url,
+                    ),
                 )
         elif task["task_type"] in {
             "engineering.qa.verify.scrutiny",
@@ -582,12 +591,15 @@ def _persist_qa_result_contract(
         status=status,
         database_url=database_url,
     )
-    _record_dependency_handoffs(
-        feature_id=feature_id,
-        from_task_id=str(task["id"]),
-        handoff_type="validation",
-        contract=output_contract,
-        database_url=database_url,
+    _attach_handoff_ids(
+        result,
+        _record_dependency_handoffs(
+            feature_id=feature_id,
+            from_task_id=str(task["id"]),
+            handoff_type="validation",
+            contract=output_contract,
+            database_url=database_url,
+        ),
     )
     if status == "completed" and qa_result_contract.verdict == "pass":
         record_qa_signoff(
@@ -619,7 +631,8 @@ def _record_dependency_handoffs(
     handoff_type: str,
     contract: dict[str, Any],
     database_url: str | None,
-) -> None:
+) -> list[dict[str, Any]]:
+    handoffs: list[dict[str, Any]] = []
     for row in list_task_contracts(feature_id, database_url=database_url):
         input_contract = row.get("input_contract")
         if not isinstance(input_contract, dict):
@@ -627,14 +640,27 @@ def _record_dependency_handoffs(
         dependencies = input_contract.get("dependencies")
         if not isinstance(dependencies, list) or from_task_id not in dependencies:
             continue
-        record_handoff(
-            feature_id=feature_id,
-            from_task_id=from_task_id,
-            to_task_id=str(row["task_id"]),
-            handoff_type=handoff_type,
-            contract=contract,
-            database_url=database_url,
+        handoffs.append(
+            record_handoff(
+                feature_id=feature_id,
+                from_task_id=from_task_id,
+                to_task_id=str(row["task_id"]),
+                handoff_type=handoff_type,
+                contract=contract,
+                database_url=database_url,
+            )
         )
+    return handoffs
+
+
+def _attach_handoff_ids(result: HandlerResult, handoffs: list[dict[str, Any]]) -> None:
+    if not handoffs or not isinstance(result.result, dict):
+        return
+    ids = [str(row["id"]) for row in handoffs if row.get("id")]
+    if not ids:
+        return
+    result.result["handoff_ids"] = ids
+    result.result.setdefault("handoff_id", ids[0])
 
 
 def _requires_handoff(task: dict[str, Any]) -> bool:
@@ -932,6 +958,11 @@ def _artifact_evidence_links_from_result(result: dict[str, Any] | None) -> list[
 def _handoff_id_from_result(result: dict[str, Any] | None) -> str | None:
     if not isinstance(result, dict):
         return None
+    if result.get("handoff_id"):
+        return str(result["handoff_id"])
+    handoff_ids = result.get("handoff_ids")
+    if isinstance(handoff_ids, list) and handoff_ids:
+        return str(handoff_ids[0])
     for key in ("task_result_contract", "handoff_envelope"):
         payload = result.get(key)
         if isinstance(payload, dict) and payload.get("handoff_id"):

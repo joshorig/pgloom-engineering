@@ -182,7 +182,7 @@ def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch
     )
     def record_handoff_stub(**kwargs: Any) -> dict[str, Any]:
         handoffs.append(kwargs)
-        return {}
+        return {"id": "handoff-1", **kwargs}
 
     monkeypatch.setattr(
         worker,
@@ -208,6 +208,45 @@ def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch
             "database_url": None,
         }
     ]
+
+
+def test_record_dependency_handoffs_returns_created_handoff_rows(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        worker,
+        "list_task_contracts",
+        lambda *args, **kwargs: [
+            {
+                "task_id": "review-1",
+                "input_contract": {"dependencies": ["impl-1"]},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        worker,
+        "record_handoff",
+        lambda **kwargs: {"id": "handoff-1", **kwargs},
+    )
+
+    handoffs = _record_dependency_handoffs(
+        feature_id="feature-1",
+        from_task_id="impl-1",
+        handoff_type="task_result",
+        contract={"changed_files": ["src/App.java"]},
+        database_url=None,
+    )
+
+    assert handoffs[0]["id"] == "handoff-1"
+    assert handoffs[0]["to_task_id"] == "review-1"
+
+
+def test_handoff_id_from_result_accepts_top_level_handoff_ids() -> None:
+    assert worker._handoff_id_from_result({"handoff_id": "handoff-1"}) == "handoff-1"  # noqa: SLF001
+    assert (
+        worker._handoff_id_from_result(  # noqa: SLF001
+            {"handoff_ids": ["handoff-2", "handoff-3"]}
+        )
+        == "handoff-2"
+    )
 
 
 def test_milestone_signoff_requires_both_split_validators(monkeypatch: Any) -> None:
