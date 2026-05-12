@@ -159,6 +159,12 @@ def test_run_workflow_still_fails_unexplained_abandoned_tasks(
             ]
         ),
     )
+    states: list[str] = []
+    monkeypatch.setattr(
+        workflow_driver,
+        "update_feature_state",
+        lambda _feature_id, *, state, database_url=None, **kwargs: states.append(state),
+    )
 
     result = workflow_driver.run_workflow("feature-1")
 
@@ -168,6 +174,7 @@ def test_run_workflow_still_fails_unexplained_abandoned_tasks(
         "task_ids": ["old-impl"],
         "steps": [],
     }
+    assert states == ["failed"]
 
 
 def test_run_workflow_ignores_dependency_waiting_blocked_tasks(monkeypatch: Any) -> None:
