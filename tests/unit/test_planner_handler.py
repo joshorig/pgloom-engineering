@@ -2489,6 +2489,52 @@ def test_normalize_feature_scoped_plan_verification_derives_milestone_required_g
     ]
 
 
+def test_normalize_feature_scoped_plan_verification_adds_impl_benchmark_gate() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Repair zero-allocation StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["range scan tests"]),
+        affected_surfaces=["core/", "store/", "benchmarks/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Fix allocation in the visitor hot path.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["benchmarks/"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[
+                    ["./gradlew", ":core:compileJava", ":store:compileJava"]
+                ],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Run feature tests and benchmark smoke gates.",
+                allowed_paths=["store/src/test/java/", "benchmarks/src/jmh/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["impl"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[
+                    ["./gradlew", ":store:test", "--tests", "com.example.RangeTest"],
+                    ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+                ],
+            ),
+        ],
+        acceptance_test_matrix=["range scans remain zero allocation"],
+    )
+
+    normalized = _normalize_feature_scoped_plan_verification(plan, project_metadata={})
+
+    assert normalized.task_slices[0].verification_commands == [
+        ["./gradlew", ":core:compileJava", ":store:compileJava"],
+        ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+    ]
+
+
 def test_post_normalization_quality_rejects_broadened_variant_command(
     tmp_path: Path,
 ) -> None:

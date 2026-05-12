@@ -502,17 +502,26 @@ def _normalize_feature_scoped_plan_verification(
     project_metadata: dict[str, Any],
 ) -> PlanContract:
     task_slices: list[TaskSliceContract] = []
+    benchmark_gate_commands = _benchmark_gate_commands(contract.task_slices)
     for task_slice in contract.task_slices:
+        verification_commands = _feature_scoped_verification_commands(
+            task_slice.verification_commands,
+            plan=contract,
+            task_objective=task_slice.objective,
+            task_type=task_slice.task_type,
+            project_metadata=project_metadata,
+        )
+        if task_slice.task_type == "engineering.implement":
+            verification_commands = _with_required_implementation_benchmark_gates(
+                task_slice,
+                plan=contract,
+                commands=verification_commands,
+                benchmark_gate_commands=benchmark_gate_commands,
+            )
         task_slices.append(
             task_slice.model_copy(
                 update={
-                    "verification_commands": _feature_scoped_verification_commands(
-                        task_slice.verification_commands,
-                        plan=contract,
-                        task_objective=task_slice.objective,
-                        task_type=task_slice.task_type,
-                        project_metadata=project_metadata,
-                    )
+                    "verification_commands": verification_commands,
                 }
             )
         )
@@ -540,6 +549,63 @@ def _normalize_feature_scoped_plan_verification(
             "task_slices": task_slices,
             "milestones": milestones,
         }
+    )
+
+
+def _with_required_implementation_benchmark_gates(
+    task_slice: TaskSliceContract,
+    *,
+    plan: PlanContract,
+    commands: list[list[str]],
+    benchmark_gate_commands: list[list[str]],
+) -> list[list[str]]:
+    if not benchmark_gate_commands:
+        return commands
+    if any(_command_mentions_benchmark_gate(command) for command in commands):
+        return commands
+    if not _task_slice_needs_benchmark_self_validation(task_slice, plan):
+        return commands
+    return _dedupe_commands([*commands, *benchmark_gate_commands])
+
+
+def _benchmark_gate_commands(task_slices: list[TaskSliceContract]) -> list[list[str]]:
+    return _dedupe_commands(
+        [
+            command
+            for task_slice in task_slices
+            for command in task_slice.verification_commands
+            if _command_mentions_benchmark_gate(command)
+        ]
+    )
+
+
+def _command_mentions_benchmark_gate(command: list[str]) -> bool:
+    command_text = " ".join(command).lower()
+    return "benchmark" in command_text or "jmh" in command_text
+
+
+def _task_slice_needs_benchmark_self_validation(
+    task_slice: TaskSliceContract,
+    plan: PlanContract,
+) -> bool:
+    text = " ".join(
+        [
+            plan.problem_statement,
+            " ".join(plan.acceptance_assertions),
+            " ".join(plan.acceptance_test_matrix),
+            task_slice.objective,
+            " ".join(task_slice.expected_outputs),
+        ]
+    ).lower()
+    return any(
+        term in text
+        for term in (
+            "allocation",
+            "zero-allocation",
+            "benchmark",
+            "jmh",
+            "smoke gate",
+        )
     )
 
 
