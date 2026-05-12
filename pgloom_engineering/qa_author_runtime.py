@@ -963,6 +963,14 @@ def build_qa_quality_repair_prompt(
                     "narrow for R-003."
                 ),
                 (
+                    "For qa_semantic_range_prefix_no_seeded_match findings, repair the "
+                    "named constants or seeded keys so at least one written key is inside "
+                    "the prefix range and satisfies (writtenKey >> PREFIX_BITS) == "
+                    "PREFIX_VALUE, and at least one written key in the same fixture does "
+                    "not satisfy that prefix. Do not merely change the expected assertion "
+                    "count; fix the fixture data so the test proves real prefix behavior."
+                ),
+                (
                     "For existing smoke threshold findings, keep unrelated "
                     "CiSmokeBenchmark allocation thresholds unchanged. Add only "
                     "feature-specific RangeScanBenchmark thresholds or wiring needed "

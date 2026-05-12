@@ -17,6 +17,7 @@ from pgloom_engineering.contracts import (
 )
 from pgloom_engineering.qa_author_runtime import (
     build_qa_author_prompt,
+    build_qa_quality_repair_prompt,
     qa_model_route,
     qa_quality_repairable,
     route_model_command,
@@ -2154,6 +2155,49 @@ def test_qa_quality_repairable_accepts_java_line_length_finding() -> None:
             ]
         }
     )
+
+
+def test_qa_quality_repair_prompt_explains_prefix_seed_repair(tmp_path: Path) -> None:
+    worktree = tmp_path / "repo"
+    worktree.mkdir()
+    test_file = worktree / "core/src/test/java/com/example/RangeScanApiTest.java"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "class RangeScanApiTest {\n"
+        "  static final int PREFIX_VALUE = 1;\n"
+        "  static final int PREFIX_BITS = 4;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    prompt = build_qa_quality_repair_prompt(
+        plan=_plan(),
+        task_contract=_task_contract(),
+        worktree=worktree,
+        changed_files=[str(test_file.relative_to(worktree))],
+        quality_review={
+            "blocking_findings": [
+                {
+                    "code": "qa_semantic_range_prefix_no_seeded_match",
+                    "file": str(test_file.relative_to(worktree)),
+                    "line": 3,
+                    "from_key": 0,
+                    "to_key": 15,
+                    "prefix_value": 1,
+                    "prefix_bits": 4,
+                    "written_keys": [1, 2, 3, 12],
+                }
+            ]
+        },
+        current_contract={},
+        project_metadata={},
+    )
+
+    payload = json.loads(prompt)
+    instructions = "\n".join(payload["instructions"])
+    assert "qa_semantic_range_prefix_no_seeded_match" in instructions
+    assert "(writtenKey >> PREFIX_BITS) == PREFIX_VALUE" in instructions
+    assert payload["repair_files"] == [str(test_file.relative_to(worktree))]
 
 
 def test_qa_author_prompt_includes_project_qa_metadata() -> None:
