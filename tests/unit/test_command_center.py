@@ -265,12 +265,12 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     assert finished["model_profile"] == "implementer"
     assert finished["model_seconds"] == pytest.approx(1.25)
     assert finished["verification_seconds"] == pytest.approx(2.5)
-    assert float(finished["cost_usd"]) == pytest.approx(0.000455)
+    assert float(finished["cost_usd"]) == pytest.approx(0.000545)
     feature_row = store.get_feature(feature["id"], database_url=database_url)
     assert feature_row is not None
-    assert feature_row["cost_usd_micros"] == 455
+    assert feature_row["cost_usd_micros"] == 545
     model_usage = store.model_usage(feature["id"], database_url=database_url)[0]
-    assert model_usage["cost_usd_micros"] == 455
+    assert model_usage["cost_usd_micros"] == 545
     assert model_usage["reasoning_tokens"] == 3
     stored_artifact = store.artifacts(feature["id"], database_url=database_url)[0]
     assert stored_artifact["source_command"] == "./gradlew :core:test"

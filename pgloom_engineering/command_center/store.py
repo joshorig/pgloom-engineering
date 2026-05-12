@@ -23,10 +23,10 @@ case
       coalesce((metadata->>'cached_input_tokens')::integer, 0)
       + coalesce((metadata->>'cache_read_input_tokens')::integer, 0)
     ) * 0.50
-    + greatest(
-      output_tokens,
+    + output_tokens * 30.0
+    + (
       coalesce((metadata->>'reasoning_tokens')::integer, 0)
-        + coalesce((metadata->>'reasoning_output_tokens')::integer, 0)
+      + coalesce((metadata->>'reasoning_output_tokens')::integer, 0)
     ) * 30.0
   ) / 1000000.0
   else cost_usd

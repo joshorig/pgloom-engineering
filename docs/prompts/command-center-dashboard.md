@@ -60,9 +60,8 @@
 - Host-header allowlist, WebSocket Origin allowlist, explicit dev CORS
   (`CC_DEV_MODE=1`), synthetic `feature.update` after pause/resume, and
   README documentation in `pgloom_engineering/command_center/README.md`.
-- Command Center cost fallback SQL uses
-  `greatest(output_tokens, reasoning_tokens + reasoning_output_tokens)` for
-  Codex fallback billing, avoiding reasoning-token double count.
+- Command Center cost fallback SQL matches persisted Codex pricing by charging
+  output tokens and reasoning tokens additively.
 - CI-facing UI coverage exists through Playwright e2e and a GitHub Actions
   workflow.
 
