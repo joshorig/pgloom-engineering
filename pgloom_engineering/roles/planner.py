@@ -502,12 +502,19 @@ def _normalize_feature_scoped_plan_verification(
                 }
             )
         )
+    normalized_plan = contract.model_copy(update={"task_slices": task_slices})
+    task_slice_by_id = {task_slice.slice_id: task_slice for task_slice in task_slices}
     milestones = [
         milestone.model_copy(
             update={
                 "validation_contract": _normalize_validation_contract_required_gates(
                     milestone.validation_contract,
-                    plan=contract,
+                    plan=normalized_plan,
+                    milestone_slices=[
+                        task_slice_by_id[slice_id]
+                        for slice_id in milestone.slice_ids
+                        if slice_id in task_slice_by_id
+                    ],
                     project_metadata=project_metadata,
                 )
             }
@@ -613,11 +620,14 @@ def _normalize_validation_contract_required_gates(
     validation_contract: dict[str, Any],
     *,
     plan: PlanContract,
+    milestone_slices: list[TaskSliceContract] | None = None,
     project_metadata: dict[str, Any],
 ) -> dict[str, Any]:
     required_gates = validation_contract.get("required_gates")
     if not isinstance(required_gates, list):
-        return validation_contract
+        required_gates = _derived_milestone_required_gates(milestone_slices or [])
+        if not required_gates:
+            return validation_contract
     normalized_gates: list[str] = []
     for gate in required_gates:
         command = _validation_gate_command(gate)
@@ -637,6 +647,20 @@ def _normalize_validation_contract_required_gates(
         **validation_contract,
         "required_gates": list(dict.fromkeys(normalized_gates)),
     }
+
+
+def _derived_milestone_required_gates(
+    milestone_slices: list[TaskSliceContract],
+) -> list[list[str]]:
+    gates: list[list[str]] = []
+    for task_slice in milestone_slices:
+        if task_slice.task_type not in {
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }:
+            continue
+        gates.extend(task_slice.verification_commands)
+    return gates
 
 
 def _validation_gate_command(gate: object) -> list[str] | None:

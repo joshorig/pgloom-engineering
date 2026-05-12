@@ -2201,6 +2201,76 @@ def test_normalize_feature_scoped_plan_verification_updates_saved_contract() -> 
     ]
 
 
+def test_normalize_feature_scoped_plan_verification_derives_milestone_required_gates() -> None:
+    plan = PlanContract(
+        feature_id="wf_range",
+        project="lvc-standard",
+        problem_statement="Implement StoreVisitor range scans.",
+        design_contract=DesignContract(acceptance_tests=["range scan tests"]),
+        affected_surfaces=["core/"],
+        task_slices=[
+            TaskSliceContract(
+                slice_id="impl",
+                role="implementer",
+                task_type="engineering.implement",
+                objective="Implement range scans.",
+                allowed_paths=["store/src/main/java/"],
+                forbidden_paths=["store/src/test/java/"],
+                expected_outputs=["TaskResultContract"],
+                verification_commands=[["./gradlew", ":store:compileJava"]],
+            ),
+            TaskSliceContract(
+                slice_id="qa-scrutiny",
+                role="qa",
+                task_type="engineering.qa.verify.scrutiny",
+                objective="Run feature tests and smoke gates.",
+                allowed_paths=["store/src/test/java/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["impl"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[
+                    [
+                        "./gradlew",
+                        ":store:test",
+                        "--tests",
+                        "com.example.RangeScanStoreTest",
+                    ],
+                    ["./gradlew", ":benchmarks:jmhSmokeCheck", "-Pjmh.smoke=true"],
+                ],
+            ),
+            TaskSliceContract(
+                slice_id="qa-usertest",
+                role="qa",
+                task_type="engineering.qa.verify.usertest",
+                objective="Exercise the public CLI journey.",
+                allowed_paths=["qa/fixtures/"],
+                forbidden_paths=["store/src/main/java/"],
+                depends_on=["qa-scrutiny"],
+                expected_outputs=["QAResultContract"],
+                verification_commands=[["jshell", "qa/fixtures/range_scan_usertest.jsh"]],
+            ),
+        ],
+        acceptance_test_matrix=["range scans work"],
+        acceptance_assertions=["range scans work"],
+        milestones=[
+            MilestoneContract(
+                milestone_id="m1",
+                name="Range",
+                slice_ids=["impl", "qa-scrutiny", "qa-usertest"],
+                validation_contract={"scrutiny": True, "usertest": True},
+            )
+        ],
+    )
+
+    normalized = _normalize_feature_scoped_plan_verification(plan, project_metadata={})
+
+    assert normalized.milestones[0].validation_contract["required_gates"] == [
+        "./gradlew :store:test --tests com.example.RangeScanStoreTest",
+        "./gradlew :benchmarks:jmhSmokeCheck -Pjmh.smoke=true",
+        "jshell qa/fixtures/range_scan_usertest.jsh",
+    ]
+
+
 def test_post_normalization_quality_rejects_broadened_variant_command(
     tmp_path: Path,
 ) -> None:
