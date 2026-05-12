@@ -113,6 +113,12 @@ def _action_for_code(code: str) -> str:
             "or interaction entrypoint; the validator model must exercise the feature and "
             "record replay evidence through the public surface."
         ),
+        "qa_author_required_usertest_fixture_missing": (
+            "Project metadata requires a user-test replay fixture. Add the exact required "
+            "qa/fixtures or tests/fixtures path named by the finding to the "
+            "engineering.qa.author objective, expected_outputs, or handoff_requirements so "
+            "QA author creates it before implementation and qa.verify.usertest can use it."
+        ),
         "missing_qa_author": (
             "Add one engineering.qa.author slice before implementers for failing tests/fixtures."
         ),

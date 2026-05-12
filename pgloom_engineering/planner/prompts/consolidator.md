@@ -41,6 +41,10 @@ Rules:
   harness requirements, structured payload assertions, benchmark variants,
   required gates, behavior coverage rules, and avoid patterns must survive in QA
   author objectives/outputs when relevant.
+- If project metadata declares required user-test fixture paths, preserve each
+  exact `qa/fixtures/...` or `tests/fixtures/...` path in the QA author
+  objective, expected_outputs, or handoff_requirements; do not leave the
+  fixture only on the qa.usertest slice.
 - When benchmark acceptance is tied to a smoke/benchmark-smoke gate, preserve
   metadata-declared benchmark roots and test_support_paths needed to wire the new
   benchmark into that gate. Do not accept a plan where benchmark evidence is added

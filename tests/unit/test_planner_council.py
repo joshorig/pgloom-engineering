@@ -1293,6 +1293,35 @@ def test_repair_brief_handles_unachievable_milestone_signoff() -> None:
     assert any("one terminal validation milestone" in item for item in brief["required_repairs"])
 
 
+def test_repair_brief_explains_required_usertest_fixture_repair() -> None:
+    prior = SimpleNamespace(
+        validator_errors=[
+            {
+                "code": "qa_author_required_usertest_fixture_missing",
+                "message": "QA author must name qa/fixtures/range_scan_usertest.jsh.",
+            }
+        ],
+        critic=SimpleNamespace(
+            model_dump=lambda mode: {
+                "verdict": "revise",
+                "findings": [],
+                "per_check_results": [],
+            }
+        ),
+    )
+
+    brief = build_repair_brief(prior)
+
+    assert brief["must_fix_codes"] == [
+        "qa_author_required_usertest_fixture_missing"
+    ]
+    assert any(
+        "user-test replay fixture" in item
+        and "QA author creates it" in item
+        for item in brief["required_repairs"]
+    )
+
+
 def test_council_repairs_unachievable_milestones_before_critic() -> None:
     plan = _plan_contract().model_copy(
         update={

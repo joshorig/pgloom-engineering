@@ -152,6 +152,10 @@ Rules:
     red commands when PROJECT_CONTEXT.qa_policy_summary provides them. Require
     HTTP endpoint harnesses only when project metadata declares endpoint
     acceptance.
+    If project metadata declares `qa.usertest_harness.required_fixture_paths`,
+    the QA author objective, expected_outputs, or handoff_requirements must name
+    each exact required fixture path so QA author creates it for downstream
+    model-driven user-test replay.
   - `engineering.qa.verify.scrutiny` is a `role: "qa"` slice after every
     reviewer. It runs lint/build, feature-specific tests, benchmark smoke, and
     fresh-context code scrutiny. Its `allowed_paths` must also be limited to
