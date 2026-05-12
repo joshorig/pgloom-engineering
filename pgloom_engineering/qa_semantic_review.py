@@ -854,10 +854,29 @@ def _range_benchmark_parameterized_gate_findings(
 
 def _range_benchmark_gate_allows_parameterized_entries(text: str) -> bool:
     compact = re.sub(r"\s+", "", text).lower()
+    has_parameterized_flag = (
+        (
+            "parameterized:true" in compact
+            and "thresholds.parameterized" in compact
+            and "if(!parameterized&&entries.size()!=1)" in compact
+        )
+        or (
+            "allowmultipleresults:true" in compact
+            and "thresholds.allowmultipleresults" in compact
+            and (
+                "if(!allowmultipleresults&&entries.size()!=1)" in compact
+                or "if(!(thresholds.allowmultipleresults?:false)&&entries.size()!=1)"
+                in compact
+            )
+        )
+    )
+    if not has_parameterized_flag:
+        return False
     return (
-        "parameterized:true" in compact
-        and "thresholds.parameterized" in compact
-        and "if(!parameterized&&entries.size()!=1)" in compact
+        "entries.each" in compact
+        or "entriesbyparams" in compact
+        or "entry.params" in compact
+        or ".params" in compact
     )
 
 
