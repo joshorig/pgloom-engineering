@@ -102,6 +102,10 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
                 "required_gates": [{"id": "smoke"}],
                 "feature_smoke_commands": [{"id": "range", "commands": [["./gradlew"]]}],
                 "benchmark_variants": ["single"],
+                "usertest_harness": {
+                    "kind": "cli_replay",
+                    "required_fixture_paths": ["qa/fixtures/range_scan_usertest.jsh"],
+                },
                 "test_roots": ["core/src/test/java"],
                 "benchmark_roots": ["benchmarks/src/jmh/java"],
                 "semantic_conventions": {
@@ -118,6 +122,9 @@ def test_planner_qa_policy_summary_extracts_generic_metadata() -> None:
     assert summary["range_prefix_behavior"]["key_prefix_filter_required"] is True
     assert summary["feature_smoke_commands"][0]["id"] == "range"
     assert summary["benchmark_variants"] == ["single"]
+    assert summary["usertest_harness"]["required_fixture_paths"] == [
+        "qa/fixtures/range_scan_usertest.jsh"
+    ]
     assert summary["test_roots"] == ["core/src/test/java"]
     assert summary["benchmark_roots"] == ["benchmarks/src/jmh/java"]
 

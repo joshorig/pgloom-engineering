@@ -63,6 +63,7 @@ def planner_qa_policy_summary(project_metadata: dict[str, Any]) -> dict[str, Any
         "benchmark_frameworks": qa.get("benchmark_frameworks") or [],
         "benchmark_variants": qa.get("benchmark_variants") or [],
         "variant_verification_rules": qa.get("variant_verification_rules") or [],
+        "usertest_harness": qa.get("usertest_harness") or {},
         "test_roots": qa.get("test_roots") or [],
         "browser_test_roots": qa.get("browser_test_roots") or [],
         "benchmark_roots": qa.get("benchmark_roots") or [],

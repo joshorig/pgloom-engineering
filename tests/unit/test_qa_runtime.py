@@ -318,10 +318,18 @@ def test_prompt_safe_qa_metadata_preserves_structured_required_gates() -> None:
                 "command": ["./qa/smoke.sh"],
                 "must_cover": ["allocation", "benchmark_smoke"],
             }
-        ]
+        ],
+        "usertest_harness": {
+            "kind": "cli_replay",
+            "required_fixture_paths": ["qa/fixtures/range_scan_usertest.jsh"],
+        },
     }
 
     assert prompt_safe_qa_metadata(metadata)["required_gates"] == metadata["required_gates"]
+    assert (
+        prompt_safe_qa_metadata(metadata)["usertest_harness"]
+        == metadata["usertest_harness"]
+    )
 
 
 def test_validate_required_qa_gates_reports_configured_evidence(tmp_path: Path) -> None:
