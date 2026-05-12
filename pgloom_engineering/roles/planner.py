@@ -345,6 +345,7 @@ class PlannerHandler:
                     task_slice.verification_commands,
                     plan=contract,
                     task_objective=task_slice.objective,
+                    task_type=task_slice.task_type,
                     project_metadata=project_metadata,
                 ),
                 required_procedures=task_slice.required_procedures,

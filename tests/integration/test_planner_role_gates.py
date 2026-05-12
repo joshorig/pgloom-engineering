@@ -117,6 +117,56 @@ def test_planner_enqueues_implementer_when_role_gate_enabled(
     ]
 
 
+def test_planner_dispatch_preserves_implementer_method_scoped_commands(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    workflow, planner = _setup_planner_task(
+        database_url,
+        tmp_path,
+        implementer_gate="enabled",
+        project_metadata={
+            "qa": {
+                "feature_smoke_commands": [
+                    {
+                        "match_terms": ["snapshot"],
+                        "replaces": [":store:test"],
+                        "commands": [
+                            [
+                                "./gradlew",
+                                ":store:test",
+                                "--tests",
+                                "com.example.SnapshotRestoreTest",
+                            ]
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    plan = _plan_contract(feature_id=workflow["id"])
+    implementer = next(
+        item for item in plan.task_slices if item.task_type == "engineering.implement"
+    )
+    method_command = [
+        "./gradlew",
+        ":store:test",
+        "--tests",
+        "com.example.SnapshotRestoreTest.restoreRoundTrip",
+    ]
+    implementer.verification_commands = [method_command]
+    outcome = CouncilOutcome(final=plan, iterations=[], accepted_at_iteration=1)
+
+    result = PlannerHandler(council=cast(PlannerCouncil, FakeCouncil(outcome))).handle(planner)
+
+    assert result.status == "done"
+    contracts = list_task_contracts(workflow["id"], database_url=database_url)
+    impl_contract = next(
+        row for row in contracts if row["input_contract"]["task_type"] == "engineering.implement"
+    )
+    assert impl_contract["input_contract"]["verification_commands"] == [method_command]
+
+
 def test_planner_persistence_uses_metadata_qa_write_paths(
     database_url: str,
     tmp_path: Path,
