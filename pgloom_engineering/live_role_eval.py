@@ -45,6 +45,7 @@ from pgloom_engineering.projects import (
 from pgloom_engineering.worker import run_once
 from pgloom_engineering.workflow_driver import (
     _maybe_replan_blocked_feature,
+    _maybe_restore_recovery_abandoned_tasks,
     _recover_stale_running_tasks,
 )
 
@@ -141,6 +142,14 @@ def run_live_role_eval(
                 replan = _maybe_replan_blocked_feature(feature_id, aggregate, database_url)
                 if replan is not None:
                     worker_results.append(replan)
+                    continue
+                restored = _maybe_restore_recovery_abandoned_tasks(
+                    feature_id,
+                    aggregate,
+                    database_url,
+                )
+                if restored is not None:
+                    worker_results.append(restored)
                     continue
             progressed = False
             for slot in slots:
