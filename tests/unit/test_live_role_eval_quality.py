@@ -410,6 +410,42 @@ def test_live_role_qa_grade_uses_cumulative_author_evidence() -> None:
     assert grade["findings"] == []
 
 
+def test_live_role_qa_grade_uses_durable_author_handoff_red_proof() -> None:
+    grade = _grade_qa_author(
+        {
+            "task_contracts": [
+                {
+                    "status": "completed",
+                    "input_contract": {"task_type": "engineering.qa.author"},
+                    "output_contract": {
+                        "qa_author_contract": {
+                            "tests_added": ["tests/test_feature.py"],
+                            "red_proof": [],
+                            "matrix_coverage": {"feature": ["test_feature"]},
+                        }
+                    },
+                },
+            ],
+            "handoffs": [
+                {
+                    "handoff_type": "qa_author_contract",
+                    "contract": {
+                        "qa_author_contract": {
+                            "tests_added": ["tests/test_feature.py"],
+                            "red_proof": [{"cmd": ["pytest", "tests/test_feature.py"]}],
+                            "matrix_coverage": {"feature": ["test_feature"]},
+                        }
+                    },
+                }
+            ],
+        },
+        {"git_diff_path": ""},
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
 def test_live_role_token_efficiency_grades_prompt_size_not_recounted_usage() -> None:
     grade = _grade_token_efficiency(
         {

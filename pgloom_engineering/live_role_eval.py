@@ -1540,6 +1540,17 @@ def _grade_qa_author(
         qa_author_contract = output.get("qa_author_contract")
         if isinstance(qa_author_contract, dict):
             qa_author_contracts.append(qa_author_contract)
+    for handoff in aggregate.get("handoffs") or []:
+        if not isinstance(handoff, dict):
+            continue
+        if handoff.get("handoff_type") != "qa_author_contract":
+            continue
+        contract = handoff.get("contract")
+        if not isinstance(contract, dict):
+            continue
+        qa_author_contract = contract.get("qa_author_contract")
+        if isinstance(qa_author_contract, dict):
+            qa_author_contracts.append(qa_author_contract)
     if not qa_author_contracts:
         return _dimension(
             "qa_author",

@@ -955,15 +955,18 @@ class QAHandler:
                     "contract_repair_attempts": contract_repair_attempts,
                 },
             )
+        red_proof = [
+            proof
+            for verification in red_verifications
+            for proof in canonical_red_proof(verification)
+        ]
+        if not red_proof and not red_required:
+            red_proof = _previous_qa_author_red_proof(task_row)
         contract = contract.model_copy(
             update={
                 "feature_id": task_contract.feature_id,
                 "task_id": task_id,
-                "red_proof": [
-                    proof
-                    for verification in red_verifications
-                    for proof in canonical_red_proof(verification)
-                ],
+                "red_proof": red_proof,
                 "paths_touched": sorted(set([*contract.paths_touched, *touched])),
                 "tests_added": sorted(
                     set(
@@ -1000,6 +1003,21 @@ class QAHandler:
                 "token_savior_usage_ids": token_savior_usage_ids,
             }
         )
+
+
+def _previous_qa_author_red_proof(task_row: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(task_row, dict):
+        return []
+    output = task_row.get("output_contract")
+    if not isinstance(output, dict):
+        return []
+    raw = output.get("qa_author_contract")
+    if not isinstance(raw, dict):
+        return []
+    red_proof = raw.get("red_proof")
+    if not isinstance(red_proof, list):
+        return []
+    return [item for item in red_proof if isinstance(item, dict)]
 
 
 def _synthesize_qa_author_contract_from_touched_files(
