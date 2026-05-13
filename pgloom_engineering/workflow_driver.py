@@ -427,14 +427,20 @@ def _maybe_requeue_interrupted_corrective_repair(
     if not original_task_id or not blocker_code:
         return None
     same_role_codes = set(getattr(settings, "workflow_same_role_repair_blocker_codes", []))
-    if blocker_code not in same_role_codes:
+    if blocker_code not in same_role_codes and blocker_code != "engineering.review_rejected":
         return None
-    original = _task_by_id(aggregate, original_task_id)
+    original = _interrupted_repair_target_task(
+        aggregate,
+        prior_context=prior_context,
+        blocker_code=blocker_code,
+        original_task_id=original_task_id,
+    )
     if original is None:
         return None
     task_type = str(original.get("task_type") or prior_context.get("blocked_task_type") or "")
     slot = str(original.get("slot") or "")
-    if not task_type or not slot:
+    target_task_id = str(original.get("id") or "")
+    if not target_task_id or not task_type or not slot:
         return None
     failure_context = str(prior_context.get("failure_context") or "")
     blocker_reason = str(prior_context.get("blocker_reason") or "")
@@ -454,7 +460,8 @@ def _maybe_requeue_interrupted_corrective_repair(
         "mode": "same_role_repair",
         "source": "interrupted_corrective_planner",
         "interrupted_planner_task_id": str(candidate.get("id") or ""),
-        "blocked_task_id": original_task_id,
+        "blocked_task_id": target_task_id,
+        "original_blocked_task_id": original_task_id,
         "blocked_task_type": task_type,
         "blocked_slice_id": prior_context.get("blocked_slice_id"),
         "blocker_code": blocker_code,
@@ -500,13 +507,13 @@ def _maybe_requeue_interrupted_corrective_repair(
                         "preserve_worktree_on_retry": True,
                     }
                 ),
-                original_task_id,
+                target_task_id,
             ),
         )
     record_recovery_action(
         RecoveryDecisionContract(
             feature_id=feature_id,
-            task_id=original_task_id,
+            task_id=target_task_id,
             blocker_code=blocker_code,
             action="repair_task",
             rationale=str(repair_context["summary"]),
@@ -516,20 +523,20 @@ def _maybe_requeue_interrupted_corrective_repair(
         status="completed",
         outcome=(
             "requeued interrupted corrective repair task "
-            f"{original_task_id} after planner crash {candidate.get('id')}"
+            f"{target_task_id} after planner crash {candidate.get('id')}"
         ),
         database_url=database_url,
     )
     _abandon_nonterminal_tasks(
         aggregate,
-        exclude_task_ids={original_task_id},
+        exclude_task_ids={target_task_id},
         database_url=database_url,
     )
     return {
         "slot": slot,
         "claimed": True,
         "status": "repair_task",
-        "task_id": original_task_id,
+        "task_id": target_task_id,
         "task_type": task_type,
     }
 
@@ -1270,6 +1277,33 @@ def _task_by_id(
         if str(task.get("id") or "") == task_id:
             return task
     return None
+
+
+def _interrupted_repair_target_task(
+    aggregate: dict[str, Any],
+    *,
+    prior_context: dict[str, Any],
+    blocker_code: str,
+    original_task_id: str,
+) -> dict[str, Any] | None:
+    if blocker_code != "engineering.review_rejected":
+        return _task_by_id(aggregate, original_task_id)
+    review_context = " ".join(
+        part
+        for part in (
+            str(prior_context.get("blocker_reason") or ""),
+            str(prior_context.get("failure_context") or ""),
+        )
+        if part
+    )
+    qa_owned = _review_rejection_mentions_qa_owned_surface(review_context)
+    production_owned = _review_rejection_mentions_production_surface(review_context)
+    target_task_type = (
+        "engineering.qa.author"
+        if qa_owned and not production_owned
+        else "engineering.implement"
+    )
+    return _latest_task_by_type(aggregate, target_task_type)
 
 
 def _latest_task_by_type(
