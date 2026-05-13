@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from pgloom_engineering import workflow_driver
+from pgloom_engineering.config import EngineeringSettings
 from pgloom_engineering.contracts import (
     DesignContract,
     MilestoneContract,
@@ -261,6 +262,13 @@ def test_blocked_replan_waits_until_retry_budget(monkeypatch: Any) -> None:
     assert result is None
 
 
+def test_worker_crash_is_default_recoverable_blocker() -> None:
+    settings = EngineeringSettings()
+
+    assert "engineering.worker_crash" in settings.workflow_replan_blocker_codes
+    assert "engineering.worker_crash" in settings.workflow_replan_immediate_blocker_codes
+
+
 def test_path_violation_replans_immediately(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
@@ -296,6 +304,56 @@ def test_path_violation_replans_immediately(monkeypatch: Any) -> None:
     payload = enqueued[0]["payload"]
     assert payload["replan_context"]["blocker_code"] == "engineering.qa_path_violation"
     assert "path boundary" in payload["replan_context"]["summary"]
+
+
+def test_worker_crash_replans_immediately_with_crash_context(monkeypatch: Any) -> None:
+    enqueued: list[dict[str, Any]] = []
+    settings = _settings()
+    settings.workflow_replan_immediate_blocker_codes.append("engineering.worker_crash")
+    settings.workflow_replan_blocker_codes.append("engineering.worker_crash")
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "qa-1",
+                    "slot": "qa-engineer",
+                    "task_type": "engineering.qa.author",
+                    "state": "blocked",
+                    "attempt": 3,
+                    "priority": 2,
+                    "blocker_code": "engineering.worker_crash",
+                    "blocker_reason": "worker crash: malformed command metadata",
+                    "result": {
+                        "worker_crash": {
+                            "exception_type": "ValueError",
+                            "message": "worker crash: malformed command metadata",
+                            "task_type": "engineering.qa.author",
+                            "attempt": 3,
+                            "max_attempts": 3,
+                        }
+                    },
+                }
+            ]
+        ),
+        None,
+    )
+
+    assert result is not None
+    payload = enqueued[0]["payload"]
+    assert payload["replan_context"]["blocker_code"] == "engineering.worker_crash"
+    assert "QA-author repair" in payload["replan_context"]["summary"]
+    assert "worker_crash=" in payload["replan_context"]["failure_context"]
 
 
 def test_review_rejection_replans_immediately(monkeypatch: Any) -> None:

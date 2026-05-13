@@ -43,7 +43,11 @@ from pgloom_engineering.qa_runtime import (
 )
 from pgloom_engineering.role_context import build_role_context, record_role_context_usage
 from pgloom_engineering.role_gate_contracts import build_task_role_gate_contract
-from pgloom_engineering.role_payloads import compact_plan_payload, compact_qa_author_payload
+from pgloom_engineering.role_payloads import (
+    compact_plan_payload,
+    compact_qa_author_payload,
+    compact_qa_author_repair_payload,
+)
 
 
 class ImplementerHandler:
@@ -499,6 +503,13 @@ def build_implementer_repair_prompt(
                     "re-read broad source surfaces unless the failing evidence points there."
                 ),
                 (
+                    "Repair-loop context budget: first use implementer_context_capsule, "
+                    "failed_verifications, changed_files, and source_starter_pack. Inspect "
+                    "only exact failing files, exact symbols, or directly adjacent "
+                    "implementations needed to fix the failed commands. Do not scan the "
+                    "whole repository, print full files, or read unrelated allowed paths."
+                ),
+                (
                     "Rerun only the TaskContract verification_commands. Do not add broad "
                     "project gates such as ./gradlew test, ./gradlew check, ./qa/smoke.sh, "
                     "./qa/regression.sh, or full JMH sweeps unless that exact command is "
@@ -540,7 +551,21 @@ def build_implementer_repair_prompt(
             ),
             "plan_contract": compact_plan_payload(plan),
             "task_contract": task_contract.model_dump(mode="json"),
-            "qa_author_contract": compact_qa_author_payload(qa_contract),
+            "qa_author_contract": compact_qa_author_repair_payload(qa_contract),
+            "token_budget_policy": {
+                "mode": "bounded_repair",
+                "primary_context": [
+                    "failed_verifications",
+                    "changed_files",
+                    "implementer_context_capsule",
+                    "source_starter_pack",
+                ],
+                "source_read_policy": (
+                    "Read the smallest exact path or symbol range needed for the failing "
+                    "command; avoid broad directory walks and full-file dumps unless the "
+                    "file is already in source_starter_pack."
+                ),
+            },
             "changed_files": changed_files,
             "path_violations": path_violations,
             "contract_error": contract_error,
@@ -659,11 +684,32 @@ def build_implementer_source_starter_pack(
     task_contract: TaskContract,
     qa_contract: QAAuthorContract,
     role_context: dict[str, Any] | None,
-    max_source_files: int = 6,
-    max_test_files: int = 4,
-    max_file_chars: int = 4200,
-    max_total_chars: int = 24000,
+    max_source_files: int | None = None,
+    max_test_files: int | None = None,
+    max_file_chars: int | None = None,
+    max_total_chars: int | None = None,
 ) -> dict[str, Any]:
+    settings = get_settings()
+    max_source_files = int(
+        max_source_files
+        if max_source_files is not None
+        else getattr(settings, "implementer_source_starter_max_source_files", 6)
+    )
+    max_test_files = int(
+        max_test_files
+        if max_test_files is not None
+        else getattr(settings, "implementer_source_starter_max_test_files", 4)
+    )
+    max_file_chars = int(
+        max_file_chars
+        if max_file_chars is not None
+        else getattr(settings, "implementer_source_starter_max_file_chars", 4200)
+    )
+    max_total_chars = int(
+        max_total_chars
+        if max_total_chars is not None
+        else getattr(settings, "implementer_source_starter_max_total_chars", 24000)
+    )
     query = " ".join(
         [
             task_contract.objective,

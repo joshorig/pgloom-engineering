@@ -98,6 +98,7 @@ def run_live_role_eval(
     model: str = "gpt-5.4",
     reasoning: str = "medium",
     max_steps: int = 20,
+    feature_id: str | None = None,
 ) -> LiveRoleEvalResult:
     started = time.monotonic()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -105,14 +106,15 @@ def run_live_role_eval(
     migrate_engineering(database_url)
     case_id = str(case.get("id") or role)
     repo = _repo_for_case(case, role=role, output_dir=output_dir)
-    feature_id = _seed_case(
-        case=case,
-        case_id=case_id,
-        role=role,
-        repo=repo,
-        database_url=database_url,
-        metadata=dict(case.get("project_metadata") or {}),
-    )
+    if feature_id is None:
+        feature_id = _seed_case(
+            case=case,
+            case_id=case_id,
+            role=role,
+            repo=repo,
+            database_url=database_url,
+            metadata=dict(case.get("project_metadata") or {}),
+        )
     commands = _role_commands(
         backend=backend,
         model=str(case.get("model") or model),

@@ -18,6 +18,7 @@ from pgloom_engineering.contracts import (
 )
 from pgloom_engineering.qa_author_runtime import (
     build_qa_author_prompt,
+    build_qa_code_repair_prompt,
     build_qa_quality_repair_prompt,
     qa_model_route,
     qa_quality_repairable,
@@ -2642,8 +2643,39 @@ def test_qa_author_prompt_compacts_large_role_context() -> None:
     assert "qa_author_role_context_compaction.v1" in json.dumps(role_context)
 
 
+def test_qa_author_repair_prompt_compacts_current_contract() -> None:
+    prompt = build_qa_code_repair_prompt(
+        plan=_plan(),
+        task_contract=_task_contract(),
+        worktree=Path("."),
+        changed_files=["tests/test_acceptance.py"],
+        verification_command=["pytest", "-q"],
+        stdout_excerpt="failed",
+        stderr_excerpt="",
+        current_contract={
+            "feature_id": "feature-1",
+            "task_id": "task-1",
+            "tests_added": ["tests/test_acceptance.py"],
+            "paths_touched": ["tests/test_acceptance.py"],
+            "red_proof": [
+                {"test": f"test-{index}", "output_excerpt": "x" * 2000}
+                for index in range(20)
+            ],
+            "large_unused_blob": "z" * 20_000,
+        },
+        project_metadata={},
+    )
+    payload = json.loads(prompt)
+
+    assert len(payload["current_contract"]["red_proof"]) == 8
+    assert "large_unused_blob" not in json.dumps(payload["current_contract"])
+    assert "output_excerpt" not in json.dumps(payload["current_contract"])
+
+
 def test_qa_author_model_context_does_not_eager_add_worktree_by_default() -> None:
+    assert EngineeringSettings().qa_author_model_context_isolation_enabled is True
     assert EngineeringSettings().qa_author_model_context_add_dir_enabled is False
+    assert EngineeringSettings().qa_author_repair_max_total_file_chars > 0
 
 
 def test_qa_author_model_routing_updates_codex_command() -> None:

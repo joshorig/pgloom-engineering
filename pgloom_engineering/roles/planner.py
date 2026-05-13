@@ -1339,12 +1339,19 @@ def _narrow_corrective_slice_chain(
     planner_exhausted_production_repair = (
         planner_exhausted and _corrective_context_mentions_production_defect(context)
     )
+    implementer_verification_repair = (
+        blocker_code == "engineering.implementation_verification_failed"
+        and _blocked_task_type(context) == "engineering.implement"
+        and not _implementation_verification_failure_mentions_qa_defect(context)
+        and benchmark_classification not in {"near_threshold", "qa_harness"}
+    )
     if blocker_code in {
         "engineering.qa_semantic_quality_failed",
         "engineering.qa_handoff_missing",
         "engineering.qa_tests_do_not_compile",
     } or (
-        not planner_exhausted_production_repair
+        not implementer_verification_repair
+        and not planner_exhausted_production_repair
         and benchmark_classification != "material_allocation"
         and (
             _corrective_context_mentions_qa_owned_paths(context)
@@ -1480,6 +1487,18 @@ def _corrective_dependencies(
 def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
     if _allocation_diagnostic_required(context):
         return {"engineering.qa.verify.scrutiny"}
+    if (
+        str(context.get("blocker_code") or "")
+        == "engineering.implementation_verification_failed"
+        and _blocked_task_type(context) == "engineering.implement"
+        and not _implementation_verification_failure_mentions_qa_defect(context)
+    ):
+        return {
+            "engineering.implement",
+            "engineering.review",
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }
     if str(context.get("blocker_code") or "") in {
         "engineering.qa_handoff_missing",
         "engineering.qa_semantic_quality_failed",
@@ -1568,6 +1587,13 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
             "engineering.qa.verify.usertest",
         }
     return allowed
+
+
+def _blocked_task_type(context: dict[str, Any]) -> str:
+    blocked_contract = context.get("blocked_task_contract")
+    if not isinstance(blocked_contract, dict):
+        return ""
+    return str(blocked_contract.get("task_type") or "")
 
 
 def _allocation_diagnostic_required(context: dict[str, Any]) -> bool:

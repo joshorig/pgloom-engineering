@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 from typing import Any, Literal
 
+from pgloom.db.json import jsonb
 from pgloom.db.postgres import connect
 from pgloom.states import TaskState
 from pgloom.tasks import enqueue_task, transition_task
@@ -43,9 +44,24 @@ def run_workflow(
     max_steps: int = 50,
     lease_seconds: int = 300,
     worker: WorkerFn = run_engineering_worker_once,
+    recover_stale_running_tasks: bool | None = None,
 ) -> dict[str, Any]:
     steps: list[dict[str, object]] = []
+    recover_stale_running_tasks = (
+        database_url is not None
+        if recover_stale_running_tasks is None
+        else recover_stale_running_tasks
+    )
     for _ in range(max_steps):
+        if recover_stale_running_tasks:
+            recovered_stale = _recover_stale_running_tasks(
+                feature_id,
+                lease_seconds=lease_seconds,
+                database_url=database_url,
+            )
+            if recovered_stale:
+                steps.extend(recovered_stale)
+                continue
         aggregate = get_feature_aggregate(feature_id, database_url=database_url)
         if aggregate is None:
             return {"status": "not_found", "feature_id": feature_id, "steps": steps}
@@ -288,6 +304,145 @@ def _recoverable_blocked_task(
         if total_input_tokens >= int(settings.workflow_replan_after_input_tokens):
             return candidate
     return None
+
+
+def _recover_stale_running_tasks(
+    feature_id: str,
+    *,
+    lease_seconds: int,
+    database_url: str | None,
+) -> list[dict[str, object]]:
+    stale_after_seconds = max(1, int(lease_seconds))
+    recovered: list[dict[str, object]] = []
+    recovery_records: list[tuple[RecoveryDecisionContract, str]] = []
+    with connect(database_url) as conn, conn.transaction():
+        rows = conn.execute(
+            """
+            select *
+            from tasks
+            where workflow_id = %s
+              and state in (%s, %s)
+              and coalesce(lease_expires_at, updated_at + (%s * interval '1 second')) < now()
+            order by updated_at asc
+            for update skip locked
+            """,
+            (
+                feature_id,
+                TaskState.LEASED.value,
+                TaskState.RUNNING.value,
+                stale_after_seconds,
+            ),
+        ).fetchall()
+        for row in rows:
+            task = dict(row)
+            task_id = str(task["id"])
+            reason = (
+                "Worker task lease expired before completion; treating stale in-flight "
+                "worker as recoverable engineering.worker_crash."
+            )
+            result = {
+                "worker_crash": {
+                    "exception_type": "StaleWorkerLease",
+                    "message": reason,
+                    "task_id": task_id,
+                    "task_type": str(task.get("task_type") or ""),
+                    "attempt": int(task.get("attempt") or 0),
+                    "lease_owner": task.get("lease_owner"),
+                    "lease_expires_at": str(task.get("lease_expires_at") or ""),
+                }
+            }
+            conn.execute(
+                """
+                update tasks
+                set state = %s,
+                    blocker_code = %s,
+                    blocker_reason = %s,
+                    result = %s,
+                    terminal_reason = %s,
+                    terminal_detail = %s,
+                    updated_at = now()
+                where id = %s
+                """,
+                (
+                    TaskState.BLOCKED.value,
+                    "engineering.worker_crash",
+                    reason,
+                    jsonb(result),
+                    "stale_worker_lease",
+                    reason,
+                    task_id,
+                ),
+            )
+            run = conn.execute(
+                """
+                select id
+                from engineering_worker_runs
+                where task_id = %s and status = 'running'
+                order by started_at desc, id desc
+                limit 1
+                """,
+                (task_id,),
+            ).fetchone()
+            if run:
+                conn.execute(
+                    """
+                    update engineering_worker_runs
+                    set status = 'crashed',
+                        blocker_code = %s,
+                        finished_at = now(),
+                        running_seconds = extract(epoch from (now() - started_at)),
+                        terminal_reason = %s,
+                        terminal_detail = %s,
+                        metadata = coalesce(metadata, '{}'::jsonb) || %s
+                    where id = %s
+                    """,
+                    (
+                        "engineering.worker_crash",
+                        "stale_worker_lease",
+                        reason,
+                        jsonb(result["worker_crash"]),
+                        int(run["id"]),
+                    ),
+                )
+            conn.execute("delete from resource_locks where task_id = %s", (task_id,))
+            conn.execute(
+                """
+                update workers
+                set state = 'idle', current_task_id = null, last_heartbeat_at = now()
+                where current_task_id = %s
+                """,
+                (task_id,),
+            )
+            recovery_records.append(
+                (
+                    RecoveryDecisionContract(
+                        feature_id=feature_id,
+                        task_id=task_id,
+                        blocker_code="engineering.worker_crash",
+                        action="record_crash",
+                        rationale=reason,
+                        attempt=max(1, int(task.get("attempt") or 1)),
+                        max_attempts=max(1, int(task.get("max_attempts") or 1)),
+                    ),
+                    json.dumps(result, default=str),
+                )
+            )
+            recovered.append(
+                {
+                    "slot": str(task.get("slot") or ""),
+                    "claimed": True,
+                    "status": "stale_worker_recovered",
+                    "task_id": task_id,
+                }
+            )
+    for decision, outcome in recovery_records:
+        record_recovery_action(
+            decision,
+            status="open",
+            outcome=outcome,
+            database_url=database_url,
+        )
+    return recovered
 
 
 def _maybe_consume_replan_from_milestone(
@@ -773,6 +928,26 @@ def _replan_summary(
             "module-local focused red-proof commands and repair authored tests before broad "
             f"gates: {blocker_reason}"
         )
+    if blocker_code == "engineering.worker_crash":
+        task_type = str(blocked_task.get("task_type") or "")
+        if task_type == "engineering.qa.author":
+            owner = "a narrow QA-author repair/retry slice"
+        elif task_type == "engineering.implement":
+            owner = "a narrow implementer repair/retry slice"
+        elif task_type in {
+            "engineering.qa.verify.scrutiny",
+            "engineering.qa.verify.usertest",
+        }:
+            owner = "a narrow verifier rerun or verifier-output repair slice"
+        else:
+            owner = "the smallest same-role corrective slice"
+        return (
+            "Previous worker crashed during role execution. Treat this as a recoverable "
+            "lifecycle failure, not proof that the feature is impossible. Replan must emit "
+            f"{owner}, preserve the blocked task path scope unless the contract itself is "
+            "invalid, and include the compact crash evidence as repair input. Preserve "
+            f"these crash details: {blocker_reason}{detail}"
+        )
     if blocker_code == "engineering.qa_path_violation":
         return (
             "Previous QA author output touched paths outside its task contract. Replan must "
@@ -1020,6 +1195,15 @@ def _failure_context(blocked_task: dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return ""
     excerpts: list[str] = []
+    crash = result.get("worker_crash")
+    if isinstance(crash, dict):
+        crash_parts = [
+            f"{key}={crash[key]}"
+            for key in ("exception_type", "message", "task_type", "attempt", "max_attempts")
+            if crash.get(key) not in (None, "")
+        ]
+        if crash_parts:
+            excerpts.append("worker_crash=" + ", ".join(str(part) for part in crash_parts))
     for key in ("stderr_excerpt", "stdout_excerpt", "failure_excerpt"):
         value = result.get(key)
         if isinstance(value, str) and value.strip():

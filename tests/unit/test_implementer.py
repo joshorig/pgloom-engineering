@@ -1076,6 +1076,9 @@ def test_implementer_prompt_requires_jmh_allocation_self_validation(
 
 def test_implementer_defaults_to_inline_verification_repair() -> None:
     assert EngineeringSettings().implementer_inline_repair_attempts >= 1
+    assert EngineeringSettings().implementer_model_context_isolation_enabled is True
+    assert EngineeringSettings().implementer_model_context_add_dir_enabled is False
+    assert 0 < EngineeringSettings().implementer_source_starter_max_total_chars <= 12000
 
 
 def test_implementer_prompt_preserves_store_invariants(tmp_path: Path) -> None:
@@ -1129,6 +1132,9 @@ def test_implementer_repair_prompt_forbids_extra_broad_project_gates(
     assert "./gradlew check" in instructions
     assert "full JMH sweeps" in instructions
     assert "Do not claim done while the listed allocation gate still fails" in instructions
+    assert "Repair-loop context budget" in instructions
+    assert prompt["token_budget_policy"]["mode"] == "bounded_repair"
+    assert "failed_verifications" in prompt["token_budget_policy"]["primary_context"]
 
 
 def test_implementer_repair_prompt_preserves_store_invariants(tmp_path: Path) -> None:
@@ -1175,6 +1181,44 @@ def test_implementer_context_capsule_compacts_large_recall_text(tmp_path: Path) 
 
     assert len(capsule["recall"]["packed_context"]) < 3400
     assert len(capsule["recall"]["memory_digest"]) < 2000
+
+
+def test_implementer_repair_prompt_compacts_qa_contract_noise(tmp_path: Path) -> None:
+    qa_contract = QAAuthorContract(
+        feature_id="feature-1",
+        task_id="qa-1",
+        matrix_coverage={f"criterion-{index}": ["tests/test_red.py"] * 10 for index in range(40)},
+        red_proof=[
+            {
+                "test": f"test-{index}",
+                "command": ["pytest", "-q"],
+                "exit_code": 1,
+                "output_excerpt": "x" * 2000,
+            }
+            for index in range(20)
+        ],
+        worktree_path=str(tmp_path),
+    )
+
+    prompt = json.loads(
+        build_implementer_repair_prompt(
+            plan=_plan(),
+            task_contract=_implementer_contract(),
+            qa_contract=qa_contract,
+            worktree=tmp_path,
+            changed_files=["src/App.java"],
+            path_violations=[],
+            failed_verifications=[],
+            contract_error=None,
+            raw_response="raw response",
+            project_metadata={},
+            role_context={},
+        )
+    )
+
+    assert len(prompt["qa_author_contract"]["matrix_coverage"]) == 12
+    assert len(prompt["qa_author_contract"]["red_proof"]) == 6
+    assert "output_excerpt" not in json.dumps(prompt["qa_author_contract"])
 
 
 def test_corrective_implementer_falls_back_to_feature_qa_author_contract(

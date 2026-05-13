@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pgloom_engineering.config import get_settings
 from pgloom_engineering.contracts import (
     CONTRACT_VERSION,
     PlanContract,
@@ -27,6 +28,8 @@ MAX_REPAIR_FILE_CHARS = 12000
 MAX_REPAIR_TOTAL_FILE_CHARS = 36000
 MAX_REPAIR_RESPONSE_CHARS = 12000
 MAX_QA_ROLE_CONTEXT_TEXT_CHARS = 2200
+MAX_QA_TASK_TEXT_CHARS = 1800
+MAX_QA_LIST_ITEMS = 30
 
 
 def command_for_worktree(command: list[str], worktree: Path) -> list[str]:
@@ -468,7 +471,7 @@ def build_qa_author_prompt(
             plan=plan,
         ),
         "plan": compact_plan_payload(plan),
-        "task_contract": task_contract.model_dump(mode="json"),
+        "task_contract": compact_qa_task_contract(task_contract),
         "required_schema": {
             "feature_id": task_contract.feature_id,
             "task_id": "task id",
@@ -529,6 +532,67 @@ def compact_qa_author_role_context(
         ),
     }
     return {key: value for key, value in compact.items() if value not in (None, "", [])}
+
+
+def compact_qa_task_contract(task_contract: TaskContract) -> dict[str, Any]:
+    payload = task_contract.model_dump(mode="json")
+    for key in ("allowed_paths", "forbidden_paths", "dependencies"):
+        payload[key] = _compact_string_list(payload.get(key), limit=MAX_QA_LIST_ITEMS)
+    for key in ("expected_outputs", "handoff_requirements", "required_procedures"):
+        payload[key] = [
+            _compact_prompt_text(item, limit=MAX_QA_TASK_TEXT_CHARS)
+            for item in _compact_string_list(payload.get(key), limit=MAX_QA_LIST_ITEMS)
+        ]
+    payload["objective"] = _compact_prompt_text(
+        payload.get("objective"),
+        limit=MAX_QA_TASK_TEXT_CHARS,
+    )
+    inputs = payload.get("inputs")
+    if isinstance(inputs, dict):
+        payload["inputs"] = {
+            key: value
+            for key, value in inputs.items()
+            if key
+            in {
+                "task_id",
+                "task_slice_id",
+                "milestone_id",
+                "acceptance_assertion_ids",
+                "replan_context",
+            }
+        }
+    return payload
+
+
+def compact_current_qa_contract(contract: object) -> object:
+    if not isinstance(contract, dict):
+        return contract
+    compact = {
+        key: contract.get(key)
+        for key in [
+            "contract_version",
+            "feature_id",
+            "task_id",
+            "tests_added",
+            "matrix_coverage",
+            "paths_touched",
+            "branch",
+            "worktree_path",
+        ]
+        if contract.get(key) not in (None, [], {})
+    }
+    red_proof = contract.get("red_proof")
+    if isinstance(red_proof, list):
+        compact["red_proof"] = [
+            {
+                "test": item.get("test"),
+                "command": item.get("command"),
+                "exit_code": item.get("exit_code"),
+            }
+            for item in red_proof[:8]
+            if isinstance(item, dict)
+        ]
+    return compact
 
 
 def _compact_prompt_text(value: object, *, limit: int) -> str:
@@ -962,7 +1026,7 @@ def build_qa_code_repair_prompt(
             "authorized_test_support_files": test_support_files,
             "repair_files": repair_files,
             "file_contents": test_contents,
-            "current_contract": current_contract,
+            "current_contract": compact_current_qa_contract(current_contract),
         },
         indent=2,
         sort_keys=True,
@@ -1179,7 +1243,7 @@ def build_qa_quality_repair_prompt(
             "repair_files": repair_files,
             "authorized_test_support_files": test_support_files,
             "file_contents": file_contents,
-            "current_contract": current_contract,
+            "current_contract": compact_current_qa_contract(current_contract),
         },
         indent=2,
         sort_keys=True,
@@ -1253,7 +1317,16 @@ def build_qa_contract_repair_prompt(
             "changed_files": changed_files,
             "file_contents": test_contents,
             "validation_error": validation_error,
-            "raw_response": truncate_text(raw_response, MAX_REPAIR_RESPONSE_CHARS),
+            "raw_response": truncate_text(
+                raw_response,
+                int(
+                    getattr(
+                        get_settings(),
+                        "qa_author_repair_max_response_chars",
+                        MAX_REPAIR_RESPONSE_CHARS,
+                    )
+                ),
+            ),
         },
         indent=2,
         sort_keys=True,
@@ -1262,13 +1335,18 @@ def build_qa_contract_repair_prompt(
 
 def repair_file_contents(worktree: Path, paths: list[str]) -> dict[str, str]:
     contents: dict[str, str] = {}
-    remaining = MAX_REPAIR_TOTAL_FILE_CHARS
+    settings = get_settings()
+    max_total = int(
+        getattr(settings, "qa_author_repair_max_total_file_chars", MAX_REPAIR_TOTAL_FILE_CHARS)
+    )
+    max_file = int(getattr(settings, "qa_author_repair_max_file_chars", MAX_REPAIR_FILE_CHARS))
+    remaining = max_total
     for path in paths:
         file_path = worktree / path
         if remaining <= 0 or not file_path.is_file():
             continue
         text = file_path.read_text(encoding="utf-8", errors="replace")
-        limit = min(MAX_REPAIR_FILE_CHARS, remaining)
+        limit = min(max_file, remaining)
         contents[path] = truncate_text(text, limit)
         remaining -= len(contents[path])
     return contents

@@ -164,6 +164,83 @@ def test_commands_run_from_result_uses_qa_author_red_proof_artifacts() -> None:
     ]
 
 
+def test_commands_run_from_result_keeps_malformed_command_metadata() -> None:
+    commands = _commands_run_from_result(
+        {
+            "qa_author_contract": {
+                "red_proof": [
+                    {
+                        "command": ["pytest", "-q"],
+                        "exit_code": "not an int",
+                        "duration_s": "duration()",
+                    }
+                ]
+            }
+        }
+    )
+
+    assert commands == [
+        {
+            "cmd": ["pytest", "-q"],
+            "exit_code": 0,
+            "duration_s": 0.0,
+            "normalization_warnings": [
+                {
+                    "code": "command_metadata_coercion_failed",
+                    "field": "exit_code",
+                    "raw_value": "not an int",
+                    "default": 0,
+                },
+                {
+                    "code": "command_metadata_coercion_failed",
+                    "field": "duration_s",
+                    "raw_value": "duration()",
+                    "default": 0.0,
+                },
+            ],
+        }
+    ]
+
+
+def test_exhausted_worker_crash_blocks_instead_of_failing(monkeypatch: Any) -> None:
+    transitions: list[dict[str, Any]] = []
+    retries: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(
+        worker,
+        "retry_or_fail_task",
+        lambda *args, **kwargs: retries.append({"args": args, **kwargs}),
+    )
+    monkeypatch.setattr(
+        worker,
+        "transition_task",
+        lambda *args, **kwargs: transitions.append({"args": args, **kwargs}),
+    )
+
+    status = worker._retry_or_block_worker_crash(  # noqa: SLF001
+        {
+            "id": "task-1",
+            "task_type": "engineering.qa.author",
+            "attempt": 3,
+            "max_attempts": 3,
+            "payload": {},
+        },
+        crash_result={
+            "worker_crash": {
+                "message": "worker crash: invalid output",
+                "exception_type": "ValueError",
+            }
+        },
+        database_url=None,
+    )
+
+    assert status == "blocked"
+    assert retries == []
+    assert transitions[0]["args"][1].value == "blocked"
+    assert transitions[0]["blocker_code"] == "engineering.worker_crash"
+    assert transitions[0]["result"]["worker_crash"]["exception_type"] == "ValueError"
+
+
 def test_commands_run_from_result_uses_blocked_command_excerpts() -> None:
     assert _commands_run_from_result(
         {

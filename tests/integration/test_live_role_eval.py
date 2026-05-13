@@ -129,3 +129,17 @@ def test_live_role_eval_orchestration_uses_worker_runtime(
     assert "return value + 1" in (tmp_path / "out" / "worktree.diff").read_text(
         encoding="utf-8"
     )
+
+    resumed = run_live_role_eval(
+        {"id": "fixture-orchestration", "role": "worker-orchestration"},
+        role="worker-orchestration",
+        output_dir=tmp_path / "resume-out",
+        database_url=database_url,
+        max_steps=0,
+        feature_id=result.feature_id,
+    )
+
+    assert resumed.feature_id == result.feature_id
+    assert resumed.status == "pass"
+    assert (tmp_path / "resume-out" / "runner-summary.json").is_file() is False
+    assert (tmp_path / "resume-out" / "outcome.json").is_file()

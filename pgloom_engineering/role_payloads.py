@@ -50,6 +50,27 @@ def compact_qa_author_payload(contract: QAAuthorContract) -> dict[str, Any]:
     return payload
 
 
+def compact_qa_author_repair_payload(contract: QAAuthorContract) -> dict[str, Any]:
+    """Smaller QA handoff payload for implementer repair prompts."""
+
+    payload = compact_qa_author_payload(contract)
+    payload["matrix_coverage"] = {
+        str(key): [str(item) for item in value[:3]]
+        for key, value in list(payload.get("matrix_coverage", {}).items())[:12]
+        if isinstance(value, list)
+    }
+    payload["red_proof"] = [
+        {
+            "test": item.get("test"),
+            "command": item.get("command"),
+            "exit_code": item.get("exit_code"),
+        }
+        for item in payload.get("red_proof", [])[:6]
+        if isinstance(item, dict)
+    ]
+    return payload
+
+
 def compact_task_result_payload(task_result: dict[str, Any]) -> dict[str, Any]:
     """Implementation result payload for reviewer prompts."""
 

@@ -33,6 +33,7 @@ def main() -> int:
             model=args.model,
             reasoning=args.reasoning,
             max_steps=args.max_steps,
+            feature_id=args.feature_id or args.workflow_id,
         ).asdict()
     (output_dir / "runner-summary.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True, default=str),
@@ -52,12 +53,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="gpt-5.4")
     parser.add_argument("--reasoning", default="medium")
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--feature-id")
+    parser.add_argument("--workflow-id")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return payload
 
 
 if __name__ == "__main__":

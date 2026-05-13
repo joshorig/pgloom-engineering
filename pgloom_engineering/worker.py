@@ -8,6 +8,7 @@ from pgloom.db.postgres import connect
 from pgloom.events import append_event
 from pgloom.harness.registry import HandlerRegistry
 from pgloom.harness.result import HandlerResult
+from pgloom.policies import resolve_retry_policy
 from pgloom.resources import acquire_lock
 from pgloom.slots import get_slot_concurrency
 from pgloom.states import TaskState
@@ -120,27 +121,32 @@ def run_once(
         result = handler.handle(task)
         result = _post_execution_gate(task, result, database_url=database_url)
     except Exception as exc:
+        crash_result = _worker_crash_result(task, exc)
         _record_recovery(
             task,
             blocker_code="engineering.worker_crash",
             action="record_crash",
-            rationale=str(exc),
-            outcome=traceback.format_exc(limit=8),
+            rationale=crash_result["worker_crash"]["message"],
+            outcome=crash_result["worker_crash"]["traceback_excerpt"],
             status="open",
             database_url=database_url,
         )
-        retry_or_fail_task(task["id"], reason=f"worker crash: {exc}", database_url=database_url)
+        crash_status = _retry_or_block_worker_crash(
+            task,
+            crash_result=crash_result,
+            database_url=database_url,
+        )
         finish_worker_run(
             int(worker_run["id"]),
             status="crashed",
             blocker_code="engineering.worker_crash",
             terminal_reason="lifecycle_error",
             terminal_detail=str(exc),
-            metadata_patch={"exception": str(exc)},
+            metadata_patch=crash_result["worker_crash"],
             database_url=database_url,
         )
         _release_task_resource_locks(str(task["id"]), database_url=database_url)
-        return {"claimed": True, "task_id": task["id"], "status": "retry"}
+        return {"claimed": True, "task_id": task["id"], "status": crash_status}
 
     if result.status == "done":
         transition_task(task["id"], TaskState.DONE, result=result.result, database_url=database_url)
@@ -290,6 +296,47 @@ def _claim_next_for_feature(
             metadata={"worker_id": worker_id},
         )
         return dict(updated)
+
+
+def _retry_or_block_worker_crash(
+    task: dict[str, Any],
+    *,
+    crash_result: dict[str, Any],
+    database_url: str | None,
+) -> str:
+    policy = resolve_retry_policy(dict(task.get("payload") or {}))
+    max_attempts = min(int(task.get("max_attempts") or 1), policy.max_attempts)
+    attempt = int(task.get("attempt") or 1)
+    reason = crash_result["worker_crash"]["message"]
+    if attempt < max_attempts:
+        retry_or_fail_task(str(task["id"]), reason=reason, database_url=database_url)
+        return "retry"
+    transition_task(
+        str(task["id"]),
+        TaskState.BLOCKED,
+        blocker_code="engineering.worker_crash",
+        blocker_reason=reason,
+        result=crash_result,
+        database_url=database_url,
+    )
+    return "blocked"
+
+
+def _worker_crash_result(task: dict[str, Any], exc: Exception) -> dict[str, Any]:
+    exc_type = type(exc).__name__
+    message = f"worker crash: {exc}"
+    return {
+        "worker_crash": {
+            "exception_type": exc_type,
+            "exception": str(exc),
+            "message": message,
+            "traceback_excerpt": traceback.format_exc(limit=8),
+            "task_type": str(task.get("task_type") or ""),
+            "task_id": str(task.get("id") or ""),
+            "attempt": int(task.get("attempt") or 1),
+            "max_attempts": int(task.get("max_attempts") or 1),
+        }
+    }
 
 
 def _pre_execution_gate(
@@ -836,7 +883,7 @@ def _commands_run_from_result(result: dict[str, Any] | None) -> list[dict[str, A
     for key in ("task_result_contract", "qa_result_contract", "handoff_envelope"):
         payload = result.get(key)
         if isinstance(payload, dict) and isinstance(payload.get("commands_run"), list):
-            return [item for item in payload["commands_run"] if isinstance(item, dict)]
+            return _commands_run_from_checks(payload["commands_run"])
         if isinstance(payload, dict) and isinstance(payload.get("checks"), list):
             commands = _commands_run_from_checks(payload["checks"])
             if commands:
@@ -881,11 +928,19 @@ def _commands_run_from_red_proof(red_proof: Any) -> list[dict[str, Any]]:
         if not isinstance(command, list):
             continue
         artifact_ids = item.get("artifact_ids")
+        exit_code, exit_warning = _safe_int_field(item.get("exit_code"), field="exit_code")
+        duration_s, duration_warning = _safe_float_field(
+            item.get("duration_s"),
+            field="duration_s",
+        )
         payload: dict[str, Any] = {
             "cmd": [str(part) for part in command],
-            "exit_code": int(item.get("exit_code") or 0),
-            "duration_s": float(item.get("duration_s") or 0.0),
+            "exit_code": exit_code,
+            "duration_s": duration_s,
         }
+        warnings = [warning for warning in (exit_warning, duration_warning) if warning]
+        if warnings:
+            payload["normalization_warnings"] = warnings
         if isinstance(artifact_ids, list):
             payload["artifact_ids"] = [
                 str(artifact_id) for artifact_id in artifact_ids if artifact_id is not None
@@ -902,11 +957,19 @@ def _commands_run_from_checks(checks: list[Any]) -> list[dict[str, Any]]:
         command = item.get("command") or item.get("cmd")
         if not isinstance(command, list):
             continue
+        exit_code, exit_warning = _safe_int_field(item.get("exit_code"), field="exit_code")
+        duration_s, duration_warning = _safe_float_field(
+            item.get("duration_s", item.get("duration_seconds")),
+            field="duration_s",
+        )
         payload: dict[str, Any] = {
             "cmd": [str(part) for part in command],
-            "exit_code": int(item.get("exit_code") or 0),
-            "duration_s": float(item.get("duration_s") or item.get("duration_seconds") or 0.0),
+            "exit_code": exit_code,
+            "duration_s": duration_s,
         }
+        warnings = [warning for warning in (exit_warning, duration_warning) if warning]
+        if warnings:
+            payload["normalization_warnings"] = warnings
         artifact_ids = item.get("artifact_ids")
         if isinstance(artifact_ids, list):
             payload["artifact_ids"] = [
@@ -914,6 +977,33 @@ def _commands_run_from_checks(checks: list[Any]) -> list[dict[str, Any]]:
             ]
         commands.append(payload)
     return commands
+
+
+def _safe_int_field(value: Any, *, field: str) -> tuple[int, dict[str, Any] | None]:
+    if value in (None, ""):
+        return 0, None
+    try:
+        return int(value), None
+    except (TypeError, ValueError):
+        return 0, _normalization_warning(field=field, value=value, default=0)
+
+
+def _safe_float_field(value: Any, *, field: str) -> tuple[float, dict[str, Any] | None]:
+    if value in (None, ""):
+        return 0.0, None
+    try:
+        return float(value), None
+    except (TypeError, ValueError):
+        return 0.0, _normalization_warning(field=field, value=value, default=0.0)
+
+
+def _normalization_warning(*, field: str, value: Any, default: int | float) -> dict[str, Any]:
+    return {
+        "code": "command_metadata_coercion_failed",
+        "field": field,
+        "raw_value": str(value)[:240],
+        "default": default,
+    }
 
 
 def _evidence_ids_from_result(result: dict[str, Any] | None) -> list[str]:

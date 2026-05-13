@@ -37,11 +37,11 @@ class EngineeringSettings(BaseSettings):
     role_context_capsule_cache_enabled: bool = True
     role_context_capsule_version: str = "role-context-capsule.v1"
     role_model_context_isolation_enabled: bool = False
-    qa_author_model_context_isolation_enabled: bool = False
+    qa_author_model_context_isolation_enabled: bool = True
     qa_author_model_context_add_dir_enabled: bool = False
     qa_validation_model_context_isolation_enabled: bool = False
     qa_validation_model_context_add_dir_enabled: bool = True
-    implementer_model_context_isolation_enabled: bool = False
+    implementer_model_context_isolation_enabled: bool = True
     implementer_model_context_add_dir_enabled: bool = False
     reviewer_model_context_isolation_enabled: bool = False
     reviewer_model_context_add_dir_enabled: bool = True
@@ -93,6 +93,7 @@ class EngineeringSettings(BaseSettings):
             "engineering.review_rejected",
             "engineering.qa_verify_failed",
             "engineering.qa_usertest_failed",
+            "engineering.worker_crash",
         ]
     )
     workflow_replan_blocker_codes: list[str] = Field(
@@ -117,12 +118,20 @@ class EngineeringSettings(BaseSettings):
             "engineering.qa_verify_failed",
             "engineering.qa_usertest_contract_invalid",
             "engineering.qa_usertest_failed",
+            "engineering.worker_crash",
         ]
     )
     implementer_profile: str = "implementer"
     implementer_command: list[str] = Field(default_factory=lambda: ["cat"])
     implementer_invocation_timeout_seconds: float = 600.0
     implementer_inline_repair_attempts: int = 2
+    implementer_source_starter_max_source_files: int = 3
+    implementer_source_starter_max_test_files: int = 2
+    implementer_source_starter_max_file_chars: int = 3200
+    implementer_source_starter_max_total_chars: int = 12000
+    qa_author_repair_max_file_chars: int = 12000
+    qa_author_repair_max_total_file_chars: int = 36000
+    qa_author_repair_max_response_chars: int = 12000
     implementer_codex_model: str = "gpt-5.4"
     implementer_codex_reasoning: str = "medium"
     implementer_claude_model: str = "sonnet"
