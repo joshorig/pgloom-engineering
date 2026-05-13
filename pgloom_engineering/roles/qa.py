@@ -844,6 +844,7 @@ class QAHandler:
                     task_text=qa_task_text,
                 )
             ]
+            red_required = _qa_author_red_required(repair_context)
             quality_failures = [
                 verification
                 for verification in verification_results
@@ -862,6 +863,8 @@ class QAHandler:
                     task_text=qa_task_text,
                 )
             ]
+            if not red_required and not quality_failures and not compile_failures:
+                break
             if red_verifications and not quality_failures and not compile_failures:
                 break
             verification = (
@@ -1477,6 +1480,16 @@ def _worktree_path_from_payload(payload: Any) -> Path | None:
     if raw_path:
         return Path(str(raw_path))
     return None
+
+
+def _qa_author_red_required(repair_context: object) -> bool:
+    if not isinstance(repair_context, dict):
+        return True
+    source = str(repair_context.get("source") or "")
+    return source not in {
+        "engineering.qa_verify_failed",
+        "engineering.qa_usertest_failed",
+    }
 
 
 def _changed_file_snapshot(

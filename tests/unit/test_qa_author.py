@@ -26,7 +26,18 @@ from pgloom_engineering.qa_author_runtime import (
     route_model_command,
 )
 from pgloom_engineering.qa_runtime import QAVerificationResult
-from pgloom_engineering.roles.qa import QAHandler, normalize_qa_result_payload
+from pgloom_engineering.roles.qa import (
+    QAHandler,
+    _qa_author_red_required,
+    normalize_qa_result_payload,
+)
+
+
+def test_qa_author_red_not_required_for_validation_repair() -> None:
+    assert not _qa_author_red_required({"source": "engineering.qa_usertest_failed"})
+    assert not _qa_author_red_required({"source": "engineering.qa_verify_failed"})
+    assert _qa_author_red_required({"source": "review_rejected"})
+    assert _qa_author_red_required(None)
 
 
 class FakeProvider:
