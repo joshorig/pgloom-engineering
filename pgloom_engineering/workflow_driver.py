@@ -224,6 +224,15 @@ def _maybe_replan_blocked_feature(
     candidate = _recoverable_blocked_task(aggregate, settings)
     if candidate is None:
         return None
+    routed_repair = _maybe_requeue_review_target_repair(
+        feature_id,
+        aggregate,
+        candidate,
+        settings,
+        database_url,
+    )
+    if routed_repair is not None:
+        return routed_repair
     interrupted_repair = _maybe_requeue_interrupted_corrective_repair(
         feature_id,
         aggregate,
@@ -284,6 +293,115 @@ def _maybe_replan_blocked_feature(
         "status": recovery_action,
         "task_id": str(planner["id"]),
         "replanned_from_task_id": str(candidate["id"]),
+    }
+
+
+def _maybe_requeue_review_target_repair(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    candidate: dict[str, Any],
+    settings: Any,
+    database_url: str | None,
+) -> dict[str, object] | None:
+    if str(candidate.get("blocker_code") or "") != "engineering.review_rejected":
+        return None
+    review_context = " ".join(
+        part
+        for part in (
+            str(candidate.get("blocker_reason") or ""),
+            _failure_context(candidate),
+        )
+        if part
+    )
+    qa_owned = _review_rejection_mentions_qa_owned_surface(review_context)
+    production_owned = _review_rejection_mentions_production_surface(review_context)
+    target_task_type = (
+        "engineering.qa.author"
+        if qa_owned and not production_owned
+        else "engineering.implement"
+    )
+    target = _latest_task_by_type(aggregate, target_task_type)
+    if target is None:
+        return None
+    target_id = str(target.get("id") or "")
+    slot = str(target.get("slot") or "")
+    if not target_id or not slot:
+        return None
+    attempt = _recovery_attempt(candidate, aggregate)
+    if attempt >= int(settings.workflow_replan_after_blocked_attempts):
+        return None
+    summary = _replan_summary(candidate)
+    repair_context = {
+        "mode": "routed_repair",
+        "source": "review_rejected",
+        "review_task_id": str(candidate.get("id") or ""),
+        "blocked_task_id": target_id,
+        "blocked_task_type": target_task_type,
+        "blocker_code": "engineering.review_rejected",
+        "blocker_reason": str(candidate.get("blocker_reason") or ""),
+        "failure_context": review_context,
+        "summary": summary,
+        "recommended_owner": (
+            "qa-author"
+            if target_task_type == "engineering.qa.author"
+            else "implementer"
+        ),
+    }
+    next_attempt = max(int(target.get("attempt") or 1) + 1, attempt + 1)
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            update tasks
+            set state = %s,
+                attempt = %s,
+                payload = coalesce(payload, '{}'::jsonb) || %s::jsonb,
+                blocker_code = null,
+                blocker_reason = null,
+                lease_owner = null,
+                lease_expires_at = null,
+                updated_at = now()
+            where id = %s
+            """,
+            (
+                TaskState.QUEUED.value,
+                next_attempt,
+                jsonb(
+                    {
+                        "same_role_repair_context": repair_context,
+                        "preserve_worktree_on_retry": True,
+                    }
+                ),
+                target_id,
+            ),
+        )
+    record_recovery_action(
+        RecoveryDecisionContract(
+            feature_id=feature_id,
+            task_id=target_id,
+            blocker_code="engineering.review_rejected",
+            action="repair_task",
+            rationale=summary,
+            attempt=attempt,
+            max_attempts=int(settings.workflow_replan_after_blocked_attempts),
+        ),
+        status="completed",
+        outcome=(
+            "routed reviewer rejection to "
+            f"{target_task_type} repair task {target_id}"
+        ),
+        database_url=database_url,
+    )
+    _abandon_nonterminal_tasks(
+        aggregate,
+        exclude_task_ids={target_id},
+        database_url=database_url,
+    )
+    return {
+        "slot": slot,
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": target_id,
+        "task_type": target_task_type,
     }
 
 
@@ -1150,6 +1268,18 @@ def _task_by_id(
         if not isinstance(task, dict):
             continue
         if str(task.get("id") or "") == task_id:
+            return task
+    return None
+
+
+def _latest_task_by_type(
+    aggregate: dict[str, Any],
+    task_type: str,
+) -> dict[str, Any] | None:
+    for task in reversed(list(aggregate.get("tasks") or [])):
+        if not isinstance(task, dict):
+            continue
+        if str(task.get("task_type") or "") == task_type:
             return task
     return None
 

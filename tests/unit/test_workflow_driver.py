@@ -556,6 +556,78 @@ def test_review_rejection_replans_immediately(monkeypatch: Any) -> None:
     assert "narrow corrective implementation slice" in payload["replan_context"]["summary"]
 
 
+def test_review_rejection_routes_production_finding_to_implementer_repair(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    recovered: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(workflow_driver, "_abandon_nonterminal_tasks", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
+    )
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "done",
+                    "attempt": 1,
+                },
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 3,
+                    "blocker_code": "engineering.review_rejected",
+                    "blocker_reason": (
+                        "coder_repair: store/src/main implementation changed close "
+                        "lifecycle and must be repaired"
+                    ),
+                },
+            ]
+        ),
+        "postgres://unit",
+    )
+
+    assert result == {
+        "slot": "implementer",
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": "impl-1",
+        "task_type": "engineering.implement",
+    }
+    repair_context = updates[0][2]["same_role_repair_context"]
+    assert repair_context["source"] == "review_rejected"
+    assert repair_context["recommended_owner"] == "implementer"
+    assert "close lifecycle" in repair_context["failure_context"]
+    assert recovered[0]["action"] == "repair_task"
+
+
 def test_qa_verify_failure_replans_immediately(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
