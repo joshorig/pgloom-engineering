@@ -870,17 +870,33 @@ def test_implementation_reported_blockers_replans_immediately(monkeypatch: Any) 
     assert "reported blockers" in payload["replan_context"]["summary"]
 
 
-def test_implementation_path_violation_replans_immediately(monkeypatch: Any) -> None:
-    enqueued: list[dict[str, Any]] = []
+def test_implementation_path_violation_with_artifacts_requeues_same_role_repair(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    recovered: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
     monkeypatch.setattr(
         workflow_driver,
-        "enqueue_task",
-        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
     )
-    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
-    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
-    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
 
     result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
         "feature-1",
@@ -912,16 +928,21 @@ def test_implementation_path_violation_replans_immediately(monkeypatch: Any) -> 
         None,
     )
 
-    assert result is not None
-    payload = enqueued[0]["payload"]
-    assert (
-        payload["replan_context"]["blocker_code"]
-        == "engineering.implementation_path_violation"
-    )
-    assert "QA-owned tests, benchmarks" in payload["replan_context"]["summary"]
+    assert result == {
+        "slot": "implementer",
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": "impl-1",
+        "task_type": "engineering.implement",
+    }
+    repair_payload = updates[0][2]
+    assert repair_payload["preserve_worktree_on_retry"] is True
+    repair_context = repair_payload["same_role_repair_context"]
+    assert repair_context["blocker_code"] == "engineering.implementation_path_violation"
     assert "benchmarks/src/jmh/java/RangeScanSmokeBenchmark.java" in (
-        payload["replan_context"]["failure_context"]
+        repair_context["failure_context"]
     )
+    assert recovered[0]["action"] == "repair_task"
 
 
 def test_repeated_same_blocker_recovery_records_incremented_attempt(
@@ -2055,6 +2076,7 @@ def _settings() -> SimpleNamespace:
             "engineering.qa_tests_do_not_compile",
             "engineering.qa_tests_not_red",
             "engineering.qa_no_changes",
+            "engineering.implementation_path_violation",
             "engineering.implementation_verification_failed",
         ],
         workflow_replan_immediate_blocker_codes=[
