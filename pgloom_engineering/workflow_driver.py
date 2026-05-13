@@ -893,7 +893,7 @@ def _recoverable_blocked_task(
             blocker_code,
             task_id=str(task.get("id") or ""),
         )
-        if blocker_code == "engineering.worker_crash":
+        if blocker_code in immediate_codes or blocker_code == "engineering.worker_crash":
             attempt = completed_recoveries + 1
         else:
             attempt = max(int(task.get("attempt") or 1), completed_recoveries + 1)
