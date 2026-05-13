@@ -97,6 +97,13 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
         uri="file:///tmp/impl.log",
         database_url=database_url,
     )
+    worker_run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=implementer["id"],
+        role="implementer",
+        phase="implement",
+        database_url=database_url,
+    )
     with connect(database_url) as conn, conn.transaction():
         model_usage = conn.execute(
             """
@@ -172,13 +179,6 @@ def test_feature_lifecycle_aggregate_and_token_savior(database_url: str) -> None
     assert aggregate["token_savior"]["summary"]["tokens_saved"] == 7700
     assert aggregate["agent_topology"]["planning"] == "multi_agent"
 
-    worker_run = start_worker_run(
-        feature_id=feature["id"],
-        task_id=implementer["id"],
-        role="implementer",
-        phase="implement",
-        database_url=database_url,
-    )
     finished_run = finish_worker_run(
         int(worker_run["id"]),
         status="done",
