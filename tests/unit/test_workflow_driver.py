@@ -928,6 +928,82 @@ def test_review_rejection_routes_production_finding_to_implementer_repair(
     assert recovered[0]["action"] == "repair_task"
 
 
+def test_qa_owned_usertest_failure_routes_to_qa_author_repair(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    recovered: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(workflow_driver, "_abandon_nonterminal_tasks", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
+    )
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "qa-author-1",
+                    "slot": "qa-engineer",
+                    "task_type": "engineering.qa.author",
+                    "state": "done",
+                    "attempt": 1,
+                },
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "done",
+                    "attempt": 1,
+                },
+                {
+                    "id": "usertest-1",
+                    "slot": "qa-usertest",
+                    "task_type": "engineering.qa.verify.usertest",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "blocker_code": "engineering.qa_usertest_failed",
+                    "blocker_reason": (
+                        "fixture script compile-time errors inside qa/fixtures/user.jsh"
+                    ),
+                },
+            ]
+        ),
+        "postgres://unit",
+    )
+
+    assert result == {
+        "slot": "qa-engineer",
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": "qa-author-1",
+        "task_type": "engineering.qa.author",
+    }
+    repair_context = updates[0][2]["same_role_repair_context"]
+    assert repair_context["source"] == "engineering.qa_usertest_failed"
+    assert "qa/fixtures/user.jsh" in repair_context["failure_context"]
+    assert recovered[0]["action"] == "repair_task"
+
+
 def test_qa_verify_failure_replans_immediately(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())

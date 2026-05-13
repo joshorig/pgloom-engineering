@@ -47,6 +47,7 @@ from pgloom_engineering.workflow_driver import (
     _maybe_replan_blocked_feature,
     _maybe_restore_recovery_abandoned_tasks,
     _recover_stale_running_tasks,
+    _terminal_task_superseded_by_recovery,
 )
 
 LIVE_ROLE_ORDER = [
@@ -1443,7 +1444,7 @@ def _grade_workflow_state(aggregate: dict[str, Any]) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     for task in tasks:
         state = str(task.get("state") or "")
-        if state == "done":
+        if state == "done" or _terminal_task_superseded_by_recovery(task, tasks):
             continue
         task_id = str(task.get("id") or "")
         task_type = str(task.get("task_type") or "")

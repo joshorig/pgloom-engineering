@@ -249,6 +249,31 @@ def test_live_role_grade_rejects_unfinished_workflow_tasks() -> None:
     ]
 
 
+def test_live_role_grade_ignores_recovery_abandoned_replacements() -> None:
+    grade = _grade_workflow_state(
+        {
+            "tasks": [
+                {
+                    "id": "old-review",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                },
+                {
+                    "id": "new-review",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "done",
+                },
+            ]
+        }
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
 def test_live_role_score_fails_cancelled_workflow_tasks() -> None:
     checks = _score(
         role="orchestration",
