@@ -10,6 +10,7 @@ from pgloom_engineering.live_role_eval import (
     _grade_implementation,
     _grade_plan,
     _grade_qa_author,
+    _grade_token_efficiency,
     _grade_workflow_state,
     _patched_env,
     _role_command,
@@ -267,6 +268,159 @@ def test_live_role_grade_ignores_recovery_abandoned_replacements() -> None:
                     "state": "done",
                 },
             ]
+        }
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
+def test_live_role_grade_ignores_stale_worker_lease_when_replaced() -> None:
+    grade = _grade_workflow_state(
+        {
+            "tasks": [
+                {
+                    "id": "old-plan",
+                    "slot": "planner",
+                    "task_type": "engineering.plan",
+                    "state": "abandoned",
+                    "terminal_reason": "stale_worker_lease",
+                },
+                {
+                    "id": "new-plan",
+                    "slot": "planner",
+                    "task_type": "engineering.plan",
+                    "state": "done",
+                },
+            ]
+        }
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
+def test_live_role_score_ignores_recovery_superseded_tasks() -> None:
+    checks = _score(
+        role="orchestration",
+        aggregate={
+            "tasks": [
+                {
+                    "id": "old-plan",
+                    "slot": "planner",
+                    "task_type": "engineering.plan",
+                    "state": "abandoned",
+                    "terminal_reason": "stale_worker_lease",
+                },
+                {
+                    "id": "new-plan",
+                    "slot": "planner",
+                    "task_type": "engineering.plan",
+                    "state": "done",
+                },
+            ],
+            "worker_runs": [
+                {"status": "done", "metadata": {"task_type": "engineering.plan"}},
+            ],
+            "handoffs": [{"handoff_type": "plan_to_task"}],
+            "task_contracts": [],
+        },
+        output_evidence={
+            "changed_files": ["src/New.java"],
+            "telemetry": {"worker_run_summary": {"runs": [{"role": "planner"}]}},
+            "artifacts": [{"artifact_type": "command_log"}],
+        },
+    )
+
+    by_name = {check["name"]: check for check in checks}
+
+    assert by_name["all workflow tasks done"]["passed"] is True
+    assert by_name["all workflow tasks done"]["actual"] == []
+
+
+def test_live_role_qa_grade_uses_cumulative_author_evidence() -> None:
+    grade = _grade_qa_author(
+        {
+            "task_contracts": [
+                {
+                    "status": "completed",
+                    "input_contract": {"task_type": "engineering.qa.author"},
+                    "output_contract": {
+                        "qa_author_contract": {
+                            "tests_added": ["tests/test_feature.py"],
+                            "red_proof": {"commands": []},
+                            "matrix_coverage": {"feature": ["test_feature"]},
+                        }
+                    },
+                },
+                {
+                    "status": "completed",
+                    "input_contract": {"task_type": "engineering.qa.author"},
+                    "output_contract": {
+                        "qa_author_contract": {
+                            "tests_added": [],
+                            "red_proof": {"commands": []},
+                            "matrix_coverage": {"feature": ["test_feature"]},
+                        }
+                    },
+                },
+            ]
+        },
+        {"git_diff_path": ""},
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
+def test_live_role_token_efficiency_grades_prompt_size_not_recounted_usage() -> None:
+    grade = _grade_token_efficiency(
+        {
+            "telemetry": {
+                "worker_runs": [
+                    {
+                        "role": "qa",
+                        "phase": "author",
+                        "input_tokens": 4_000_000,
+                        "model_usage": [
+                            {
+                                "id": 1,
+                                "input_tokens": 1_500_000,
+                                "cached_input_tokens": 1_400_000,
+                                "prompt_estimated_tokens": 18_000,
+                            },
+                            {
+                                "id": 1,
+                                "input_tokens": 1_500_000,
+                                "cached_input_tokens": 1_400_000,
+                                "prompt_estimated_tokens": 18_000,
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    assert grade["verdict"] == "production_grade"
+    assert grade["findings"] == []
+
+
+def test_live_role_token_efficiency_grades_per_model_prompt() -> None:
+    grade = _grade_token_efficiency(
+        {
+            "telemetry": {
+                "worker_runs": [
+                    {
+                        "role": "planner",
+                        "phase": "plan",
+                        "model_usage": [
+                            {"id": 1, "input_tokens": 40_000, "prompt_estimated_tokens": 60_000},
+                            {"id": 2, "input_tokens": 40_000, "prompt_estimated_tokens": 60_000},
+                        ],
+                    }
+                ]
+            }
         }
     )
 

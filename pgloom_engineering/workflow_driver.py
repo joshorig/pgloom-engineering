@@ -169,9 +169,14 @@ def _terminal_task_superseded_by_recovery(
     if state not in {"abandoned", "superseded"}:
         return False
     reason = str(task.get("terminal_reason") or "")
+    replacement_required_reasons = {
+        "stale_worker_lease",
+        "workflow_recovery_replan",
+        "operator_replan_from_milestone",
+    }
     if reason == "stale_live_eval_worker":
         return True
-    if reason not in {"workflow_recovery_replan", "operator_replan_from_milestone"}:
+    if reason not in replacement_required_reasons:
         return False
     slot = str(task.get("slot") or "")
     task_type = str(task.get("task_type") or "")

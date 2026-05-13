@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -195,6 +195,14 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
         slot="implementer",
         database_url=database_url,
     )
+    run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="implementer",
+        phase="implement",
+        started_at=datetime.now(UTC) - timedelta(seconds=1),
+        database_url=database_url,
+    )
     with connect(database_url) as conn, conn.transaction():
         conn.execute(
             """
@@ -230,13 +238,6 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
         database_url=database_url,
     )
 
-    run = start_worker_run(
-        feature_id=feature["id"],
-        task_id=task["id"],
-        role="implementer",
-        phase="implement",
-        database_url=database_url,
-    )
     finished = finish_worker_run(
         int(run["id"]),
         status="done",
@@ -277,6 +278,85 @@ def test_worker_run_finish_persists_model_route_cost_and_time(database_url: str)
     assert stored_artifact["evidence_id"] == "ev-impl"
     assert stored_artifact["metadata"]["evidence_kind"] == "test_run"
     assert stored_artifact["metadata"]["source_worker_run_id"] == finished["id"]
+
+
+def test_finish_worker_run_counts_only_current_attempt_model_usage(
+    database_url: str,
+) -> None:
+    workflow = create_workflow(domain="engineering", name="cc", database_url=database_url)
+    feature = create_feature(
+        workflow_id=workflow["id"],
+        project="demo",
+        database_url=database_url,
+    )
+    task = enqueue_task(
+        workflow_id=workflow["id"],
+        domain="engineering",
+        task_type="engineering.qa.author",
+        slot="qa-engineer",
+        database_url=database_url,
+    )
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            insert into model_usage(
+              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
+              metadata, created_at
+            )
+            values (%s, %s, 'qa-author', 900, 9, 0, %s, now() - interval '1 hour')
+            """,
+            (
+                workflow["id"],
+                task["id"],
+                jsonb(
+                    {
+                        "provider": "codex",
+                        "model": "gpt-5.5",
+                        "reasoning_level": "medium",
+                    }
+                ),
+            ),
+        )
+    run = start_worker_run(
+        feature_id=feature["id"],
+        task_id=task["id"],
+        role="qa",
+        phase="author",
+        database_url=database_url,
+    )
+    with connect(database_url) as conn, conn.transaction():
+        current_usage = conn.execute(
+            """
+            insert into model_usage(
+              workflow_id, task_id, profile_name, input_tokens, output_tokens, cost_usd,
+              metadata
+            )
+            values (%s, %s, 'qa-author', 100, 3, 0, %s)
+            returning id
+            """,
+            (
+                workflow["id"],
+                task["id"],
+                jsonb(
+                    {
+                        "provider": "codex",
+                        "model": "gpt-5.5",
+                        "reasoning_level": "medium",
+                    }
+                ),
+            ),
+        ).fetchone()
+    assert current_usage is not None
+
+    finished = finish_worker_run(
+        int(run["id"]),
+        status="done",
+        database_url=database_url,
+    )
+
+    assert finished["input_tokens"] == 100
+    assert finished["output_tokens"] == 3
+    assert finished["model_usage_ids"] == [current_usage["id"]]
 
 
 def test_command_center_exposes_council_runs_and_panelists(database_url: str) -> None:

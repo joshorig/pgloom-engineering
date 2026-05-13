@@ -1523,19 +1523,41 @@ def _grade_qa_author(
     aggregate: dict[str, Any],
     output_evidence: dict[str, Any],
 ) -> dict[str, Any]:
-    qa = _output_for_task_type(aggregate, "engineering.qa.author").get("qa_author_contract")
-    if not isinstance(qa, dict):
+    qa_contracts = _outputs_for_task_type(aggregate, "engineering.qa.author")
+    qa_author_contracts: list[dict[str, Any]] = []
+    for output in qa_contracts:
+        qa_author_contract = output.get("qa_author_contract")
+        if isinstance(qa_author_contract, dict):
+            qa_author_contracts.append(qa_author_contract)
+    if not qa_author_contracts:
         return _dimension(
             "qa_author",
             "missing",
             _finding("blocking", "qa_missing", "No QA contract."),
         )
     findings: list[dict[str, str]] = []
-    if not qa.get("tests_added"):
+    tests_added = [
+        item
+        for qa in qa_author_contracts
+        for item in (qa.get("tests_added") or [])
+        if item
+    ]
+    red_proof = next(
+        (qa.get("red_proof") for qa in reversed(qa_author_contracts) if qa.get("red_proof")),
+        None,
+    )
+    matrix = next(
+        (
+            qa.get("matrix_coverage")
+            for qa in reversed(qa_author_contracts)
+            if isinstance(qa.get("matrix_coverage"), dict) and qa.get("matrix_coverage")
+        ),
+        None,
+    )
+    if not tests_added:
         findings.append(_finding("blocking", "qa_no_tests", "QA author produced no tests."))
-    if not qa.get("red_proof"):
+    if not red_proof:
         findings.append(_finding("blocking", "qa_no_red_proof", "QA author produced no red proof."))
-    matrix = qa.get("matrix_coverage")
     if not isinstance(matrix, dict) or not matrix:
         findings.append(
             _finding("blocking", "qa_no_matrix", "QA author produced no coverage matrix.")
@@ -1841,16 +1863,54 @@ def _grade_token_efficiency(output_evidence: dict[str, Any]) -> dict[str, Any]:
     telemetry = output_evidence.get("telemetry") if isinstance(output_evidence, dict) else {}
     worker_runs = telemetry.get("worker_runs", []) if isinstance(telemetry, dict) else []
     findings: list[dict[str, str]] = []
+    seen_model_usage_ids: set[int] = set()
     for row in worker_runs:
         if not isinstance(row, dict):
             continue
-        input_tokens = int(row.get("input_tokens") or 0)
-        if input_tokens > 250_000:
+        max_prompt_tokens = 0
+        max_model_input_tokens = 0
+        model_usage = row.get("model_usage")
+        if isinstance(model_usage, list):
+            for usage in model_usage:
+                if not isinstance(usage, dict):
+                    continue
+                usage_id = int(usage.get("id") or 0)
+                if usage_id and usage_id in seen_model_usage_ids:
+                    continue
+                if usage_id:
+                    seen_model_usage_ids.add(usage_id)
+                max_prompt_tokens = max(
+                    max_prompt_tokens,
+                    int(usage.get("prompt_estimated_tokens") or 0),
+                )
+                max_model_input_tokens = max(
+                    max_model_input_tokens,
+                    int(usage.get("input_tokens") or 0),
+                )
+        if not max_prompt_tokens:
+            max_prompt_tokens = int(row.get("prompt_estimated_tokens") or 0)
+        if not max_model_input_tokens:
+            max_model_input_tokens = int(row.get("input_tokens") or 0)
+        if max_prompt_tokens > 100_000:
             findings.append(
                 _finding(
                     "blocking",
                     "worker_prompt_too_large",
-                    f"{row.get('role')}:{row.get('phase')} used {input_tokens} input tokens.",
+                    (
+                        f"{row.get('role')}:{row.get('phase')} prompt estimated "
+                        f"{max_prompt_tokens} tokens."
+                    ),
+                )
+            )
+        if max_model_input_tokens > 2_000_000:
+            findings.append(
+                _finding(
+                    "advisory",
+                    "worker_model_input_high",
+                    (
+                        f"{row.get('role')}:{row.get('phase')} provider reported "
+                        f"{max_model_input_tokens} input tokens including cached context."
+                    ),
                 )
             )
     return _dimension(
@@ -1861,6 +1921,11 @@ def _grade_token_efficiency(output_evidence: dict[str, Any]) -> dict[str, Any]:
 
 
 def _output_for_task_type(aggregate: dict[str, Any], task_type: str) -> dict[str, Any]:
+    matches = _outputs_for_task_type(aggregate, task_type)
+    return matches[-1] if matches else {}
+
+
+def _outputs_for_task_type(aggregate: dict[str, Any], task_type: str) -> list[dict[str, Any]]:
     matches: list[dict[str, Any]] = []
     for row in aggregate.get("task_contracts") or []:
         if not isinstance(row, dict):
@@ -1872,11 +1937,14 @@ def _output_for_task_type(aggregate: dict[str, Any], task_type: str) -> dict[str
         if isinstance(output, dict):
             matches.append(row)
     if not matches:
-        return {}
+        return []
     completed = [row for row in matches if row.get("status") == "completed"]
-    selected = (completed or matches)[-1]
-    output = selected.get("output_contract")
-    return output if isinstance(output, dict) else {}
+    outputs: list[dict[str, Any]] = []
+    for selected in completed or matches:
+        output = selected.get("output_contract")
+        if isinstance(output, dict):
+            outputs.append(output)
+    return outputs
 
 
 def _task_for_type(aggregate: dict[str, Any], task_type: str) -> dict[str, Any]:
@@ -1977,6 +2045,7 @@ def _score(
         for row in worker_runs
         if row.get("status") == "done"
     }
+    tasks = [row for row in aggregate.get("tasks") or [] if isinstance(row, dict)]
     non_done_tasks = [
         {
             "id": str(row.get("id") or ""),
@@ -1984,8 +2053,9 @@ def _score(
             "state": str(row.get("state") or ""),
             "blocker_code": str(row.get("blocker_code") or ""),
         }
-        for row in aggregate.get("tasks") or []
-        if isinstance(row, dict) and str(row.get("state") or "") != "done"
+        for row in tasks
+        if str(row.get("state") or "") != "done"
+        and not _terminal_task_superseded_by_recovery(row, tasks)
     ]
     return [
         {

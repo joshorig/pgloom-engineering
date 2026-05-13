@@ -314,8 +314,19 @@ def finish_worker_run(
             raise RuntimeError(f"worker run not found: {worker_run_id}")
         feature_id = str(current["feature_id"])
         task_id = current["task_id"]
-        model_usage = _worker_model_usage(conn, feature_id, task_id)
-        token_savior = _worker_token_savior_usage(conn, feature_id, task_id)
+        run_started_at = current["started_at"]
+        model_usage = _worker_model_usage(
+            conn,
+            feature_id,
+            task_id,
+            since=run_started_at,
+        )
+        token_savior = _worker_token_savior_usage(
+            conn,
+            feature_id,
+            task_id,
+            since=run_started_at,
+        )
         cumulative = _worker_cumulative(conn, feature_id)
         metadata = dict(current["metadata"] or {})
         if metadata_patch:
@@ -621,16 +632,23 @@ def summarize_worker_runs(
     }
 
 
-def _worker_model_usage(conn: Any, feature_id: str, task_id: str | None) -> dict[str, Any]:
+def _worker_model_usage(
+    conn: Any,
+    feature_id: str,
+    task_id: str | None,
+    *,
+    since: Any | None = None,
+) -> dict[str, Any]:
     if task_id is None:
         rows = conn.execute(
             """
             select id, profile_name, input_tokens, output_tokens, cost_usd, metadata
             from model_usage
             where workflow_id = %s
+              and (%s::timestamptz is null or created_at >= %s::timestamptz)
             order by created_at, id
             """,
-            (feature_id,),
+            (feature_id, since, since),
         ).fetchall()
     else:
         rows = conn.execute(
@@ -638,9 +656,10 @@ def _worker_model_usage(conn: Any, feature_id: str, task_id: str | None) -> dict
             select id, profile_name, input_tokens, output_tokens, cost_usd, metadata
             from model_usage
             where task_id = %s
+              and (%s::timestamptz is null or created_at >= %s::timestamptz)
             order by created_at, id
             """,
-            (task_id,),
+            (task_id, since, since),
         ).fetchall()
     calls = [_model_usage_call(row) for row in rows]
     metadata = [dict(row["metadata"] or {}) for row in rows]
@@ -805,7 +824,13 @@ def _join_distinct(values: Any) -> str | None:
     return ",".join(items) if items else None
 
 
-def _worker_token_savior_usage(conn: Any, feature_id: str, task_id: str | None) -> dict[str, Any]:
+def _worker_token_savior_usage(
+    conn: Any,
+    feature_id: str,
+    task_id: str | None,
+    *,
+    since: Any | None = None,
+) -> dict[str, Any]:
     if task_id is None:
         rows = conn.execute(
             """
@@ -813,9 +838,10 @@ def _worker_token_savior_usage(conn: Any, feature_id: str, task_id: str | None) 
                    reduction_ratio, metadata
             from engineering_token_savior_usage
             where feature_id = %s
+              and (%s::timestamptz is null or created_at >= %s::timestamptz)
             order by created_at, id
             """,
-            (feature_id,),
+            (feature_id, since, since),
         ).fetchall()
     else:
         rows = conn.execute(
@@ -824,9 +850,10 @@ def _worker_token_savior_usage(conn: Any, feature_id: str, task_id: str | None) 
                    reduction_ratio, metadata
             from engineering_token_savior_usage
             where feature_id = %s and task_id = %s
+              and (%s::timestamptz is null or created_at >= %s::timestamptz)
             order by created_at, id
             """,
-            (feature_id, task_id),
+            (feature_id, task_id, since, since),
         ).fetchall()
     original = sum(int(row["input_tokens_original"]) for row in rows)
     packed = sum(int(row["input_tokens_after_savior"]) for row in rows)
