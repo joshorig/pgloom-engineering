@@ -83,6 +83,7 @@ class EngineeringSettings(BaseSettings):
             "engineering.qa_tests_do_not_compile",
             "engineering.qa_tests_not_red",
             "engineering.qa_no_changes",
+            "engineering.implementer_contract_invalid",
             "engineering.implementation_path_violation",
             "engineering.implementation_verification_failed",
         ]
