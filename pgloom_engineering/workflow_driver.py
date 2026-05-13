@@ -77,6 +77,14 @@ def run_workflow(
         if replan is not None:
             steps.append(replan)
             continue
+        restored = _maybe_restore_recovery_abandoned_tasks(
+            feature_id,
+            aggregate,
+            database_url,
+        )
+        if restored is not None:
+            steps.append(restored)
+            continue
         terminal = _terminal_status(aggregate)
         if terminal is not None:
             _update_terminal_feature_state(feature_id, terminal["status"], database_url)
@@ -630,6 +638,109 @@ def _maybe_requeue_same_role_repair(
         "task_id": task_id,
         "task_type": task_type,
     }
+
+
+def _maybe_restore_recovery_abandoned_tasks(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    database_url: str | None,
+) -> dict[str, object] | None:
+    tasks = list(aggregate.get("tasks") or [])
+    if any(
+        str(task.get("state") or "") not in TERMINAL_STATES | BLOCKED_STATES
+        for task in tasks
+    ):
+        return None
+    plan_id = _latest_completed_plan_contract_id(tasks)
+    if not plan_id:
+        return None
+    done_keys = {
+        _task_completion_key(task)
+        for task in tasks
+        if str(task.get("state") or "") == "done"
+        and _task_plan_contract_id(task) == plan_id
+    }
+    candidates = [
+        task
+        for task in tasks
+        if _task_plan_contract_id(task) == plan_id
+        and str(task.get("state") or "") in {"abandoned", "superseded"}
+        and str(task.get("terminal_reason") or "")
+        in {"workflow_recovery_replan", "operator_replan_from_milestone"}
+        and _task_completion_key(task) not in done_keys
+    ]
+    if not candidates:
+        return None
+    task_ids = [str(task["id"]) for task in candidates if task.get("id")]
+    if not task_ids:
+        return None
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            update tasks
+            set state = %s,
+                attempt = attempt + 1,
+                blocker_code = null,
+                blocker_reason = null,
+                lease_owner = null,
+                lease_expires_at = null,
+                terminal_reason = null,
+                terminal_detail = null,
+                updated_at = now()
+            where id = any(%s)
+            """,
+            (TaskState.QUEUED.value, task_ids),
+        )
+    record_recovery_action(
+        RecoveryDecisionContract(
+            feature_id=feature_id,
+            blocker_code="engineering.downstream_gates_abandoned",
+            action="repair_task",
+            rationale=(
+                "Restored recovery-abandoned downstream tasks from the latest plan "
+                "after the owner repair completed."
+            ),
+            attempt=1,
+            max_attempts=1,
+        ),
+        status="completed",
+        outcome=f"restored downstream tasks {', '.join(task_ids)}",
+        database_url=database_url,
+    )
+    return {
+        "slot": "workflow",
+        "claimed": True,
+        "status": "restored_recovery_abandoned_tasks",
+        "task_ids": task_ids,
+    }
+
+
+def _latest_completed_plan_contract_id(tasks: list[dict[str, Any]]) -> str | None:
+    latest: dict[str, Any] | None = None
+    for task in tasks:
+        if str(task.get("state") or "") != "done":
+            continue
+        plan_id = _task_plan_contract_id(task)
+        if not plan_id:
+            continue
+        if latest is None or str(task.get("updated_at") or "") > str(
+            latest.get("updated_at") or ""
+        ):
+            latest = task
+    if latest is None:
+        return None
+    return _task_plan_contract_id(latest)
+
+
+def _task_plan_contract_id(task: dict[str, Any]) -> str:
+    payload = task.get("payload")
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("plan_contract_id") or "")
+
+
+def _task_completion_key(task: dict[str, Any]) -> tuple[str, str]:
+    return (str(task.get("task_type") or ""), str(task.get("slot") or ""))
 
 
 def _active_planner_exists(aggregate: dict[str, Any]) -> bool:

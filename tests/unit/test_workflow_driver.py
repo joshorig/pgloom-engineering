@@ -220,6 +220,96 @@ def test_run_workflow_fails_recovery_abandoned_task_without_done_replacement(
     assert states == ["failed"]
 
 
+def test_restores_latest_plan_recovery_abandoned_downstream_tasks(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, list[str]]] = []
+    recovered: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), list(params[1])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
+    )
+
+    result = workflow_driver._maybe_restore_recovery_abandoned_tasks(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "old-review",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                    "updated_at": "2026-05-13T16:00:00",
+                    "payload": {"plan_contract_id": "old-plan"},
+                },
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "done",
+                    "updated_at": "2026-05-13T17:50:00",
+                    "payload": {"plan_contract_id": "new-plan"},
+                },
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                    "updated_at": "2026-05-13T17:16:00",
+                    "payload": {"plan_contract_id": "new-plan"},
+                },
+                {
+                    "id": "scrutiny-1",
+                    "slot": "qa-scrutiny",
+                    "task_type": "engineering.qa.verify.scrutiny",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                    "updated_at": "2026-05-13T17:16:01",
+                    "payload": {"plan_contract_id": "new-plan"},
+                },
+                {
+                    "id": "review-done",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "done",
+                    "updated_at": "2026-05-13T15:00:00",
+                    "payload": {"plan_contract_id": "old-plan"},
+                },
+            ]
+        ),
+        "postgres://unit",
+    )
+
+    assert result == {
+        "slot": "workflow",
+        "claimed": True,
+        "status": "restored_recovery_abandoned_tasks",
+        "task_ids": ["review-1", "scrutiny-1"],
+    }
+    assert updates == [("queued", ["review-1", "scrutiny-1"])]
+    assert recovered[0]["action"] == "repair_task"
+    assert recovered[0]["blocker_code"] == "engineering.downstream_gates_abandoned"
+
+
 def test_run_workflow_ignores_dependency_waiting_blocked_tasks(monkeypatch: Any) -> None:
     aggregates = [
         _aggregate(
