@@ -124,7 +124,7 @@ class EngineeringSettings(BaseSettings):
     implementer_profile: str = "implementer"
     implementer_command: list[str] = Field(default_factory=lambda: ["cat"])
     implementer_invocation_timeout_seconds: float = 600.0
-    implementer_inline_repair_attempts: int = 2
+    implementer_inline_repair_attempts: int = 1
     implementer_source_starter_max_source_files: int = 3
     implementer_source_starter_max_test_files: int = 2
     implementer_source_starter_max_file_chars: int = 3200

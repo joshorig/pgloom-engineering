@@ -787,6 +787,7 @@ def _replan_payload(
             "blocker_reason": str(blocked_task.get("blocker_reason") or ""),
             "failure_context": failure_context,
             "blocked_task_contract": blocked_contract,
+            "blocked_task_type": _blocked_task_type(blocked_task, blocked_contract),
             "blocked_slice_allowed_paths": _contract_string_list(
                 blocked_contract,
                 "allowed_paths",
@@ -874,6 +875,17 @@ def _contract_string_list(
     if not isinstance(raw, list):
         return []
     return [str(item) for item in raw if str(item)]
+
+
+def _blocked_task_type(
+    blocked_task: dict[str, Any],
+    contract: dict[str, Any] | None,
+) -> str | None:
+    if isinstance(contract, dict) and contract.get("task_type"):
+        return str(contract["task_type"])
+    if blocked_task.get("task_type"):
+        return str(blocked_task["task_type"])
+    return None
 
 
 def _blocked_slice_id(contract: dict[str, Any] | None) -> str | None:

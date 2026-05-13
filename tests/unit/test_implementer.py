@@ -1075,7 +1075,7 @@ def test_implementer_prompt_requires_jmh_allocation_self_validation(
 
 
 def test_implementer_defaults_to_inline_verification_repair() -> None:
-    assert EngineeringSettings().implementer_inline_repair_attempts >= 1
+    assert EngineeringSettings().implementer_inline_repair_attempts == 1
     assert EngineeringSettings().implementer_model_context_isolation_enabled is True
     assert EngineeringSettings().implementer_model_context_add_dir_enabled is False
     assert 0 < EngineeringSettings().implementer_source_starter_max_total_chars <= 12000

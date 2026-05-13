@@ -1020,6 +1020,7 @@ def _task_replan_context_payload(payload: dict[str, Any]) -> dict[str, Any] | No
         "blocker_code",
         "blocker_reason",
         "failure_context",
+        "blocked_task_type",
         "blocked_slice_id",
         "attempt",
         "same_blocker_recovery_count",
@@ -1590,6 +1591,9 @@ def _corrective_allowed_task_types(context: dict[str, Any]) -> set[str]:
 
 
 def _blocked_task_type(context: dict[str, Any]) -> str:
+    explicit = context.get("blocked_task_type")
+    if explicit:
+        return str(explicit)
     blocked_contract = context.get("blocked_task_contract")
     if not isinstance(blocked_contract, dict):
         return ""
@@ -1630,7 +1634,7 @@ def _implementation_verification_failure_mentions_qa_defect(
 ) -> bool:
     context_text = " ".join(
         str(context.get(key) or "")
-        for key in ("blocker_reason", "failure_context", "summary")
+        for key in ("blocker_reason", "failure_context")
     ).lower()
     return any(
         signal in context_text
@@ -1655,7 +1659,7 @@ def _implementation_verification_failure_mentions_qa_defect(
 def _corrective_context_mentions_qa_owned_paths(context: dict[str, Any]) -> bool:
     context_text = " ".join(
         str(context.get(key) or "")
-        for key in ("blocker_reason", "failure_context", "summary")
+        for key in ("blocker_reason", "failure_context")
     ).lower()
     qa_owned_signals = [
         "qa-authored",

@@ -1310,6 +1310,7 @@ def test_replan_payload_carries_blocked_task_path_scope() -> None:
     ]
     assert context["blocked_slice_forbidden_paths"] == ["core/src/main/java/"]
     assert context["blocked_slice_id"] == "impl-range"
+    assert context["blocked_task_type"] == "engineering.implement"
 
 
 def test_replan_payload_carries_implementation_failure_evidence() -> None:
