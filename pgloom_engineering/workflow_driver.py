@@ -291,7 +291,11 @@ def _recoverable_blocked_task(
         blocker_code = str(task.get("blocker_code") or "")
         if state != "blocked" or blocker_code not in recoverable_codes:
             continue
-        completed_recoveries = _completed_recovery_count(aggregate, blocker_code)
+        completed_recoveries = _completed_recovery_count(
+            aggregate,
+            blocker_code,
+            task_id=str(task.get("id") or ""),
+        )
         attempt = max(int(task.get("attempt") or 1), completed_recoveries + 1)
         if attempt > int(settings.workflow_replan_after_blocked_attempts):
             continue
@@ -736,6 +740,7 @@ def _replan_payload(
     repeat_count = _completed_recovery_count(
         aggregate,
         str(blocked_task.get("blocker_code") or ""),
+        task_id=str(blocked_task.get("id") or ""),
     )
     blocked_contract = _task_contract_for_task(
         aggregate,
@@ -816,12 +821,19 @@ def _active_plan_contract_id(aggregate: dict[str, Any]) -> str | None:
     return None
 
 
-def _completed_recovery_count(aggregate: dict[str, Any], blocker_code: str) -> int:
+def _completed_recovery_count(
+    aggregate: dict[str, Any],
+    blocker_code: str,
+    *,
+    task_id: str | None = None,
+) -> int:
     if not blocker_code:
         return 0
     count = 0
     for action in aggregate.get("recovery_actions") or []:
         if not isinstance(action, dict):
+            continue
+        if task_id is not None and str(action.get("task_id") or "") != task_id:
             continue
         if str(action.get("blocker_code") or "") != blocker_code:
             continue
@@ -844,7 +856,11 @@ def _recovery_attempt(
         except (TypeError, ValueError):
             pass
     blocker_code = str(blocked_task.get("blocker_code") or "")
-    completed_recoveries = _completed_recovery_count(aggregate, blocker_code)
+    completed_recoveries = _completed_recovery_count(
+        aggregate,
+        blocker_code,
+        task_id=str(blocked_task.get("id") or ""),
+    )
     task_attempt = int(blocked_task.get("attempt") or 1)
     return max(task_attempt, completed_recoveries + 1)
 

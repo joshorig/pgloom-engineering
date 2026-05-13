@@ -958,11 +958,13 @@ def test_repeated_same_blocker_recovery_records_incremented_attempt(
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "qa-1",
             "blocker_code": "engineering.qa_tests_do_not_compile",
             "action": "corrective_slice",
             "status": "completed",
         },
         {
+            "task_id": "qa-1",
             "blocker_code": "engineering.qa_tests_do_not_compile",
             "action": "corrective_slice",
             "status": "completed",
@@ -1054,11 +1056,13 @@ def test_repeated_qa_semantic_failure_escalates_replan_instruction(
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "qa-1",
             "blocker_code": "engineering.qa_semantic_quality_failed",
             "action": "corrective_slice",
             "status": "completed",
         },
         {
+            "task_id": "qa-1",
             "blocker_code": "engineering.qa_semantic_quality_failed",
             "action": "corrective_slice",
             "status": "completed",
@@ -1077,6 +1081,54 @@ def test_repeated_qa_semantic_failure_escalates_replan_instruction(
     assert payload["replan_context"]["same_blocker_recovery_count"] == 2
     assert "must not emit another broad QA-author slice" in payload["replan_context"]["summary"]
     assert "reflection/proxy/adapter shortcuts" in payload["replan_context"]["summary"]
+
+
+def test_replan_recovery_budget_ignores_abandoned_sibling_blockers(
+    monkeypatch: Any,
+) -> None:
+    enqueued: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        workflow_driver,
+        "enqueue_task",
+        lambda **kwargs: enqueued.append(kwargs) or {"id": "planner-replan-1"},
+    )
+    monkeypatch.setattr(workflow_driver, "attach_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-fresh",
+                "slot": "qa-engineer",
+                "task_type": "engineering.qa.author",
+                "state": "blocked",
+                "attempt": 1,
+                "priority": 3,
+                "blocker_code": "engineering.qa_semantic_quality_failed",
+                "blocker_reason": "fresh deterministic QA quality finding",
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "task_id": f"qa-old-{index}",
+            "blocker_code": "engineering.qa_semantic_quality_failed",
+            "action": "corrective_slice",
+            "status": "completed",
+        }
+        for index in range(4)
+    ]
+    aggregate["model_usage"] = {"by_profile": [{"input_tokens": 750_000}]}
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        None,
+    )
+
+    assert result is not None
+    assert enqueued[0]["payload"]["replan_context"]["same_blocker_recovery_count"] == 0
 
 
 def test_blocked_replan_enqueues_planner_with_failure_knowledge(monkeypatch: Any) -> None:
@@ -1365,6 +1417,7 @@ def test_replan_payload_routes_material_benchmark_gate_to_implementer() -> None:
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "impl-1",
             "blocker_code": "engineering.implementation_verification_failed",
             "action": "corrective_slice",
             "status": "completed",
@@ -1422,6 +1475,7 @@ def test_replan_payload_classifies_material_benchmark_gate_as_implementation_wor
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "impl-1",
             "blocker_code": "engineering.implementation_verification_failed",
             "action": "corrective_slice",
             "status": "completed",
@@ -1483,11 +1537,13 @@ def test_replan_payload_keeps_repeated_material_allocations_with_implementer() -
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "impl-1",
             "blocker_code": "engineering.implementation_verification_failed",
             "action": "corrective_slice",
             "status": "completed",
         },
         {
+            "task_id": "impl-1",
             "blocker_code": "engineering.implementation_verification_failed",
             "action": "corrective_slice",
             "status": "completed",
@@ -1615,6 +1671,7 @@ def test_replan_payload_classifies_benchmark_harness_error_as_qa_harness() -> No
     )
     aggregate["recovery_actions"] = [
         {
+            "task_id": "impl-1",
             "blocker_code": "engineering.implementation_verification_failed",
             "action": "corrective_slice",
             "status": "completed",
