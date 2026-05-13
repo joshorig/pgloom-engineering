@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 from pathlib import Path
@@ -508,6 +509,7 @@ class QAHandler:
         if int(task.get("attempt") or 0) > 1 and not preserve_worktree:
             reset_worktree_to_ref(worktree=handle.worktree, base_ref=project.base_branch)
         hydrate_dependencies(project.root, handle.worktree, project.metadata)
+        baseline = _changed_file_snapshot(handle.worktree, project.metadata)
 
         model_tier = "default"
         if int(task.get("attempt") or 0) >= int(
@@ -601,7 +603,11 @@ class QAHandler:
                     worktree=handle.worktree,
                 )
             except Exception as exc:
-                touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+                touched = _qa_author_changed_files(
+                    handle.worktree,
+                    baseline,
+                    project.metadata,
+                )
                 synthesized = _synthesize_qa_author_contract_from_touched_files(
                     plan=plan,
                     task_contract=task_contract,
@@ -651,7 +657,11 @@ class QAHandler:
                             "repair_attempts": repair_attempts,
                         },
                     )
-            touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+            touched = _qa_author_changed_files(
+                handle.worktree,
+                baseline,
+                project.metadata,
+            )
             violations = path_violations(touched, task_contract, project.metadata)
             if violations:
                 return HandlerResult(
@@ -748,7 +758,11 @@ class QAHandler:
                 )
                 for command in red_proof_verification_commands(task_contract, touched)
             ]
-            touched = relevant_changed_files(changed_files(handle.worktree), project.metadata)
+            touched = _qa_author_changed_files(
+                handle.worktree,
+                baseline,
+                project.metadata,
+            )
             violations = path_violations(touched, task_contract, project.metadata)
             if violations:
                 return HandlerResult(
@@ -1463,3 +1477,36 @@ def _worktree_path_from_payload(payload: Any) -> Path | None:
     if raw_path:
         return Path(str(raw_path))
     return None
+
+
+def _changed_file_snapshot(
+    worktree: Path,
+    project_metadata: dict[str, Any],
+) -> dict[str, str | None]:
+    return {
+        path: _file_hash(worktree / path)
+        for path in relevant_changed_files(changed_files(worktree), project_metadata)
+    }
+
+
+def _qa_author_changed_files(
+    worktree: Path,
+    baseline: dict[str, str | None],
+    project_metadata: dict[str, Any],
+) -> list[str]:
+    current_paths = relevant_changed_files(changed_files(worktree), project_metadata)
+    touched: list[str] = []
+    for path in current_paths:
+        current_hash = _file_hash(worktree / path)
+        if path not in baseline or baseline[path] != current_hash:
+            touched.append(path)
+    for path, old_hash in baseline.items():
+        if old_hash is not None and not (worktree / path).exists():
+            touched.append(path)
+    return sorted(dict.fromkeys(touched))
+
+
+def _file_hash(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
