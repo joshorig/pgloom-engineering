@@ -259,6 +259,46 @@ def test_commands_run_from_result_uses_blocked_command_excerpts() -> None:
     ]
 
 
+def test_commands_run_from_result_prefers_blocked_per_command_evidence() -> None:
+    assert _commands_run_from_result(
+        {
+            "commands": [["pytest", "-q"], ["ruff", "check"]],
+            "stdout_excerpt": "generic failure",
+            "commands_run": [
+                {
+                    "cmd": ["pytest", "-q"],
+                    "exit_code": 1,
+                    "duration_s": 2.0,
+                    "stdout_excerpt": "test failure",
+                    "artifact_ids": ["artifact-test"],
+                },
+                {
+                    "cmd": ["ruff", "check"],
+                    "exit_code": 0,
+                    "duration_s": 1.0,
+                    "stdout_excerpt": "clean",
+                    "artifact_ids": ["artifact-lint"],
+                },
+            ],
+        }
+    ) == [
+        {
+            "cmd": ["pytest", "-q"],
+            "exit_code": 1,
+            "duration_s": 2.0,
+            "artifact_ids": ["artifact-test"],
+            "stdout_excerpt": "test failure",
+        },
+        {
+            "cmd": ["ruff", "check"],
+            "exit_code": 0,
+            "duration_s": 1.0,
+            "artifact_ids": ["artifact-lint"],
+            "stdout_excerpt": "clean",
+        },
+    ]
+
+
 def test_record_dependency_handoffs_targets_dependent_task_contracts(monkeypatch: Any) -> None:
     handoffs: list[dict[str, Any]] = []
     monkeypatch.setattr(

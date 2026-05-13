@@ -311,6 +311,9 @@ class ImplementerHandler:
                     blocker_reason=blocker_reason,
                     result={
                         "commands": [item.original.argv for item in verification_results],
+                        "commands_run": _commands_run_from_verification_results(
+                            verification_results
+                        ),
                         "stdout_excerpt": first.stdout_excerpt,
                         "stderr_excerpt": first.stderr_excerpt,
                         "artifact_hints": _verification_artifact_hints(
@@ -1076,13 +1079,28 @@ def _commands_run_from_verification_results(results: list[Any]) -> list[dict[str
         original = getattr(item, "original", None)
         if original is None:
             continue
-        commands.append(
-            {
-                "cmd": list(getattr(original, "argv", []) or []),
-                "exit_code": int(getattr(original, "exit_code", 0) or 0),
-                "duration_s": float(getattr(original, "duration_seconds", 0.0) or 0.0),
-            }
-        )
+        command: dict[str, Any] = {
+            "cmd": list(getattr(original, "argv", []) or []),
+            "exit_code": int(getattr(original, "exit_code", 0) or 0),
+            "duration_s": float(getattr(original, "duration_seconds", 0.0) or 0.0),
+        }
+        stdout_excerpt = str(getattr(item, "stdout_excerpt", "") or "")
+        stderr_excerpt = str(getattr(item, "stderr_excerpt", "") or "")
+        if stdout_excerpt.strip():
+            command["stdout_excerpt"] = stdout_excerpt[:2000]
+        if stderr_excerpt.strip():
+            command["stderr_excerpt"] = stderr_excerpt[:2000]
+        artifact_ids = [
+            artifact_id
+            for artifact_id in (
+                getattr(item, "artifact_id_unfiltered_stdout", None),
+                getattr(item, "artifact_id_unfiltered_stderr", None),
+            )
+            if artifact_id
+        ]
+        if artifact_ids:
+            command["artifact_ids"] = [str(artifact_id) for artifact_id in artifact_ids]
+        commands.append(command)
     return commands
 
 

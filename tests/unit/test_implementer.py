@@ -860,6 +860,52 @@ def test_implementer_repair_prompt_includes_jmh_artifact_hints(tmp_path: Path) -
     ]
 
 
+def test_verification_commands_preserve_per_command_failure_evidence() -> None:
+    results = [
+        SimpleNamespace(
+            original=SimpleNamespace(
+                argv=["pytest", "-q"],
+                exit_code=1,
+                duration_seconds=2.25,
+            ),
+            stdout_excerpt="test failure",
+            stderr_excerpt="",
+            artifact_id_unfiltered_stdout="artifact-test-stdout",
+            artifact_id_unfiltered_stderr=None,
+        ),
+        SimpleNamespace(
+            original=SimpleNamespace(
+                argv=["ruff", "check"],
+                exit_code=0,
+                duration_seconds=1.5,
+            ),
+            stdout_excerpt="clean",
+            stderr_excerpt="",
+            artifact_id_unfiltered_stdout="artifact-lint-stdout",
+            artifact_id_unfiltered_stderr="artifact-lint-stderr",
+        ),
+    ]
+
+    commands = implementer._commands_run_from_verification_results(results)  # noqa: SLF001
+
+    assert commands == [
+        {
+            "cmd": ["pytest", "-q"],
+            "exit_code": 1,
+            "duration_s": 2.25,
+            "stdout_excerpt": "test failure",
+            "artifact_ids": ["artifact-test-stdout"],
+        },
+        {
+            "cmd": ["ruff", "check"],
+            "exit_code": 0,
+            "duration_s": 1.5,
+            "stdout_excerpt": "clean",
+            "artifact_ids": ["artifact-lint-stdout", "artifact-lint-stderr"],
+        },
+    ]
+
+
 def test_implementer_repair_prompt_includes_gradle_test_artifact_hints(
     tmp_path: Path,
 ) -> None:

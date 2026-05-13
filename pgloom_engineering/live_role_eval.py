@@ -1486,13 +1486,21 @@ def _grade_plan(aggregate: dict[str, Any]) -> dict[str, Any]:
         "engineering.qa.verify.scrutiny",
         "engineering.qa.verify.usertest",
     }
+    satisfied_task_types = set(task_types)
+    corrective_reuses_completed_qa = (
+        plan.get("supersedes_plan_id")
+        and "engineering.qa.author" not in satisfied_task_types
+        and _outputs_for_task_type(aggregate, "engineering.qa.author")
+    )
+    if corrective_reuses_completed_qa:
+        satisfied_task_types.add("engineering.qa.author")
     findings: list[dict[str, str]] = []
-    if not required.issubset(task_types):
+    if not required.issubset(satisfied_task_types):
         findings.append(
             _finding(
                 "blocking",
                 "plan_missing_roles",
-                f"Plan missing role slices: {sorted(required - task_types)}",
+                f"Plan missing role slices: {sorted(required - satisfied_task_types)}",
             )
         )
     if not plan.get("milestones"):
@@ -1502,7 +1510,10 @@ def _grade_plan(aggregate: dict[str, Any]) -> dict[str, Any]:
             _finding("blocking", "plan_missing_assertions", "No acceptance assertions.")
         )
     try:
-        production_grade = evaluate_production_grade(PlanContract.model_validate(plan))
+        production_grade = evaluate_production_grade(
+            PlanContract.model_validate(plan),
+            allow_narrow_corrective_slice=bool(corrective_reuses_completed_qa),
+        )
     except Exception as exc:
         findings.append(
             _finding(

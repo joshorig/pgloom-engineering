@@ -888,6 +888,10 @@ def _commands_run_from_result(result: dict[str, Any] | None) -> list[dict[str, A
             commands = _commands_run_from_checks(payload["checks"])
             if commands:
                 return commands
+    if isinstance(result.get("commands_run"), list):
+        commands = _commands_run_from_checks(result["commands_run"])
+        if commands:
+            return commands
     commands = _commands_run_from_blocked_result(result)
     if commands:
         return commands
@@ -945,6 +949,12 @@ def _commands_run_from_red_proof(red_proof: Any) -> list[dict[str, Any]]:
             payload["artifact_ids"] = [
                 str(artifact_id) for artifact_id in artifact_ids if artifact_id is not None
             ]
+        stdout_excerpt = item.get("stdout_excerpt")
+        stderr_excerpt = item.get("stderr_excerpt")
+        if isinstance(stdout_excerpt, str) and stdout_excerpt.strip():
+            payload["stdout_excerpt"] = stdout_excerpt[:1200]
+        if isinstance(stderr_excerpt, str) and stderr_excerpt.strip():
+            payload["stderr_excerpt"] = stderr_excerpt[:1200]
         commands.append(payload)
     return commands
 
@@ -975,6 +985,12 @@ def _commands_run_from_checks(checks: list[Any]) -> list[dict[str, Any]]:
             payload["artifact_ids"] = [
                 str(artifact_id) for artifact_id in artifact_ids if artifact_id is not None
             ]
+        stdout_excerpt = item.get("stdout_excerpt")
+        stderr_excerpt = item.get("stderr_excerpt")
+        if isinstance(stdout_excerpt, str) and stdout_excerpt.strip():
+            payload["stdout_excerpt"] = stdout_excerpt[:1200]
+        if isinstance(stderr_excerpt, str) and stderr_excerpt.strip():
+            payload["stderr_excerpt"] = stderr_excerpt[:1200]
         commands.append(payload)
     return commands
 

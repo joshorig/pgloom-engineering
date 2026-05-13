@@ -46,6 +46,43 @@ def test_live_role_plan_grade_rejects_unachievable_milestone_signoff() -> None:
     )
 
 
+def test_live_role_plan_grade_allows_corrective_plan_reusing_completed_qa_author() -> None:
+    plan = _plan_contract()
+    corrective = plan.model_copy(
+        update={
+            "supersedes_plan_id": "plan-original",
+            "task_slices": [
+                item
+                for item in plan.task_slices
+                if item.task_type != "engineering.qa.author"
+            ],
+        }
+    )
+
+    grade = _grade_plan(
+        {
+            "active_plan_contract": {"contract": corrective.model_dump(mode="json")},
+            "task_contracts": [
+                {
+                    "status": "completed",
+                    "input_contract": {"task_type": "engineering.qa.author"},
+                    "output_contract": {
+                        "qa_author_contract": {
+                            "tests_added": ["test_feature.py"],
+                            "red_proof": [{"cmd": ["pytest", "test_feature.py"]}],
+                            "matrix_coverage": {"behavior": ["test_feature.py"]},
+                        }
+                    },
+                }
+            ],
+        }
+    )
+
+    finding_codes = {finding["code"] for finding in grade["findings"]}
+    assert "plan_missing_roles" not in finding_codes
+    assert "qa_author_missing_before_implementer" not in finding_codes
+
+
 def test_live_role_grade_rejects_allocating_range_benchmark(tmp_path: Path) -> None:
     snapshots = tmp_path / "file-snapshots.json"
     benchmark_path = "benchmarks/src/jmh/java/com/joshorig/ull/lvc/bench/RangeScanBenchmark.java"
