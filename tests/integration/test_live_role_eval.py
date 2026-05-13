@@ -143,3 +143,42 @@ def test_live_role_eval_orchestration_uses_worker_runtime(
     assert resumed.status == "pass"
     assert (tmp_path / "resume-out" / "runner-summary.json").is_file() is False
     assert (tmp_path / "resume-out" / "outcome.json").is_file()
+
+    recover_calls: list[str] = []
+
+    def fake_recover_stale(feature_id: str, **kwargs: Any) -> list[dict[str, object]]:
+        del kwargs
+        recover_calls.append(feature_id)
+        if len(recover_calls) == 1:
+            return [
+                {
+                    "status": "crashed",
+                    "blocker_code": "engineering.worker_crash",
+                    "task_id": "stale-task",
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(
+        "pgloom_engineering.live_role_eval._recover_stale_running_tasks",
+        fake_recover_stale,
+    )
+
+    recovered = run_live_role_eval(
+        {"id": "fixture-orchestration", "role": "worker-orchestration"},
+        role="worker-orchestration",
+        output_dir=tmp_path / "recover-out",
+        database_url=database_url,
+        max_steps=1,
+        feature_id=result.feature_id,
+    )
+
+    assert recovered.feature_id == result.feature_id
+    assert recovered.status == "pass"
+    assert recovered.worker_results == [
+        {
+            "status": "crashed",
+            "blocker_code": "engineering.worker_crash",
+            "task_id": "stale-task",
+        }
+    ]

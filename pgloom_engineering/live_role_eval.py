@@ -43,7 +43,10 @@ from pgloom_engineering.projects import (
     register_project,
 )
 from pgloom_engineering.worker import run_once
-from pgloom_engineering.workflow_driver import _maybe_replan_blocked_feature
+from pgloom_engineering.workflow_driver import (
+    _maybe_replan_blocked_feature,
+    _recover_stale_running_tasks,
+)
 
 LIVE_ROLE_ORDER = [
     "planner",
@@ -125,6 +128,14 @@ def run_live_role_eval(
     slots = _slots_for_case(case, role)
     with _patched_env(commands):
         for index in range(max_steps):
+            recovered_stale = _recover_stale_running_tasks(
+                feature_id,
+                lease_seconds=300,
+                database_url=database_url,
+            )
+            if recovered_stale:
+                worker_results.extend(recovered_stale)
+                continue
             aggregate = get_feature_aggregate(feature_id, database_url=database_url)
             if aggregate is not None:
                 replan = _maybe_replan_blocked_feature(feature_id, aggregate, database_url)
