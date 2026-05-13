@@ -937,6 +937,8 @@ def _verification_failure_lines(item: Any, *, limit: int = 16) -> list[str]:
         "cannot find symbol",
         "incompatible types",
         "there were failing tests",
+        "no matching",
+        "miss-spelled regexp",
     )
     lines: list[str] = []
     for raw_line in combined.splitlines():
@@ -1034,7 +1036,12 @@ def _benchmark_threshold_lines(text: str) -> list[str]:
         lowered = line.lower()
         if not line:
             continue
-        if "above threshold" in lowered or "missing smoke benchmark result" in lowered:
+        if (
+            "above threshold" in lowered
+            or "missing smoke benchmark result" in lowered
+            or "no matching benchmarks" in lowered
+            or "miss-spelled regexp" in lowered
+        ):
             lines.append(line)
             continue
         if (

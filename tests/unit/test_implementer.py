@@ -906,6 +906,29 @@ def test_verification_commands_preserve_per_command_failure_evidence() -> None:
     ]
 
 
+def test_jmh_no_matching_benchmark_is_preserved_in_blocker_reason(
+    tmp_path: Path,
+) -> None:
+    failed = SimpleNamespace(
+        original=SimpleNamespace(
+            argv=["./gradlew", ":benchmarks:jmhSmokeCheck"],
+            exit_code=1,
+            stdout="> Task :benchmarks:jmh FAILED\n",
+            stderr="No matching benchmarks. Miss-spelled regexp?\nBUILD FAILED\n",
+        ),
+        stdout_excerpt="> Task :benchmarks:jmh FAILED",
+        stderr_excerpt="No matching benchmarks. Miss-spelled regexp?",
+    )
+
+    reason = implementer._verification_blocker_reason(  # noqa: SLF001
+        failed,
+        worktree=tmp_path,
+    )
+
+    assert "No matching benchmarks" in reason
+    assert "Miss-spelled regexp" in reason
+
+
 def test_implementer_repair_prompt_includes_gradle_test_artifact_hints(
     tmp_path: Path,
 ) -> None:
