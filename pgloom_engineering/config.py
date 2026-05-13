@@ -65,6 +65,10 @@ class EngineeringSettings(BaseSettings):
     qa_author_codex_model: str = "gpt-5.4"
     qa_author_codex_reasoning: str = "medium"
     qa_author_claude_model: str = "haiku"
+    qa_author_code_repair_attempts: int = 1
+    qa_author_contract_repair_attempts: int = 1
+    qa_author_quality_repair_attempts: int = 0
+    qa_author_no_changes_repair_attempts: int = 1
     qa_validation_profile: str = "qa-validation"
     qa_validation_command: list[str] = Field(default_factory=lambda: ["cat"])
     qa_validation_invocation_timeout_seconds: float = 600.0

@@ -578,9 +578,16 @@ class QAHandler:
         repair_attempts = 0
         contract_repair_attempts = 0
         quality_repair_attempts = 0
-        max_repair_attempts = 2
-        max_contract_repair_attempts = 1
-        max_quality_repair_attempts = 2
+        max_repair_attempts = int(getattr(settings, "qa_author_code_repair_attempts", 1))
+        max_contract_repair_attempts = int(
+            getattr(settings, "qa_author_contract_repair_attempts", 1)
+        )
+        max_quality_repair_attempts = int(
+            getattr(settings, "qa_author_quality_repair_attempts", 0)
+        )
+        max_no_changes_repair_attempts = int(
+            getattr(settings, "qa_author_no_changes_repair_attempts", 1)
+        )
         while True:
             try:
                 contract = QAAuthorContract.model_validate(
@@ -769,7 +776,7 @@ class QAHandler:
                     },
                 )
             if not touched:
-                if repair_attempts < max_repair_attempts:
+                if repair_attempts < max_no_changes_repair_attempts:
                     repair_attempts += 1
                     response = provider.invoke(
                         profile=profile,

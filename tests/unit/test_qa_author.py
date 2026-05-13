@@ -2340,6 +2340,7 @@ def test_qa_author_repairs_semantic_quality_findings(
             qa_author_codex_model="gpt-5.4",
             qa_author_codex_reasoning="low",
             qa_author_claude_model="haiku",
+            qa_author_quality_repair_attempts=1,
         ),
     )
     monkeypatch.setattr(
@@ -2676,6 +2677,8 @@ def test_qa_author_model_context_does_not_eager_add_worktree_by_default() -> Non
     assert EngineeringSettings().qa_author_model_context_isolation_enabled is True
     assert EngineeringSettings().qa_author_model_context_add_dir_enabled is False
     assert EngineeringSettings().qa_author_repair_max_total_file_chars > 0
+    assert EngineeringSettings().qa_author_quality_repair_attempts == 0
+    assert EngineeringSettings().qa_author_code_repair_attempts == 1
 
 
 def test_qa_author_model_routing_updates_codex_command() -> None:
