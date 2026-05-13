@@ -704,6 +704,27 @@ def test_normalize_task_result_payload_accepts_wrappers() -> None:
     }
 
 
+def test_normalize_task_result_payload_fills_known_envelope_ids() -> None:
+    payload = {
+        "TaskResultContract": {
+            "changed_files": ["src/App.java"],
+            "checks": [],
+        }
+    }
+
+    assert normalize_task_result_payload(
+        payload,
+        feature_id="feature-1",
+        task_id="impl-1",
+    ) == {
+        "feature_id": "feature-1",
+        "task_id": "impl-1",
+        "changed_files": ["src/App.java"],
+        "checks": [],
+        "commands_run": [],
+    }
+
+
 def test_normalize_task_result_payload_accepts_string_checks() -> None:
     payload = {
         "feature_id": "feature-1",

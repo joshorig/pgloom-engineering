@@ -246,7 +246,11 @@ class ImplementerHandler:
             contract_error: str | None = None
             try:
                 output = TaskResultContract.model_validate(
-                    normalize_task_result_payload(extract_json(response.text))
+                    normalize_task_result_payload(
+                        extract_json(response.text),
+                        feature_id=task_contract.feature_id,
+                        task_id=task_id,
+                    )
                 )
             except Exception as exc:
                 output = None
@@ -775,13 +779,30 @@ def build_implementer_source_starter_pack(
     }
 
 
-def normalize_task_result_payload(payload: object) -> object:
+def normalize_task_result_payload(
+    payload: object,
+    *,
+    feature_id: str | None = None,
+    task_id: str | None = None,
+) -> object:
     if isinstance(payload, dict) and isinstance(payload.get("TaskResultContract"), dict):
-        return normalize_task_result_payload(payload["TaskResultContract"])
+        return normalize_task_result_payload(
+            payload["TaskResultContract"],
+            feature_id=feature_id,
+            task_id=task_id,
+        )
     if isinstance(payload, dict) and isinstance(payload.get("task_result_contract"), dict):
-        return normalize_task_result_payload(payload["task_result_contract"])
+        return normalize_task_result_payload(
+            payload["task_result_contract"],
+            feature_id=feature_id,
+            task_id=task_id,
+        )
     if isinstance(payload, dict):
         normalized = dict(payload)
+        if feature_id and not normalized.get("feature_id"):
+            normalized["feature_id"] = feature_id
+        if task_id and not normalized.get("task_id"):
+            normalized["task_id"] = task_id
         normalized["checks"] = _normalize_check_items(normalized.get("checks"))
         normalized["commands_run"] = _normalize_check_items(normalized.get("commands_run"))
         for key in (
