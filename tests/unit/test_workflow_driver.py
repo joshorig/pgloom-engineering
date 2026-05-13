@@ -356,6 +356,100 @@ def test_worker_crash_replans_immediately_with_crash_context(monkeypatch: Any) -
     assert "worker_crash=" in payload["replan_context"]["failure_context"]
 
 
+def test_corrective_planner_crash_requeues_original_same_role_repair(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    abandoned: list[tuple[list[str], str | None]] = []
+    recovered: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
+    )
+    monkeypatch.setattr(
+        workflow_driver,
+        "_abandon_nonterminal_tasks",
+        lambda _aggregate, *, exclude_task_ids, database_url: abandoned.append(
+            (sorted(exclude_task_ids), database_url)
+        ),
+    )
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "planner-repair-1",
+                    "slot": "planner",
+                    "task_type": "engineering.plan",
+                    "state": "blocked",
+                    "attempt": 1,
+                    "priority": 4,
+                    "blocker_code": "engineering.worker_crash",
+                    "blocker_reason": "corrective planner lease expired",
+                    "payload": {
+                        "replan_context": {
+                            "blocked_task_id": "impl-1",
+                            "blocked_task_type": "engineering.implement",
+                            "blocked_slice_id": "impl",
+                            "blocker_code": "engineering.implementer_contract_invalid",
+                            "blocker_reason": "missing task_id",
+                            "failure_context": "TaskResultContract missing task_id",
+                            "summary": "Repair invalid implementer result.",
+                            "blocked_slice_allowed_paths": ["src/"],
+                        }
+                    },
+                },
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "abandoned",
+                    "attempt": 1,
+                    "priority": 3,
+                },
+            ]
+        ),
+        "postgres://unit",
+    )
+
+    assert result == {
+        "slot": "implementer",
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": "impl-1",
+        "task_type": "engineering.implement",
+    }
+    assert updates[0][0] == "queued"
+    assert updates[0][1] == 2
+    assert updates[0][3] == "impl-1"
+    repair_context = updates[0][2]["same_role_repair_context"]
+    assert repair_context["source"] == "interrupted_corrective_planner"
+    assert repair_context["blocker_code"] == "engineering.implementer_contract_invalid"
+    assert repair_context["allowed_paths"] == ["src/"]
+    assert "missing task_id" in repair_context["failure_context"]
+    assert recovered[0]["action"] == "repair_task"
+    assert abandoned == [(["impl-1"], "postgres://unit")]
+
+
 def test_review_rejection_replans_immediately(monkeypatch: Any) -> None:
     enqueued: list[dict[str, Any]] = []
     monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
@@ -2095,6 +2189,7 @@ def _settings() -> SimpleNamespace:
             "engineering.planner_council_exhausted",
             "engineering.handoff_missing",
             "engineering.qa_handoff_missing",
+            "engineering.worker_crash",
         ],
         workflow_replan_blocker_codes=[
             "engineering.qa_semantic_quality_failed",
@@ -2114,6 +2209,7 @@ def _settings() -> SimpleNamespace:
             "engineering.planner_council_exhausted",
             "engineering.handoff_missing",
             "engineering.qa_handoff_missing",
+            "engineering.worker_crash",
         ],
     )
 

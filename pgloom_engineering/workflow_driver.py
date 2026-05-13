@@ -224,6 +224,15 @@ def _maybe_replan_blocked_feature(
     candidate = _recoverable_blocked_task(aggregate, settings)
     if candidate is None:
         return None
+    interrupted_repair = _maybe_requeue_interrupted_corrective_repair(
+        feature_id,
+        aggregate,
+        candidate,
+        settings,
+        database_url,
+    )
+    if interrupted_repair is not None:
+        return interrupted_repair
     repair = _maybe_requeue_same_role_repair(
         feature_id,
         aggregate,
@@ -275,6 +284,135 @@ def _maybe_replan_blocked_feature(
         "status": recovery_action,
         "task_id": str(planner["id"]),
         "replanned_from_task_id": str(candidate["id"]),
+    }
+
+
+def _maybe_requeue_interrupted_corrective_repair(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    candidate: dict[str, Any],
+    settings: Any,
+    database_url: str | None,
+) -> dict[str, object] | None:
+    if str(candidate.get("blocker_code") or "") != "engineering.worker_crash":
+        return None
+    if str(candidate.get("task_type") or "") != "engineering.plan":
+        return None
+    payload = candidate.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    prior_context = payload.get("replan_context")
+    if not isinstance(prior_context, dict):
+        return None
+    original_task_id = str(prior_context.get("blocked_task_id") or "")
+    blocker_code = str(prior_context.get("blocker_code") or "")
+    if not original_task_id or not blocker_code:
+        return None
+    same_role_codes = set(getattr(settings, "workflow_same_role_repair_blocker_codes", []))
+    if blocker_code not in same_role_codes:
+        return None
+    original = _task_by_id(aggregate, original_task_id)
+    if original is None:
+        return None
+    task_type = str(original.get("task_type") or prior_context.get("blocked_task_type") or "")
+    slot = str(original.get("slot") or "")
+    if not task_type or not slot:
+        return None
+    failure_context = str(prior_context.get("failure_context") or "")
+    blocker_reason = str(prior_context.get("blocker_reason") or "")
+    if not failure_context and not blocker_reason:
+        return None
+    attempt = _recovery_attempt(
+        {
+            **original,
+            "blocker_code": blocker_code,
+            "recovery_attempt": candidate.get("recovery_attempt"),
+        },
+        aggregate,
+    )
+    if attempt >= int(settings.workflow_replan_after_blocked_attempts):
+        return None
+    repair_context = {
+        "mode": "same_role_repair",
+        "source": "interrupted_corrective_planner",
+        "interrupted_planner_task_id": str(candidate.get("id") or ""),
+        "blocked_task_id": original_task_id,
+        "blocked_task_type": task_type,
+        "blocked_slice_id": prior_context.get("blocked_slice_id"),
+        "blocker_code": blocker_code,
+        "blocker_reason": blocker_reason,
+        "failure_context": failure_context,
+        "summary": str(
+            prior_context.get("summary")
+            or "Resume the original blocked task repair after corrective planner crash."
+        ),
+    }
+    blocked_contract = prior_context.get("blocked_task_contract")
+    if isinstance(blocked_contract, dict):
+        repair_context["blocked_task_contract"] = blocked_contract
+    for source_key, target_key in (
+        ("blocked_slice_allowed_paths", "allowed_paths"),
+        ("blocked_slice_forbidden_paths", "forbidden_paths"),
+        ("benchmark_allocation_diagnosis", "benchmark_allocation_diagnosis"),
+    ):
+        value = prior_context.get(source_key)
+        if value not in (None, "", []):
+            repair_context[target_key] = value
+    next_attempt = max(int(original.get("attempt") or 1) + 1, attempt + 1)
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            update tasks
+            set state = %s,
+                attempt = %s,
+                payload = coalesce(payload, '{}'::jsonb) || %s::jsonb,
+                blocker_code = null,
+                blocker_reason = null,
+                lease_owner = null,
+                lease_expires_at = null,
+                updated_at = now()
+            where id = %s
+            """,
+            (
+                TaskState.QUEUED.value,
+                next_attempt,
+                jsonb(
+                    {
+                        "same_role_repair_context": repair_context,
+                        "preserve_worktree_on_retry": True,
+                    }
+                ),
+                original_task_id,
+            ),
+        )
+    record_recovery_action(
+        RecoveryDecisionContract(
+            feature_id=feature_id,
+            task_id=original_task_id,
+            blocker_code=blocker_code,
+            action="repair_task",
+            rationale=str(repair_context["summary"]),
+            attempt=attempt,
+            max_attempts=int(settings.workflow_replan_after_blocked_attempts),
+        ),
+        status="completed",
+        outcome=(
+            "requeued interrupted corrective repair task "
+            f"{original_task_id} after planner crash {candidate.get('id')}"
+        ),
+        database_url=database_url,
+    )
+    _abandon_nonterminal_tasks(
+        aggregate,
+        exclude_task_ids={original_task_id},
+        database_url=database_url,
+    )
+    return {
+        "slot": slot,
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": original_task_id,
+        "task_type": task_type,
     }
 
 
@@ -1001,6 +1139,18 @@ def _task_contract_for_task(
             continue
         contract = row.get("input_contract")
         return dict(contract) if isinstance(contract, dict) else None
+    return None
+
+
+def _task_by_id(
+    aggregate: dict[str, Any],
+    task_id: str,
+) -> dict[str, Any] | None:
+    for task in aggregate.get("tasks") or []:
+        if not isinstance(task, dict):
+            continue
+        if str(task.get("id") or "") == task_id:
+            return task
     return None
 
 
