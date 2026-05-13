@@ -178,6 +178,48 @@ def test_run_workflow_still_fails_unexplained_abandoned_tasks(
     assert states == ["failed"]
 
 
+def test_run_workflow_fails_recovery_abandoned_task_without_done_replacement(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        workflow_driver,
+        "get_feature_aggregate",
+        lambda *args, **kwargs: _aggregate(
+            [
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "done",
+                },
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                },
+            ]
+        ),
+    )
+    states: list[str] = []
+    monkeypatch.setattr(
+        workflow_driver,
+        "update_feature_state",
+        lambda _feature_id, *, state, database_url=None, **kwargs: states.append(state),
+    )
+
+    result = workflow_driver.run_workflow("feature-1")
+
+    assert result == {
+        "status": "failed",
+        "feature_id": "feature-1",
+        "task_ids": ["review-1"],
+        "steps": [],
+    }
+    assert states == ["failed"]
+
+
 def test_run_workflow_ignores_dependency_waiting_blocked_tasks(monkeypatch: Any) -> None:
     aggregates = [
         _aggregate(

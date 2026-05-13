@@ -141,7 +141,7 @@ def _terminal_status(aggregate: dict[str, Any]) -> dict[str, Any] | None:
             task
             for task in tasks
             if str(task.get("state")) != "done"
-            and not _terminal_task_superseded_by_recovery(task)
+            and not _terminal_task_superseded_by_recovery(task, tasks)
         ]
         if failed:
             return {
@@ -153,16 +153,31 @@ def _terminal_status(aggregate: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _terminal_task_superseded_by_recovery(task: dict[str, Any]) -> bool:
+def _terminal_task_superseded_by_recovery(
+    task: dict[str, Any],
+    tasks: list[dict[str, Any]],
+) -> bool:
     state = str(task.get("state") or "")
     if state not in {"abandoned", "superseded"}:
         return False
     reason = str(task.get("terminal_reason") or "")
-    return reason in {
-        "stale_live_eval_worker",
-        "workflow_recovery_replan",
-        "operator_replan_from_milestone",
-    }
+    if reason == "stale_live_eval_worker":
+        return True
+    if reason not in {"workflow_recovery_replan", "operator_replan_from_milestone"}:
+        return False
+    slot = str(task.get("slot") or "")
+    task_type = str(task.get("task_type") or "")
+    task_id = str(task.get("id") or "")
+    for other in tasks:
+        if str(other.get("id") or "") == task_id:
+            continue
+        if str(other.get("state") or "") != "done":
+            continue
+        if task_type and str(other.get("task_type") or "") == task_type:
+            return True
+        if slot and str(other.get("slot") or "") == slot:
+            return True
+    return False
 
 
 def _ready_slots(aggregate: dict[str, Any]) -> list[str]:
