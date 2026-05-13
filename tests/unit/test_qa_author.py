@@ -2644,6 +2644,30 @@ def test_qa_author_prompt_compacts_large_role_context() -> None:
     assert "qa_author_role_context_compaction.v1" in json.dumps(role_context)
 
 
+def test_qa_author_prompt_includes_compact_same_role_repair_context() -> None:
+    prompt = build_qa_author_prompt(
+        _plan(),
+        _task_contract(),
+        project_root=Path("."),
+        project_metadata={},
+        repair_context={
+            "mode": "same_role_repair",
+            "blocker_code": "engineering.qa_semantic_quality_failed",
+            "failure_context": "qa_semantic_observation_only " + ("x" * 5000),
+            "changed_files": [f"tests/{index}.py" for index in range(30)],
+            "findings": [{"code": f"finding-{index}"} for index in range(30)],
+        },
+    )
+    payload = json.loads(prompt)
+    repair = payload["same_role_repair_context"]
+
+    assert repair["mode"] == "same_role_repair"
+    assert repair["blocker_code"] == "engineering.qa_semantic_quality_failed"
+    assert len(repair["failure_context"]) < 1900
+    assert len(repair["changed_files"]) == 12
+    assert len(repair["findings"]) == 12
+
+
 def test_qa_author_repair_prompt_compacts_current_contract() -> None:
     prompt = build_qa_code_repair_prompt(
         plan=_plan(),

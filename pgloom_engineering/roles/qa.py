@@ -503,7 +503,9 @@ class QAHandler:
             slice_id=str(task_contract.inputs.get("task_slice_id") or "qa-author"),
             base_ref=project.base_branch,
         )
-        if int(task.get("attempt") or 0) > 1:
+        repair_context = payload.get("same_role_repair_context")
+        preserve_worktree = bool(payload.get("preserve_worktree_on_retry"))
+        if int(task.get("attempt") or 0) > 1 and not preserve_worktree:
             reset_worktree_to_ref(worktree=handle.worktree, base_ref=project.base_branch)
         hydrate_dependencies(project.root, handle.worktree, project.metadata)
 
@@ -556,6 +558,7 @@ class QAHandler:
                 project_metadata=project.metadata,
                 project_root=handle.worktree,
                 role_context=role_context.prompt_payload(),
+                repair_context=repair_context,
             ),
             workflow_id=task_contract.feature_id,
             task_id=task_id,

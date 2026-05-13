@@ -1083,6 +1083,84 @@ def test_repeated_qa_semantic_failure_escalates_replan_instruction(
     assert "reflection/proxy/adapter shortcuts" in payload["replan_context"]["summary"]
 
 
+def test_qa_semantic_failure_with_artifacts_requeues_same_role_repair(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    recovered: list[dict[str, Any]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(
+        workflow_driver,
+        "record_recovery_action",
+        lambda decision, **kwargs: recovered.append(decision.model_dump()) or {},
+    )
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-1",
+                "slot": "qa-engineer",
+                "task_type": "engineering.qa.author",
+                "state": "blocked",
+                "attempt": 1,
+                "priority": 3,
+                "blocker_code": "engineering.qa_semantic_quality_failed",
+                "blocker_reason": "semantic review failed",
+                "result": {
+                    "changed_files": ["tests/example_test.py"],
+                    "findings": [
+                        {
+                            "code": "qa_semantic_observation_only",
+                            "file": "tests/example_test.py",
+                            "line": 12,
+                            "message": "assert behavior instead of only observing it",
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        aggregate,
+        "postgres://unit",
+    )
+
+    assert result == {
+        "slot": "qa-engineer",
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": "qa-1",
+        "task_type": "engineering.qa.author",
+    }
+    assert updates[0][0] == "queued"
+    assert updates[0][1] == 2
+    assert updates[0][3] == "qa-1"
+    repair_payload = updates[0][2]
+    assert repair_payload["preserve_worktree_on_retry"] is True
+    repair_context = repair_payload["same_role_repair_context"]
+    assert repair_context["mode"] == "same_role_repair"
+    assert repair_context["changed_files"] == ["tests/example_test.py"]
+    assert "qa_semantic_observation_only" in repair_context["failure_context"]
+    assert recovered[0]["action"] == "repair_task"
+
+
 def test_replan_recovery_budget_ignores_abandoned_sibling_blockers(
     monkeypatch: Any,
 ) -> None:
@@ -1972,6 +2050,13 @@ def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         workflow_replan_after_blocked_attempts=3,
         workflow_replan_after_input_tokens=750_000,
+        workflow_same_role_repair_blocker_codes=[
+            "engineering.qa_semantic_quality_failed",
+            "engineering.qa_tests_do_not_compile",
+            "engineering.qa_tests_not_red",
+            "engineering.qa_no_changes",
+            "engineering.implementation_verification_failed",
+        ],
         workflow_replan_immediate_blocker_codes=[
             "engineering.qa_path_violation",
             "engineering.implementer_contract_invalid",

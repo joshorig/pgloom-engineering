@@ -77,6 +77,15 @@ class EngineeringSettings(BaseSettings):
     qa_validation_claude_model: str = "haiku"
     workflow_replan_after_blocked_attempts: int = 3
     workflow_replan_after_input_tokens: int = 750_000
+    workflow_same_role_repair_blocker_codes: list[str] = Field(
+        default_factory=lambda: [
+            "engineering.qa_semantic_quality_failed",
+            "engineering.qa_tests_do_not_compile",
+            "engineering.qa_tests_not_red",
+            "engineering.qa_no_changes",
+            "engineering.implementation_verification_failed",
+        ]
+    )
     workflow_replan_immediate_blocker_codes: list[str] = Field(
         default_factory=lambda: [
             "engineering.qa_path_violation",

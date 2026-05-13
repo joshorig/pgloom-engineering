@@ -326,6 +326,7 @@ def build_qa_author_prompt(
     project_metadata: dict[str, Any],
     project_root: Path,
     role_context: dict[str, Any] | None = None,
+    repair_context: object | None = None,
 ) -> str:
     qa_metadata = project_qa_metadata(project_metadata)
     route_requirements = route_coverage_requirements(
@@ -340,6 +341,11 @@ def build_qa_author_prompt(
         "instructions": [
             "Write failing tests for the acceptance matrix before implementation.",
             "Only edit allowed QA/test paths.",
+            (
+                "When same_role_repair_context is present, repair only the cited "
+                "findings in the existing worktree; avoid broad rediscovery and keep "
+                "source reads to exact files or symbols named by the failure context."
+            ),
             "Use project_qa_metadata to choose canonical test roots, examples, and helpers.",
             "Use qa_context_capsule as the compact source-of-truth for QA context.",
             (
@@ -455,6 +461,7 @@ def build_qa_author_prompt(
         "project_authorized_test_support_paths": _metadata_test_support_paths(qa_metadata),
         "worktree": str(project_root),
         "role_context": compact_qa_author_role_context(role_context),
+        "same_role_repair_context": compact_qa_repair_context(repair_context),
         "route_coverage_requirements": route_requirements,
         "benchmark_requirements": benchmark_requirements,
         "deterministic_test_skeleton": deterministic_test_skeleton(
@@ -532,6 +539,39 @@ def compact_qa_author_role_context(
         ),
     }
     return {key: value for key, value in compact.items() if value not in (None, "", [])}
+
+
+def compact_qa_repair_context(repair_context: object | None) -> dict[str, Any]:
+    if not isinstance(repair_context, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for key in (
+        "mode",
+        "blocked_task_id",
+        "blocked_task_type",
+        "blocked_slice_id",
+        "blocker_code",
+        "blocker_reason",
+        "failure_context",
+        "summary",
+    ):
+        value = repair_context.get(key)
+        if value in (None, "", []):
+            continue
+        compact[key] = _compact_prompt_text(value, limit=1800) if isinstance(value, str) else value
+    for key in (
+        "changed_files",
+        "quality_failure_commands",
+        "failed_verifications",
+        "commands_run",
+    ):
+        value = repair_context.get(key)
+        if isinstance(value, list):
+            compact[key] = value[:12]
+    findings = repair_context.get("findings")
+    if isinstance(findings, list):
+        compact["findings"] = findings[:12]
+    return compact
 
 
 def compact_qa_task_contract(task_contract: TaskContract) -> dict[str, Any]:

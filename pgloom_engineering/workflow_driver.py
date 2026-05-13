@@ -224,6 +224,15 @@ def _maybe_replan_blocked_feature(
     candidate = _recoverable_blocked_task(aggregate, settings)
     if candidate is None:
         return None
+    repair = _maybe_requeue_same_role_repair(
+        feature_id,
+        aggregate,
+        candidate,
+        settings,
+        database_url,
+    )
+    if repair is not None:
+        return repair
     payload = _replan_payload(feature_id, aggregate, candidate)
     if payload is None:
         return None
@@ -269,6 +278,82 @@ def _maybe_replan_blocked_feature(
     }
 
 
+def _maybe_requeue_same_role_repair(
+    feature_id: str,
+    aggregate: dict[str, Any],
+    candidate: dict[str, Any],
+    settings: Any,
+    database_url: str | None,
+) -> dict[str, object] | None:
+    blocker_code = str(candidate.get("blocker_code") or "")
+    same_role_codes = set(getattr(settings, "workflow_same_role_repair_blocker_codes", []))
+    if blocker_code not in same_role_codes:
+        return None
+    task_id = str(candidate.get("id") or "")
+    task_type = str(candidate.get("task_type") or "")
+    slot = str(candidate.get("slot") or "")
+    if not task_id or not task_type or not slot:
+        return None
+    if not _failure_context(candidate):
+        return None
+    attempt = _recovery_attempt(candidate, aggregate)
+    if attempt >= int(settings.workflow_replan_after_blocked_attempts):
+        return None
+    repair_context = _same_role_repair_context(candidate, aggregate)
+    next_attempt = max(int(candidate.get("attempt") or 1) + 1, attempt + 1)
+    with connect(database_url) as conn, conn.transaction():
+        conn.execute(
+            """
+            update tasks
+            set state = %s,
+                attempt = %s,
+                payload = coalesce(payload, '{}'::jsonb) || %s::jsonb,
+                blocker_code = null,
+                blocker_reason = null,
+                lease_owner = null,
+                lease_expires_at = null,
+                updated_at = now()
+            where id = %s
+            """,
+            (
+                TaskState.QUEUED.value,
+                next_attempt,
+                jsonb(
+                    {
+                        "same_role_repair_context": repair_context,
+                        "preserve_worktree_on_retry": True,
+                    }
+                ),
+                task_id,
+            ),
+        )
+    decision = RecoveryDecisionContract(
+        feature_id=feature_id,
+        task_id=task_id,
+        blocker_code=blocker_code,
+        action="repair_task",
+        rationale=str(
+            repair_context.get("summary")
+            or "Requeue blocked task for same-role repair."
+        ),
+        attempt=attempt,
+        max_attempts=int(settings.workflow_replan_after_blocked_attempts),
+    )
+    record_recovery_action(
+        decision,
+        status="completed",
+        outcome=f"requeued same-role repair task {task_id}",
+        database_url=database_url,
+    )
+    return {
+        "slot": slot,
+        "claimed": True,
+        "status": "repair_task",
+        "task_id": task_id,
+        "task_type": task_type,
+    }
+
+
 def _active_planner_exists(aggregate: dict[str, Any]) -> bool:
     for task in aggregate.get("tasks") or []:
         if str(task.get("task_type")) != "engineering.plan":
@@ -285,6 +370,7 @@ def _recoverable_blocked_task(
 ) -> dict[str, Any] | None:
     recoverable_codes = set(settings.workflow_replan_blocker_codes)
     immediate_codes = set(getattr(settings, "workflow_replan_immediate_blocker_codes", []))
+    same_role_codes = set(getattr(settings, "workflow_same_role_repair_blocker_codes", []))
     total_input_tokens = _total_model_input_tokens(aggregate)
     for task in aggregate.get("tasks") or []:
         state = str(task.get("state"))
@@ -301,7 +387,9 @@ def _recoverable_blocked_task(
             continue
         candidate = dict(task)
         candidate["recovery_attempt"] = attempt
-        if blocker_code in immediate_codes:
+        if blocker_code in immediate_codes or (
+            blocker_code in same_role_codes and _failure_context(task)
+        ):
             return candidate
         if attempt >= int(settings.workflow_replan_after_blocked_attempts):
             return candidate
@@ -863,6 +951,41 @@ def _recovery_attempt(
     )
     task_attempt = int(blocked_task.get("attempt") or 1)
     return max(task_attempt, completed_recoveries + 1)
+
+
+def _same_role_repair_context(
+    blocked_task: dict[str, Any],
+    aggregate: dict[str, Any],
+) -> dict[str, Any]:
+    blocker_code = str(blocked_task.get("blocker_code") or "")
+    blocked_contract = _task_contract_for_task(
+        aggregate,
+        str(blocked_task.get("id") or ""),
+    )
+    result = blocked_task.get("result")
+    result_payload = result if isinstance(result, dict) else {}
+    context: dict[str, Any] = {
+        "mode": "same_role_repair",
+        "blocked_task_id": str(blocked_task.get("id") or ""),
+        "blocked_task_type": _blocked_task_type(blocked_task, blocked_contract),
+        "blocked_slice_id": _blocked_slice_id(blocked_contract),
+        "blocker_code": blocker_code,
+        "blocker_reason": str(blocked_task.get("blocker_reason") or ""),
+        "failure_context": _failure_context(blocked_task),
+        "summary": _replan_summary(blocked_task),
+    }
+    for key in (
+        "changed_files",
+        "findings",
+        "commands_run",
+        "quality_failure_commands",
+        "failed_verifications",
+        "worker_crash",
+    ):
+        value = result_payload.get(key)
+        if value not in (None, "", []):
+            context[key] = value
+    return context
 
 
 def _task_contract_for_task(

@@ -155,6 +155,7 @@ class ImplementerHandler:
             project_metadata=project.metadata,
             task_id=task_id,
             role_context=role_context.prompt_payload(),
+            repair_context=payload.get("same_role_repair_context"),
         )
         model_usage_ids: list[int] = []
         response = provider.invoke(
@@ -380,6 +381,7 @@ def build_implementer_prompt(
     project_metadata: dict[str, Any],
     task_id: str,
     role_context: dict[str, Any] | None = None,
+    repair_context: object | None = None,
 ) -> str:
     return json.dumps(
         {
@@ -388,6 +390,11 @@ def build_implementer_prompt(
                 "Implement the production code required to make the QA-authored tests pass.",
                 "Work in the provided worktree and preserve QA-authored test files unchanged.",
                 "Only edit paths allowed by the TaskContract; never edit forbidden paths.",
+                (
+                    "When same_role_repair_context is present, continue in the existing "
+                    "worktree and repair only the cited failed verification or blocker. "
+                    "Use exact failure evidence before reading broader source context."
+                ),
                 (
                     "Treat the TaskContract objective as the scope boundary even when "
                     "allowed_paths are broad. Do not implement variants, modules, or later "
@@ -433,6 +440,7 @@ def build_implementer_prompt(
             ],
             "worktree": str(worktree),
             "role_context": role_context or {},
+            "same_role_repair_context": _compact_recovery_context(repair_context),
             "role_gate_contract": build_task_role_gate_contract(
                 role="implementer",
                 plan=plan,

@@ -945,6 +945,12 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
             project_metadata={},
             task_id="impl-1",
             role_context=role_context,
+            repair_context={
+                "mode": "same_role_repair",
+                "blocker_code": "engineering.implementation_verification_failed",
+                "failure_context": "JMH allocation gate failed",
+                "summary": "repair the failed command only",
+            },
         )
     )
 
@@ -964,10 +970,18 @@ def test_implementer_prompt_includes_context_capsule(tmp_path: Path) -> None:
     assert prompt["source_starter_pack"]["contract"] == (
         "engineering.implementer_source_starter_pack.v1"
     )
+    assert prompt["same_role_repair_context"]["mode"] == "same_role_repair"
+    assert prompt["same_role_repair_context"]["blocker_code"] == (
+        "engineering.implementation_verification_failed"
+    )
+    assert "JMH allocation gate failed" in prompt["same_role_repair_context"][
+        "failure_context"
+    ]
 
     instructions = " ".join(prompt["instructions"])
     assert "Treat the TaskContract objective as the scope boundary" in instructions
     assert "later plan slices" in instructions
+    assert "same_role_repair_context" in instructions
 
 
 def test_implementer_source_starter_pack_includes_bounded_source_and_qa_tests(
