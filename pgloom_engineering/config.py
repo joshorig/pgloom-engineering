@@ -86,6 +86,7 @@ class EngineeringSettings(BaseSettings):
             "engineering.implementer_contract_invalid",
             "engineering.implementation_path_violation",
             "engineering.implementation_verification_failed",
+            "engineering.worker_crash",
         ]
     )
     workflow_replan_immediate_blocker_codes: list[str] = Field(
