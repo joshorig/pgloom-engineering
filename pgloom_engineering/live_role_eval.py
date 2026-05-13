@@ -162,6 +162,7 @@ def run_live_role_eval(
                 if worker_result.get("claimed"):
                     progressed = True
                     worker_results.append(worker_result)
+                    break
             if not progressed:
                 break
     aggregate = get_feature_aggregate(feature_id, database_url=database_url)
