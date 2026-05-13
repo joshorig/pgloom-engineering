@@ -646,6 +646,8 @@ def _maybe_restore_recovery_abandoned_tasks(
     database_url: str | None,
 ) -> dict[str, object] | None:
     tasks = list(aggregate.get("tasks") or [])
+    if any(str(task.get("state") or "") in BLOCKED_STATES for task in tasks):
+        return None
     if any(
         str(task.get("state") or "") not in TERMINAL_STATES | BLOCKED_STATES
         for task in tasks
@@ -771,7 +773,10 @@ def _recoverable_blocked_task(
             blocker_code,
             task_id=str(task.get("id") or ""),
         )
-        attempt = max(int(task.get("attempt") or 1), completed_recoveries + 1)
+        if blocker_code == "engineering.worker_crash":
+            attempt = completed_recoveries + 1
+        else:
+            attempt = max(int(task.get("attempt") or 1), completed_recoveries + 1)
         if attempt > int(settings.workflow_replan_after_blocked_attempts):
             continue
         candidate = dict(task)
@@ -1314,7 +1319,7 @@ def _completed_recovery_count(
             continue
         if str(action.get("blocker_code") or "") != blocker_code:
             continue
-        if str(action.get("action") or "") != "corrective_slice":
+        if str(action.get("action") or "") not in {"corrective_slice", "repair_task"}:
             continue
         if str(action.get("status") or "") != "completed":
             continue

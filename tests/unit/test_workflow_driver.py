@@ -310,6 +310,37 @@ def test_restores_latest_plan_recovery_abandoned_downstream_tasks(
     assert recovered[0]["blocker_code"] == "engineering.downstream_gates_abandoned"
 
 
+def test_does_not_restore_downstream_tasks_while_owner_repair_blocked() -> None:
+    result = workflow_driver._maybe_restore_recovery_abandoned_tasks(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "blocked",
+                    "blocker_code": "engineering.worker_crash",
+                    "updated_at": "2026-05-13T18:00:00",
+                    "payload": {"plan_contract_id": "plan-1"},
+                },
+                {
+                    "id": "review-1",
+                    "slot": "reviewer",
+                    "task_type": "engineering.review",
+                    "state": "abandoned",
+                    "terminal_reason": "workflow_recovery_replan",
+                    "updated_at": "2026-05-13T17:00:00",
+                    "payload": {"plan_contract_id": "plan-1"},
+                },
+            ]
+        ),
+        None,
+    )
+
+    assert result is None
+
+
 def test_run_workflow_ignores_dependency_waiting_blocked_tasks(monkeypatch: Any) -> None:
     aggregates = [
         _aggregate(
@@ -453,31 +484,47 @@ def test_worker_crash_replans_immediately_with_crash_context(monkeypatch: Any) -
     monkeypatch.setattr(workflow_driver, "transition_task", lambda *args, **kwargs: {})
     monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
 
+    aggregate = _aggregate(
+        [
+            {
+                "id": "qa-1",
+                "slot": "qa-engineer",
+                "task_type": "engineering.qa.author",
+                "state": "blocked",
+                "attempt": 3,
+                "priority": 2,
+                "blocker_code": "engineering.worker_crash",
+                "blocker_reason": "worker crash: malformed command metadata",
+                "result": {
+                    "worker_crash": {
+                        "exception_type": "ValueError",
+                        "message": "worker crash: malformed command metadata",
+                        "task_type": "engineering.qa.author",
+                        "attempt": 3,
+                        "max_attempts": 3,
+                    }
+                },
+            }
+        ]
+    )
+    aggregate["recovery_actions"] = [
+        {
+            "task_id": "qa-1",
+            "blocker_code": "engineering.worker_crash",
+            "action": "repair_task",
+            "status": "completed",
+        },
+        {
+            "task_id": "qa-1",
+            "blocker_code": "engineering.worker_crash",
+            "action": "repair_task",
+            "status": "completed",
+        },
+    ]
+
     result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
         "feature-1",
-        _aggregate(
-            [
-                {
-                    "id": "qa-1",
-                    "slot": "qa-engineer",
-                    "task_type": "engineering.qa.author",
-                    "state": "blocked",
-                    "attempt": 3,
-                    "priority": 2,
-                    "blocker_code": "engineering.worker_crash",
-                    "blocker_reason": "worker crash: malformed command metadata",
-                    "result": {
-                        "worker_crash": {
-                            "exception_type": "ValueError",
-                            "message": "worker crash: malformed command metadata",
-                            "task_type": "engineering.qa.author",
-                            "attempt": 3,
-                            "max_attempts": 3,
-                        }
-                    },
-                }
-            ]
-        ),
+        aggregate,
         None,
     )
 
@@ -555,6 +602,58 @@ def test_initial_worker_crash_requeues_same_role_repair(monkeypatch: Any) -> Non
     assert repair_context["blocker_code"] == "engineering.worker_crash"
     assert "bad command metadata" in repair_context["failure_context"]
     assert recovered[0]["action"] == "repair_task"
+
+
+def test_worker_crash_retry_budget_ignores_prior_role_attempts(
+    monkeypatch: Any,
+) -> None:
+    updates: list[tuple[str, int, dict[str, Any], str]] = []
+    monkeypatch.setattr(workflow_driver, "get_settings", lambda: _settings())
+    monkeypatch.setattr(workflow_driver, "jsonb", lambda value: value)
+
+    class _Conn:
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def transaction(self) -> _Conn:
+            return self
+
+        def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
+            updates.append((str(params[0]), int(params[1]), params[2], str(params[3])))
+
+    monkeypatch.setattr(workflow_driver, "connect", lambda _url: _Conn())
+    monkeypatch.setattr(workflow_driver, "record_recovery_action", lambda *args, **kwargs: {})
+
+    result = workflow_driver._maybe_replan_blocked_feature(  # noqa: SLF001
+        "feature-1",
+        _aggregate(
+            [
+                {
+                    "id": "impl-1",
+                    "slot": "implementer",
+                    "task_type": "engineering.implement",
+                    "state": "blocked",
+                    "attempt": 7,
+                    "blocker_code": "engineering.worker_crash",
+                    "blocker_reason": "worker lease expired",
+                    "result": {
+                        "worker_crash": {
+                            "exception_type": "StaleWorkerLease",
+                            "message": "lease expired",
+                        }
+                    },
+                }
+            ]
+        ),
+        "postgres://unit",
+    )
+
+    assert result is not None
+    assert result["status"] == "repair_task"
+    assert updates[0][1] == 8
 
 
 def test_corrective_planner_crash_requeues_original_same_role_repair(
