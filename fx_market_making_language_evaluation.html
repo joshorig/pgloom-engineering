@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FX Market-Making Platform Language Evaluation — Java vs Rust vs C++</title>
+  <style>
+    :root {
+      --ink: #142033;
+      --muted: #5d6b82;
+      --subtle: #eef3f8;
+      --line: #dbe4ee;
+      --accent: #0f6f8f;
+      --accent-2: #7c3aed;
+      --ok: #13795b;
+      --warn: #9a6700;
+      --bad: #a23131;
+      --bg: #f7f9fc;
+      --card: #ffffff;
+      --shadow: 0 10px 30px rgba(20,32,51,.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .cover {
+      background: linear-gradient(135deg, #0b2239 0%, #123b59 45%, #0f6f8f 100%);
+      color: #fff;
+      padding: 56px 34px 46px;
+      border-bottom: 8px solid rgba(255,255,255,.18);
+    }
+    .cover-inner { max-width: 1180px; margin: 0 auto; }
+    .eyebrow { letter-spacing: .12em; text-transform: uppercase; font-size: 12px; opacity: .82; font-weight: 700; }
+    h1 { margin: 12px 0 12px; font-size: clamp(34px, 5vw, 58px); line-height: 1.04; max-width: 1050px; }
+    .subtitle { font-size: clamp(17px, 2.4vw, 23px); max-width: 980px; opacity: .92; margin-bottom: 26px; }
+    .meta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(255,255,255,.25); border-radius: 999px;
+      padding: 7px 12px; font-size: 13px; background: rgba(255,255,255,.09);
+    }
+    .container { max-width: 1180px; margin: -26px auto 60px; padding: 0 24px; }
+    .toc {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+      margin-bottom: 22px;
+    }
+    .toc a { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); font-size: 13px; color: var(--ink); }
+    section, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin: 22px 0;
+    }
+    h2 { font-size: 28px; margin: 0 0 16px; line-height: 1.2; }
+    h3 { font-size: 20px; margin: 24px 0 10px; }
+    h4 { font-size: 16px; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    p { margin: 0 0 13px; }
+    .lead { font-size: 18px; color: #26384f; }
+    .grid { display: grid; gap: 16px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .mini-card {
+      border: 1px solid var(--line); border-radius: 15px; padding: 17px;
+      background: linear-gradient(180deg, #fff, #fbfdff);
+    }
+    .mini-card h3, .mini-card h4 { margin-top: 0; }
+    .verdict {
+      border-left: 6px solid var(--accent); background: #eef9fc; padding: 18px 20px; border-radius: 14px;
+      font-size: 18px; font-weight: 650; margin: 12px 0 18px;
+    }
+    .callout {
+      border: 1px solid #cce5ff; background: #f0f8ff; border-left: 5px solid var(--accent);
+      border-radius: 14px; padding: 16px 18px; margin: 16px 0;
+    }
+    .warning { border-color: #f1d48a; border-left-color: var(--warn); background: #fff8e8; }
+    .danger { border-color: #f0b6b6; border-left-color: var(--bad); background: #fff1f1; }
+    .success { border-color: #9fd9c8; border-left-color: var(--ok); background: #eefaf6; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 14px; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 11px 10px; }
+    th { background: #f2f6fa; color: #24364e; font-weight: 700; }
+    tr:nth-child(even) td { background: #fbfdff; }
+    .small { font-size: 13px; color: var(--muted); }
+    .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--subtle); color: var(--ink); margin-right: 4px; }
+    .badge.ok { background: #dff5ec; color: #085c43; }
+    .badge.warn { background: #fff0c9; color: #7b4e00; }
+    .badge.bad { background: #ffe0e0; color: #7c2222; }
+    .badge.native { background: #efe7ff; color: #5226a3; }
+    .kpi { font-size: 30px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+    .kpi-label { color: var(--muted); font-size: 13px; }
+    .source { font-size: 12px; vertical-align: super; font-weight: 700; }
+    ul, ol { margin-top: 6px; padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .decision-tree { width: 100%; overflow-x: auto; padding-bottom: 8px; }
+    svg { max-width: 100%; height: auto; }
+    .node rect { fill: #fff; stroke: #bfd3e4; stroke-width: 1.5; filter: drop-shadow(0 4px 10px rgba(20,32,51,.08)); }
+    .node.start rect { fill: #0f6f8f; stroke: #0f6f8f; }
+    .node.start text { fill: white; font-weight: 700; }
+    .node.choice rect { fill: #eef9fc; stroke: #8ad0e0; }
+    .node.java rect { fill: #f0f8ff; stroke: #83b9e8; }
+    .node.rust rect { fill: #fff1e8; stroke: #f0ad7b; }
+    .node.cpp rect { fill: #f5f0ff; stroke: #c4a7ff; }
+    .node.fpga rect { fill: #fff8e8; stroke: #e3b34d; }
+    .node.ops rect { fill: #eefaf6; stroke: #8fcfb9; }
+    .node text { font-size: 13px; fill: #172033; }
+    .edge { stroke: #8394a8; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+    .label { font-size: 12px; fill: #506176; font-weight: 700; }
+    .architecture {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: stretch; margin: 16px 0 8px;
+    }
+    .arch-box { border: 1px solid var(--line); border-radius: 14px; padding: 12px 10px; text-align: center; background: #fff; min-height: 94px; display:flex; flex-direction:column; justify-content:center; }
+    .arch-box strong { display: block; margin-bottom: 4px; font-size: 14px; }
+    .arrow { text-align: center; color: var(--muted); font-size: 20px; align-self: center; }
+    .score { white-space: nowrap; }
+    .score span { display:inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right:2px; background: #cbd5e1; }
+    .score .on { background: var(--accent); }
+    .footnotes li { margin-bottom: 10px; }
+    .print-note { display: none; }
+    @media (max-width: 900px) {
+      .toc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; }
+      .architecture { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      section, .card { padding: 20px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .cover { color: #000; background: #fff; border-bottom: 2px solid #000; padding: 30px 0 16px; }
+      .container { margin: 0; max-width: none; padding: 0; }
+      .toc { display: none; }
+      section, .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+      a { color: #000; text-decoration: none; }
+      .print-note { display: block; font-size: 12px; color: #555; }
+    }
+  </style>
+</head>
+<body>
+  <header class="cover">
+    <div class="cover-inner">
+      <div class="eyebrow">Management report · FX market making · Low-latency platform strategy</div>
+      <h1>Java vs Rust vs C++ for a 100µs-tail FX market-making platform</h1>
+      <p class="subtitle">Assessment of whether to move the pricing, signal DAG, distribution, and FIX/deal-acceptance stack from Java to Rust, with decision criteria by latency target, ecosystem maturity, hiring risk, and AI-agent maintainability.</p>
+      <div class="meta">
+        <span class="pill">Prepared: 4 July 2026</span>
+        <span class="pill">Latency focus: p99.99 / “four 9s”</span>
+        <span class="pill">Systems: pricing DAG · Aeron/UDP · FIX</span>
+        <span class="pill">Languages: Java · Rust · C++ · FPGA caveat</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="toc">
+      <a href="#executive">1. Executive verdict</a>
+      <a href="#decision-tree">2. Decision tree</a>
+      <a href="#architecture">3. FX architecture fit</a>
+      <a href="#latency">4. Latency thresholds</a>
+      <a href="#languages">5. Language comparison</a>
+      <a href="#ecosystem">6. Ecosystem & tooling</a>
+      <a href="#evidence">7. Public references</a>
+      <a href="#hardware">8. Hardware tuning caveat</a>
+      <a href="#recruitment">9. Recruitment & key-person risk</a>
+      <a href="#ai">10. AI-agent coding</a>
+      <a href="#roadmap">11. Recommended path</a>
+      <a href="#sources">12. Sources</a>
+    </nav>
+
+    <section id="executive">
+      <h2>1. Executive verdict</h2>
+      <div class="verdict">Do not approve a wholesale Java → Rust rewrite solely because Rust is perceived to be faster. Approve a measured, component-level benchmark and, if justified, adopt Rust or C++ only for the measured hot-path components that cannot meet the latency budget in disciplined Java.</div>
+      <p class="lead">A sub-100µs p99.99 end-to-end FX pricing and deal-acceptance target is a <strong>system-design and operating-environment problem</strong>, not a language-selection problem. Java, Rust, and C++ can all participate in platforms that hit 100µs tails. The difference is how much engineering discipline, ecosystem support, operational tuning, and specialist talent each requires.</p>
+
+      <div class="grid four">
+        <div class="mini-card">
+          <div class="kpi">Java</div>
+          <div class="kpi-label">Best default when current stack is Java and target is ≥100µs p99.99.</div>
+          <p class="small">Strongest finance ecosystem: Aeron, Agrona, SBE, Chronicle, Disruptor, JMH/JFR, mature FIX. Needs allocation-free hot paths and JVM discipline.</p>
+        </div>
+        <div class="mini-card">
+          <div class="kpi">Rust</div>
+          <div class="kpi-label">Best candidate for new native, memory-safe hot-path components.</div>
+          <p class="small">No GC/JIT warm-up, strong compiler safety, C/C++-class runtime. Weaker finance-specific ecosystem and smaller hiring market.</p>
+        </div>
+        <div class="mini-card">
+          <div class="kpi">C++</div>
+          <div class="kpi-label">Best where the last microseconds and vendor/HFT integration dominate.</div>
+          <p class="small">Deepest low-latency ecosystem and hardware-adjacent control. Highest memory-safety and key-person risk.</p>
+        </div>
+        <div class="mini-card">
+          <div class="kpi">FPGA</div>
+          <div class="kpi-label">Only for sub-µs / deterministic hardware-gate use cases.</div>
+          <p class="small">Treat as a special investment case; talent and support constraints can dominate the business case.</p>
+        </div>
+      </div>
+
+      <h3>Management conclusion</h3>
+      <table>
+        <thead><tr><th>Question</th><th>Finding</th><th>Management implication</th></tr></thead>
+        <tbody>
+          <tr><td>Will Rust be faster than Java?</td><td>For native hot-path code, Rust removes GC/JIT/safepoint classes of tail risk. But optimized Java can already reach microsecond-class latency when it is allocation-free, off-heap, warmed up, pinned, and measured properly.</td><td>Rust is not automatically a performance win. Measure the bottleneck first.</td></tr>
+          <tr><td>Can Java hit p99.99 double-digit microseconds?</td><td>Yes for constrained hot paths and IPC/distribution patterns, but only with specialized design. Public Java ecosystem examples include Aeron, Agrona, Chronicle Queue, and LMAX-style single-threaded mechanical-sympathy designs.<a class="source" href="#s2">[S2]</a><a class="source" href="#s6">[S6]</a><a class="source" href="#s7">[S7]</a></td><td>Current Java platform should be optimized and benchmarked before replacement.</td></tr>
+          <tr><td>Can any language guarantee 100µs p99.99 end to end?</td><td>No. At this level, CPU isolation, NUMA, cache locality, NIC choice, kernel bypass, power management, page faults, burst behaviour, logging, persistence, and queue design dominate tails.</td><td>Fund a latency-engineering workstream, not just a rewrite.</td></tr>
+          <tr><td>Should we rewrite the entire platform in Rust?</td><td>No, unless the goal is a long-term strategic Rust capability rather than immediate latency reduction. A rewrite risks functional regressions, delays, and niche-talent dependence.</td><td>Prefer a hybrid architecture: Java control/business services, native components only where measured.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout warning">
+        <strong>Key caveat:</strong> The phrase “Rust is faster” is too broad for a management decision. A better decision question is: <em>Which specific component misses its p99.99 budget after Java hot-path tuning, and what is the total cost of moving that component to Rust or C++?</em>
+      </div>
+    </section>
+
+    <section id="decision-tree">
+      <h2>2. Decision tree: language choice by latency goal</h2>
+      <p>This tree assumes the target is end-to-end p99.99 latency unless otherwise stated. Component-level budgets can be tighter; for example, a 100µs end-to-end path may require individual hops in the 5–30µs range.</p>
+      <div class="decision-tree">
+        <svg width="1120" height="760" viewBox="0 0 1120 760" role="img" aria-label="Decision tree for Java, Rust, C++, and FPGA based on latency target">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#8394a8" />
+            </marker>
+          </defs>
+
+          <g class="node start" transform="translate(420,20)"><rect rx="14" ry="14" width="280" height="64"/><text x="140" y="28" text-anchor="middle">Start</text><text x="140" y="48" text-anchor="middle">What is the p99.99 target?</text></g>
+          <path class="edge" d="M560,84 C560,112 560,120 560,144"/>
+          <g class="node choice" transform="translate(382,144)"><rect rx="14" ry="14" width="356" height="76"/><text x="178" y="28" text-anchor="middle">Can current Java meet the measured</text><text x="178" y="48" text-anchor="middle">budget with ≥30% safety margin?</text></g>
+          <path class="edge" d="M382,182 C250,182 214,214 214,254"/>
+          <text class="label" x="286" y="166">Yes</text>
+          <g class="node java" transform="translate(40,254)"><rect rx="14" ry="14" width="348" height="92"/><text x="174" y="26" text-anchor="middle">Stay Java for hot path</text><text x="174" y="48" text-anchor="middle">Tune allocations, queues, layout, GC,</text><text x="174" y="68" text-anchor="middle">Aeron/Agrona/SBE, pinning, replay tests</text></g>
+
+          <path class="edge" d="M738,182 C882,182 910,214 910,254"/>
+          <text class="label" x="792" y="166">No or unknown</text>
+          <g class="node choice" transform="translate(732,254)"><rect rx="14" ry="14" width="356" height="92"/><text x="178" y="26" text-anchor="middle">Latency target band?</text><text x="178" y="50" text-anchor="middle">Choose language by threshold,</text><text x="178" y="70" text-anchor="middle">ecosystem, and team risk.</text></g>
+
+          <path class="edge" d="M910,346 C910,374 910,388 910,410"/>
+          <g class="node java" transform="translate(742,410)"><rect rx="14" ry="14" width="336" height="78"/><text x="168" y="24" text-anchor="middle">&gt;250µs to 1ms+</text><text x="168" y="46" text-anchor="middle">Java default. Use Rust/C++ only</text><text x="168" y="64" text-anchor="middle">for proven bottlenecks.</text></g>
+
+          <path class="edge" d="M742,449 C610,449 588,474 588,508"/>
+          <g class="node java" transform="translate(420,508)"><rect rx="14" ry="14" width="336" height="88"/><text x="168" y="24" text-anchor="middle">100–250µs</text><text x="168" y="46" text-anchor="middle">Java viable only with low-allocation,</text><text x="168" y="64" text-anchor="middle">off-heap, pinned, warmed hot paths;</text><text x="168" y="82" text-anchor="middle">prototype Rust/C++ for worst hops.</text></g>
+
+          <path class="edge" d="M910,488 C910,526 910,545 910,580"/>
+          <g class="node rust" transform="translate(742,580)"><rect rx="14" ry="14" width="336" height="92"/><text x="168" y="24" text-anchor="middle">50–100µs</text><text x="168" y="46" text-anchor="middle">Native hot path preferred:</text><text x="168" y="64" text-anchor="middle">Rust for safety; C++ for deepest HFT</text><text x="168" y="82" text-anchor="middle">vendor/hardware ecosystem.</text></g>
+
+          <path class="edge" d="M742,626 C596,626 540,672 540,704"/>
+          <g class="node cpp" transform="translate(360,642)"><rect rx="14" ry="14" width="330" height="92"/><text x="165" y="24" text-anchor="middle">10–50µs</text><text x="165" y="46" text-anchor="middle">C++ or Rust native hot path.</text><text x="165" y="64" text-anchor="middle">Avoid JVM unless already proven with</text><text x="165" y="82" text-anchor="middle">instrumented production-like load.</text></g>
+
+          <path class="edge" d="M1088,626 C1102,626 1102,704 1028,704"/>
+          <g class="node fpga" transform="translate(760,642)"><rect rx="14" ry="14" width="330" height="92"/><text x="165" y="24" text-anchor="middle">&lt;10µs or deterministic sub-µs</text><text x="165" y="46" text-anchor="middle">C/C++ + kernel bypass; consider FPGA</text><text x="165" y="64" text-anchor="middle">for parsing, risk gates, feed handling</text><text x="165" y="82" text-anchor="middle">only if ROI beats niche-talent risk.</text></g>
+
+          <path class="edge" d="M560,220 C560,260 560,298 560,338"/>
+          <g class="node ops" transform="translate(384,338)"><rect rx="14" ry="14" width="352" height="92"/><text x="176" y="24" text-anchor="middle">If target ≤100µs</text><text x="176" y="46" text-anchor="middle">Hardware/OS tuning is mandatory:</text><text x="176" y="64" text-anchor="middle">CPU isolation, pinning, NUMA, NIC,</text><text x="176" y="82" text-anchor="middle">kernel bypass, power states, huge pages.</text></g>
+        </svg>
+      </div>
+      <div class="callout success">
+        <strong>Decision principle:</strong> retain Java for broad business logic, state management, control plane, booking, exposure, monitoring, and most FIX workflows; introduce Rust/C++ only where the measured hot path requires native determinism or hardware-adjacent integration.
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. Architecture fit for the FX market-making platform</h2>
+      <p>The proposed system has at least two latency-sensitive paths: <strong>quote generation/distribution</strong> and <strong>client deal acceptance</strong>. The pricing path is usually more latency-sensitive; FIX acceptance has session, persistence, validation, and compliance concerns that often make correctness and operational maturity as important as raw microseconds.</p>
+      <div class="architecture">
+        <div class="arch-box"><strong>Market data</strong><span class="small">venue/bank feeds, UDP/multicast, reference data</span></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>DAG / models</strong><span class="small">curves, volatility, skew, inventory, client signals</span></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>Pricing layer</strong><span class="small">quote construction, risk checks, throttles</span></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>Distribution</strong><span class="small">Aeron/UDP, SBE, client fan-out</span></div>
+      </div>
+      <div class="architecture">
+        <div class="arch-box"><strong>Client API</strong><span class="small">FIX sessions, auth, sequence, recovery</span></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>Deal accept</strong><span class="small">last look, risk, credit, inventory</span></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>State/audit</strong><span class="small">event log, replay, regulatory evidence</span></div>
+        <div class="arrow">↔</div>
+        <div class="arch-box"><strong>Ops/control</strong><span class="small">kill switches, limits, observability</span></div>
+      </div>
+
+      <h3>Recommended language placement</h3>
+      <table>
+        <thead><tr><th>Component</th><th>Java fit</th><th>Rust fit</th><th>C++ fit</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Static pricing DAG and signal engine</td><td>Strong if static, allocation-free, primitive/off-heap data layout, single-writer shards, no framework overhead.</td><td>Strong for new deterministic kernels; ownership model helps avoid shared mutable state.</td><td>Strong but higher defect risk.</td><td>Keep Java unless the DAG is the measured miss. Consider Rust for newly isolated model kernels.</td></tr>
+          <tr><td>Client pricing layer</td><td>Strong if no per-tick allocation and no lock contention; mature domain tooling.</td><td>Good if rewritten as a bounded native service with explicit memory ownership.</td><td>Strong where sub-50µs component budget is required.</td><td>Hybrid only if benchmarking shows Java pricing path cannot meet budget.</td></tr>
+          <tr><td>Distribution over UDP / Aeron</td><td>Very strong. Aeron and Agrona are first-class Java ecosystem assets; Aeron also has C/C++ clients.<a class="source" href="#s3">[S3]</a><a class="source" href="#s4">[S4]</a></td><td>Possible through wrappers/ports, but not as first-class as Java/C/C++ for Aeron operations.</td><td>Very strong for native clients and kernel-bypass gateway patterns.</td><td>If Aeron remains central, Java/C++ have stronger maturity. Use Rust only after interoperability/perf proof.</td></tr>
+          <tr><td>FIX client API and deal acceptance</td><td>Strong ecosystem and operational maturity; QuickFIX/J and commercial engines available.<a class="source" href="#s9">[S9]</a></td><td>Smaller ecosystem; commercial support exists but fewer references.</td><td>Strongest for ultra-low-latency exchange/venue adapters and commercial engines.</td><td>Do not move FIX solely for speed. Move only if FIX is measured bottleneck and vendor/tooling supports target.</td></tr>
+          <tr><td>Audit, replay, controls, booking, limits UI</td><td>Excellent.</td><td>Usually not worth migration cost.</td><td>Usually not worth risk.</td><td>Keep Java or mainstream stack.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>DAG design note:</strong> the DAG should be a static, precompiled graph for the trading day/session wherever possible. Avoid dynamic graph mutation, heap allocation per tick, generic object-heavy message buses, reflective model dispatch, blocking queues, and shared mutable state. The critical design pattern is data-oriented, single-writer, replayable, and measurable; the language is secondary until the design is disciplined.
+      </div>
+    </section>
+
+    <section id="latency">
+      <h2>4. What “100µs at four 9s” really means</h2>
+      <p>Assumption: “four 9s latency profile” means <strong>p99.99</strong>, i.e., 99.99% of observed requests complete within the target. This is much stricter than p99: one in 10,000 events is allowed above the threshold, and bursts during market stress matter more than quiet-period averages.</p>
+      <table>
+        <thead><tr><th>End-to-end p99.99 target</th><th>Default language posture</th><th>Architecture posture</th><th>Hardware posture</th></tr></thead>
+        <tbody>
+          <tr><td>&gt;1ms</td><td>Java is normally the right economic default.</td><td>Optimize obvious bottlenecks; avoid unnecessary rewrites.</td><td>Standard production tuning usually sufficient.</td></tr>
+          <tr><td>250µs–1ms</td><td>Java remains strong; Rust/C++ only for measured hotspots.</td><td>Low allocation, good queues, careful serialization.</td><td>Thread pinning and NUMA awareness start to matter.</td></tr>
+          <tr><td>100–250µs</td><td>Java viable with allocation-free hot path; Rust/C++ candidates for worst hops.</td><td>Aeron/SBE/off-heap patterns; no blocking; explicit backpressure policy.</td><td>CPU isolation, power settings, page faults, NIC queues must be managed.</td></tr>
+          <tr><td>50–100µs</td><td>Rust/C++ become stronger defaults for hot path; Java only if proven.</td><td>Single-writer shards, busy-polling, direct buffers, no logging in path.</td><td>Kernel bypass or equivalent low-jitter networking becomes likely.</td></tr>
+          <tr><td>10–50µs</td><td>Native hot path: C++ or Rust. Java mostly control plane unless measured otherwise.</td><td>Minimal hops; cache-resident data; zero copy; fixed memory; replay/audit off path.</td><td>Dedicated cores, NIC affinity, NUMA placement, BIOS/power tuning mandatory.</td></tr>
+          <tr><td>&lt;10µs / sub-µs deterministic</td><td>C/C++ plus FPGA/hardware acceleration if ROI is compelling.</td><td>Push parsing/filtering/risk gates close to NIC/exchange path.</td><td>Hardware becomes the product; specialist operations required.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Illustrative 100µs budget</h3>
+      <p>This is not a prescribed budget; it is a way to show why language alone cannot solve the target.</p>
+      <table>
+        <thead><tr><th>Stage</th><th>Illustrative p99.99 budget</th><th>Common tail risks</th></tr></thead>
+        <tbody>
+          <tr><td>Market-data ingress and decode</td><td>5–20µs</td><td>NIC interrupts, kernel stack jitter, cache misses, sequence gaps, decoding allocation.</td></tr>
+          <tr><td>DAG/model/signal update</td><td>10–30µs</td><td>Dynamic graph dispatch, object churn, shared locks, branch misses, cache-unfriendly layout.</td></tr>
+          <tr><td>Pricing/risk/client quote construction</td><td>10–25µs</td><td>Inventory lookups, credit checks, stale reference data, contention, logging.</td></tr>
+          <tr><td>Distribution/fan-out</td><td>10–35µs</td><td>UDP loss/retransmission policy, batching, socket buffer pressure, encryption, fan-out topology.</td></tr>
+          <tr><td>FIX/deal acceptance</td><td>20–50µs+ depending scope</td><td>TCP/session semantics, persistence, sequence recovery, last-look logic, compliance evidence.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warning">
+        <strong>Important measurement caveat:</strong> many public benchmarks publish p50/p99/p99.9, not p99.99. Do not extrapolate. Run your own p99.99 benchmarks with production message sizes, burst profiles, client counts, fault scenarios, replay, and coordinated-omission-safe histograms.
+      </div>
+    </section>
+
+    <section id="languages">
+      <h2>5. Programming-language breakdown</h2>
+
+      <h3>Summary comparison</h3>
+      <table>
+        <thead><tr><th>Dimension</th><th>Java</th><th>Rust</th><th>C++</th></tr></thead>
+        <tbody>
+          <tr><td>Peak runtime performance</td><td>Excellent after JIT warm-up; can be C++-class in tight loops.</td><td>Excellent native performance; no VM or JIT warm-up.</td><td>Excellent; reference language for many HFT native systems.</td></tr>
+          <tr><td>p99.99 predictability</td><td>Excellent only with no-allocation/off-heap design; GC/JIT/safepoints must be controlled. ZGC is low-latency but still not a substitute for hot-path allocation discipline.<a class="source" href="#s5">[S5]</a></td><td>Strong; no GC/JIT. Tails still affected by allocator, syscalls, locks, OS scheduling, page faults, and unsafe/FFI.</td><td>Strongest control; tails still affected by allocator, locks, OS/hardware. Memory bugs can create rare catastrophic behaviour.</td></tr>
+          <tr><td>Memory safety</td><td>Memory-safe, but GC-managed.</td><td>Memory-safe in safe Rust without GC via ownership/borrowing.<a class="source" href="#s12">[S12]</a></td><td>Not memory-safe by default; requires discipline, reviews, sanitizers, and standards.</td></tr>
+          <tr><td>Ease of writing high-perf low-latency code</td><td>Moderate. Language is easy; low-latency Java is specialized and counter-cultural to normal enterprise Java.</td><td>Moderate to hard. Compiler enforces ownership; low-latency Rust still needs systems knowledge and careful unsafe/FFI boundaries.</td><td>Hard. Maximum control but highest complexity and undefined-behaviour risk.</td></tr>
+          <tr><td>Finance ecosystem</td><td>Strongest for this stack: Aeron/Agrona/SBE/Chronicle/Disruptor/FIX/JMH/JFR.</td><td>Good general systems tooling; finance-specific libraries thinner; often uses FFI/wrappers around C/C++ libraries.</td><td>Very strong in HFT, FIX engines, DPDK/kernel bypass, feed handlers, venue adapters.</td></tr>
+          <tr><td>Hiring market</td><td>Largest relevant pool; low-latency Java is narrower but teachable.</td><td>Smaller but growing; high enthusiasm; fewer finance-production references.</td><td>Broader than Rust, but low-latency C++ is a high-cost niche.</td></tr>
+          <tr><td>AI-agent coding</td><td>Likely easiest for agents for common enterprise code due to abundant examples and stable APIs.</td><td>Compiler feedback helps agents iterate, but ownership/lifetimes/unsafe/FFI can reduce first-pass success.</td><td>Agents can produce plausible code that compiles but hides UB, races, and performance traps.</td></tr>
+          <tr><td>Best platform role</td><td>Core platform, pricing orchestration, Aeron stack, FIX operations, control plane.</td><td>New bounded native hot-path services where safety and determinism are both valuable.</td><td>Venue/feed/network-adjacent hot paths and last-microsecond components.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Java</h3>
+      <p>Java should not be dismissed as “too slow” for FX market making. Its problem is not steady-state speed; it is tail predictability when ordinary Java allocation, blocking queues, locks, logging, and framework abstractions enter the hot path. Modern low-latency Java deliberately looks unlike enterprise Java: primitive arrays or direct buffers, Agrona collections, SBE codecs, single-writer event loops, JIT warm-up, explicit GC strategy, pinned threads, and no allocation after startup.</p>
+      <div class="grid two">
+        <div class="mini-card"><h4>Where Java is compelling</h4><ul><li>Existing team and codebase are already Java.</li><li>Aeron/Agrona/SBE/Chronicle are strategic dependencies.</li><li>p99.99 target is around 100µs or above and the system can be made allocation-free.</li><li>FIX, state, audit, replay, controls, and operational tooling matter as much as raw speed.</li></ul></div>
+        <div class="mini-card"><h4>Where Java becomes risky</h4><ul><li>Component budget approaches &lt;50µs p99.99.</li><li>Hot path still allocates or hits generic queues/loggers/frameworks.</li><li>JVM warm-up, safepoints, deoptimization, or GC cannot be made irrelevant.</li><li>Networking requires kernel bypass/hardware-specific APIs with stronger native support.</li></ul></div>
+      </div>
+      <p>Oracle describes ZGC as a scalable low-latency collector that performs expensive work concurrently and avoids stopping application threads for more than a millisecond, with heap-size-independent pauses.<a class="source" href="#s5">[S5]</a> That is impressive for most systems, but a platform targeting 100µs p99.99 cannot rely on “sub-millisecond GC” in its critical path. The practical rule remains: <strong>no allocation in the pricing/distribution hot path after warm-up</strong>.</p>
+
+      <h3>Rust</h3>
+      <p>Rust’s credible case is not that it magically beats optimized Java in every benchmark. Its credible case is that it gives C/C++-class native execution, deterministic destruction, no GC, no JIT warm-up, and memory safety in safe Rust. This is attractive for newly isolated pricing kernels, feed-normalization services, distribution gateways, and bounded native components where you want low jitter without adopting C++ memory-risk exposure.</p>
+      <div class="grid two">
+        <div class="mini-card"><h4>Where Rust is compelling</h4><ul><li>New component with clear boundaries and a tight latency budget.</li><li>Memory safety is a priority, but GC/JVM behaviour is undesirable.</li><li>Data ownership maps naturally to per-core/per-instrument shards.</li><li>Code can stay mostly safe Rust, with small reviewed unsafe/FFI sections.</li></ul></div>
+        <div class="mini-card"><h4>Where Rust is a poor fit</h4><ul><li>Full rewrite of a mature Java domain platform with no measured bottleneck.</li><li>Heavy dependency on Java-first Aeron/Agrona or Java FIX integrations.</li><li>Team lacks Rust production experience and cannot staff a durable group.</li><li>Unsafe FFI, custom allocators, or async complexity would dominate the implementation.</li></ul></div>
+      </div>
+      <p>Rust still needs low-latency engineering discipline: avoid heap allocation in the hot path, avoid locks, be careful with async runtimes, benchmark allocator behaviour, pin threads, pre-touch memory, and keep FFI boundaries explicit. Rust removes some JVM tail-risk classes; it does not remove OS, cache, NIC, branch, serialization, or architectural tail risks.</p>
+
+      <h3>C++</h3>
+      <p>C++ remains the reference language for many hardware-adjacent and venue-adjacent low-latency components. It follows a “zero-overhead” design principle: you should not pay for features you do not use, and what you do use should be as efficient as hand-written alternatives.<a class="source" href="#s13">[S13]</a> That fits feed handlers, exchange gateways, DPDK, kernel bypass, custom allocators, and tightly controlled hot loops.</p>
+      <div class="grid two">
+        <div class="mini-card"><h4>Where C++ is compelling</h4><ul><li>Sub-50µs p99.99 component budgets.</li><li>Vendor libraries, NIC APIs, DPDK, or exchange adapters are C/C++ first.</li><li>Existing firm capability in modern low-latency C++ is strong.</li><li>Extreme control over memory layout, ABI, compilation, and instruction path is needed.</li></ul></div>
+        <div class="mini-card"><h4>Where C++ is risky</h4><ul><li>Team cannot sustain rigorous review, testing, sanitizers, and coding standards.</li><li>Business logic complexity is high and correctness dominates raw speed.</li><li>Key-person dependency is likely.</li><li>AI-generated or rushed code may hide undefined behaviour, races, and rare tail defects.</li></ul></div>
+      </div>
+    </section>
+
+    <section id="ecosystem">
+      <h2>6. Ecosystem, libraries, and tooling</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Java</th><th>Rust</th><th>C++</th></tr></thead>
+        <tbody>
+          <tr><td>Messaging / IPC / UDP</td><td>Aeron first-class; Agrona buffers and off-heap utilities; Chronicle Queue for persisted low-latency messaging; Disruptor-style rings.</td><td>General crates plus Aeron wrappers/ports; often practical but thinner finance references.</td><td>Aeron C/C++ clients, DPDK, vendor NIC APIs, lock-free queues, shared memory libraries.</td></tr>
+          <tr><td>Serialization</td><td>SBE reference ecosystem; Agrona buffers; FIX/SBE fit is mature.</td><td>SBE code generation exists; serde is excellent but not automatically hot-path friendly.</td><td>SBE, FlatBuffers/Cap’n Proto options, bespoke structs, vendor formats.</td></tr>
+          <tr><td>FIX</td><td>QuickFIX/J, commercial FIX engines, mature session/admin tools.<a class="source" href="#s9">[S9]</a></td><td>Fewer mature choices; commercial/vendor options may exist but require proof.</td><td>QuickFIX, FIX8, OnixS/B2BITS-type commercial ecosystems; strongest ultra-low-latency venue-adapter market.</td></tr>
+          <tr><td>Profiling and benchmarking</td><td>JMH, JFR, async-profiler, safepoint logs, perf, HdrHistogram, JITWatch.</td><td>Criterion, cargo bench, perf, flamegraph, BPF tooling, sanitizers via LLVM ecosystem.</td><td>perf, VTune, FlameGraph, sanitizers, Valgrind, PMU tooling, compiler explorer, PGO/LTO.</td></tr>
+          <tr><td>Build/dependency tooling</td><td>Maven/Gradle mature; dependency sprawl risk.</td><td>Cargo is a major strength; compile time can be a productivity issue.</td><td>CMake/Bazel/Conan/vcpkg; powerful but complex.</td></tr>
+          <tr><td>Operational observability</td><td>Strong JVM telemetry and production diagnostics.</td><td>Good native tooling, but less standardized across finance teams.</td><td>Strong native tools but requires specialist skill to interpret.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Java ecosystem advantage for this exact problem</h3>
+      <p>Aeron’s repository states it provides efficient reliable UDP unicast, UDP multicast, and IPC message transport, with Java, C, and C++ clients available, plus same-machine IPC and persistent recording through Archive.<a class="source" href="#s3">[S3]</a> Agrona provides high-performance Java data structures, direct/atomic buffers, primitive collections, lock-less queues, off-heap ring/broadcast buffers, and support for SBE codecs.<a class="source" href="#s4">[S4]</a> For an Aeron/Agrona/SBE-based FX pricing system, that is a material reason not to abandon Java without a measured cause.</p>
+
+      <h3>Rust ecosystem position</h3>
+      <p>Rust has excellent general systems tooling and growing professional adoption; the Rust project’s 2024 survey reported rising use of Rust at work and non-trivial organisational use among respondents.<a class="source" href="#s14">[S14]</a> But Rust’s finance-specific low-latency ecosystem is not yet as broad as Java’s for Aeron/Agrona/SBE/Chronicle, nor as deep as C++ for hardware-adjacent HFT components.</p>
+
+      <h3>C++ ecosystem position</h3>
+      <p>C++ has the deepest ecosystem around vendor NICs, kernel-bypass stacks, exchange connectivity, and mature commercial FIX engines. Its cost is toolchain complexity, stricter review requirements, memory-risk management, and a narrower set of engineers who can safely write p99.99-grade C++.</p>
+    </section>
+
+    <section id="evidence">
+      <h2>7. Public references and published benchmark evidence</h2>
+      <p>Public benchmarks should be treated as evidence of what is possible, not as guarantees for our environment. Hardware, topology, message size, burst distribution, persistence, encryption, and measurement method can dominate results.</p>
+      <table>
+        <thead><tr><th>Reference</th><th>Relevant published evidence</th><th>Implication for us</th></tr></thead>
+        <tbody>
+          <tr><td>Aeron on AWS 2025 benchmark, published Feb 2026</td><td>Aeron Premium Transport with kernel bypass reported 29µs round-trip key result; at 1M msg/s it reported p99 39µs and p99.9 43µs, versus Aeron OSS Java driver p99 57µs and p99.9 206µs. Aeron Cluster Premium at 100k msg/s reported p99 98µs and p99.9 106µs.<a class="source" href="#s1">[S1]</a></td><td>Aeron can be suitable for capital-markets latency targets, but kernel bypass and system tuning materially affect tails. Note the published tables stop at p99.9, not p99.99.</td></tr>
+          <tr><td>Man Group FX execution on Aeron</td><td>Man Group described adopting Aeron to improve FX execution latency; its microbenchmarks included Aeron/Chronicle IPC around 0.25µs round trip and Aeron network around 10µs round trip in their test. They reported at least order-of-magnitude improvements and a 50× reduction at p99.99 after moving IPC to Aeron.<a class="source" href="#s2">[S2]</a></td><td>Strong domain-relevant evidence that Java/Aeron-style architecture can materially improve FX latency without moving the whole platform to Rust.</td></tr>
+          <tr><td>Chronicle Queue</td><td>Chronicle Queue is a brokerless off-heap Java library for persisted low-latency messaging. Its documentation states it aims for under 40µs latency for 99% to 99.99% of the time and supports below-40µs end-to-end across multiple services without replication.<a class="source" href="#s6">[S6]</a></td><td>Java off-heap designs can be viable at four-9s microsecond targets. Persistence/replication choices still affect tails.</td></tr>
+          <tr><td>LMAX architecture</td><td>LMAX described a JVM-based trading platform with a single-threaded business logic processor handling 6M orders/sec on commodity hardware, using in-memory event-sourced design and lock-free Disruptor queues.<a class="source" href="#s7">[S7]</a></td><td>Architecture and mechanical sympathy can dominate language choice. This is older evidence but still an important design pattern.</td></tr>
+          <tr><td>FIX SBE standard</td><td>FIX SBE targets high-performance trading systems and is optimized for low-latency encoding/decoding with reasonably small bandwidth usage.<a class="source" href="#s8">[S8]</a></td><td>Use binary codecs such as SBE inside the pricing/distribution path; avoid text FIX semantics in the hot quote fan-out path unless required.</td></tr>
+          <tr><td>B2BITS Performance Lab</td><td>B2BITS notes that latency/throughput optimization is challenging under 100µs and recommends OS and TCP stack tuning for maximum performance.<a class="source" href="#s10">[S10]</a></td><td>Even FIX-engine vendors frame sub-100µs as a platform-tuning problem, not a language-only choice.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="hardware">
+      <h2>8. Hardware tuning caveat: below ~100µs, the hardware becomes part of the application</h2>
+      <p>Once the target approaches 100µs p99.99, language choice becomes only one input. The “application” includes BIOS settings, CPU isolation, kernel configuration, NIC queues, interrupt affinity, NUMA topology, memory pre-touching, page size, power management, clock source, and deployment topology.</p>
+      <div class="grid three">
+        <div class="mini-card"><h4>CPU and scheduler</h4><ul><li>Pin critical threads to dedicated cores.</li><li>Separate housekeeping cores from trading cores.</li><li>Disable or restrict scheduler load balancing on isolated cores.</li><li>Use real-time priority only with careful failure controls.</li></ul></div>
+        <div class="mini-card"><h4>Power and memory</h4><ul><li>Performance governor; avoid deep C-states and frequency transitions.</li><li>Pre-touch memory; avoid page faults after startup.</li><li>Use huge pages where validated; avoid transparent huge page surprises.</li><li>NUMA-local allocation and NIC/core placement.</li></ul></div>
+        <div class="mini-card"><h4>Network</h4><ul><li>NIC queue/IRQ affinity.</li><li>Busy polling where justified.</li><li>Kernel-bypass options such as DPDK, Onload, or equivalent.</li><li>Explicit backpressure/drop/replay policy for UDP bursts.</li></ul></div>
+      </div>
+      <p>DPDK describes poll-mode drivers that bypass the kernel network stack to reduce latency and increase throughput, along with hugepage support, memory pools, ring buffers, and packet APIs.<a class="source" href="#s11">[S11]</a> Red Hat’s low-latency TuneD profiles similarly focus on disabling power-saving mechanisms, performance CPU governor settings, low C-states, CPU partitioning, and network-latency tuning.<a class="source" href="#s17">[S17]</a></p>
+      <div class="callout warning">
+        <strong>What this means operationally:</strong> sub-100µs systems consume dedicated cores, increase power draw, reduce infrastructure flexibility, complicate failover, require privileged OS/NIC tuning, and need engineers who can debug perf, PMU counters, kernel behaviour, NIC firmware, and latency histograms. This cost can exceed the cost of changing languages.
+      </div>
+      <h3>Threshold rule of thumb</h3>
+      <table>
+        <thead><tr><th>Latency ambition</th><th>Primary investment</th><th>Risk if ignored</th></tr></thead>
+        <tbody>
+          <tr><td>p99.99 &gt;250µs</td><td>Application design, object allocation, serialization, queues, GC strategy.</td><td>Moderate jitter, mostly fixable in software.</td></tr>
+          <tr><td>p99.99 100–250µs</td><td>Software + OS tuning: core pinning, direct buffers, pre-touch, telemetry.</td><td>Rare long tails during bursts or GC/scheduler events.</td></tr>
+          <tr><td>p99.99 50–100µs</td><td>Software + hardware/network tuning: kernel bypass, NIC/core affinity, power states.</td><td>Language migration produces little benefit if OS/NIC jitter remains.</td></tr>
+          <tr><td>p99.99 &lt;50µs</td><td>Hardware-aware product engineering.</td><td>Specialist dependency, reduced portability, high incident complexity.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="recruitment">
+      <h2>9. Recruitment, addressable hiring market, and key-person dependency risk</h2>
+      <p>The hiring market is not simply “Java developers vs Rust developers.” The relevant market is engineers who can ship and operate p99.99-grade trading systems. That market is much smaller for every language.</p>
+      <table>
+        <thead><tr><th>Proxy data</th><th>Java</th><th>C++</th><th>Rust</th><th>Interpretation</th></tr></thead>
+        <tbody>
+          <tr><td>Stack Overflow 2025 — all respondents using language</td><td>29.4%</td><td>23.5%</td><td>14.8%</td><td>Java and C++ have materially larger broad pools than Rust.<a class="source" href="#s15">[S15]</a></td></tr>
+          <tr><td>Stack Overflow 2025 — professional developers</td><td>29.6%</td><td>21.8%</td><td>14.5%</td><td>Broad-market Java is roughly double Rust; C++ is about 1.5× Rust. This is a proxy, not an HFT-specific pool.<a class="source" href="#s15">[S15]</a></td></tr>
+          <tr><td>Stack Overflow 2025 — admired/desired</td><td>Desired 15.8%, admired 41.8%</td><td>Desired 16.7%, admired 46.6%</td><td>Desired 29.2%, admired 72.4%</td><td>Rust has strong developer enthusiasm, which helps retention and attraction, but not necessarily immediate production availability.<a class="source" href="#s15">[S15]</a></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Addressable market by role</h3>
+      <table>
+        <thead><tr><th>Role</th><th>Easiest language to hire for</th><th>Hardest part</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td>Core pricing/business logic engineer</td><td>Java</td><td>Teaching low-latency patterns and market structure.</td><td>Low-to-medium.</td></tr>
+          <tr><td>Low-latency Java/Aeron engineer</td><td>Java, but niche</td><td>Agrona/off-heap/Aeron/JVM/safepoint expertise.</td><td>Medium.</td></tr>
+          <tr><td>Rust hot-path engineer</td><td>Rust</td><td>Production Rust + HFT latency + FFI/hardware awareness.</td><td>Medium-to-high.</td></tr>
+          <tr><td>C++ venue/feed/kernel-bypass engineer</td><td>C++</td><td>Modern C++, perf, memory safety, NIC/vendor stack.</td><td>High.</td></tr>
+          <tr><td>FPGA engineer</td><td>Neither: separate talent market</td><td>RTL, vendor tools, timing closure, network protocols, trading context.</td><td>Very high.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout danger">
+        <strong>Key-person dependency warning:</strong> moving from mainstream Java to a niche Rust/C++/kernel-bypass/FPGA-heavy platform can create “software FPGA” risk: a small number of specialists become the release bottleneck, incident-response bottleneck, and design authority. The business cost is not only compensation; it is bus factor, recruitment lead time, onboarding time, auditability, and delayed strategy changes.
+      </div>
+
+      <h3>Relating niche software talent to FPGA developers</h3>
+      <p>FPGA is the extreme case of this risk. A recruitment-sector article notes that FPGA development is much more difficult than software, deployment lead times can be lengthy, ongoing support is in short supply, and candidates with the right financial plus engineering combination can command high salaries.<a class="source" href="#s18">[S18]</a> A current London HFT FPGA role advertised by Oxford Knight lists £200k base plus bonus.<a class="source" href="#s19">[S19]</a> Rust is not as niche as FPGA, but a full Rust rewrite of an FX market-making platform can move the organisation in that direction if only one or two people truly understand the low-latency Rust hot path.</p>
+
+      <h3>Mitigation if adopting Rust or C++</h3>
+      <ul>
+        <li>Keep the native hot path <strong>small, stable, and bounded</strong>; do not rewrite control-plane or non-critical services.</li>
+        <li>Require at least three maintainers per critical component, not one expert.</li>
+        <li>Mandate deterministic replay, property tests, fuzzing where useful, latency regression CI, code-generation for schemas, and runbooks.</li>
+        <li>Prefer language-neutral wire contracts: SBE schemas, well-defined event logs, reproducible inputs and outputs.</li>
+        <li>Budget hiring and training before committing to the rewrite, not after.</li>
+      </ul>
+    </section>
+
+    <section id="ai">
+      <h2>10. AI-agent coding: Rust vs Java vs C++</h2>
+      <p>There is no strong evidence that AI agents are categorically better at writing production-grade low-latency Rust than Java. The evidence supports a more nuanced view: AI tools can improve productivity on bounded coding tasks, but their output needs human verification, especially for complex systems.</p>
+      <table>
+        <thead><tr><th>Claim</th><th>Evidence</th><th>Implication</th></tr></thead>
+        <tbody>
+          <tr><td>AI can improve coding productivity.</td><td>A controlled GitHub Copilot experiment found developers completed a JavaScript HTTP-server task 55.8% faster with Copilot.<a class="source" href="#s20">[S20]</a></td><td>Use AI for scaffolding, tests, documentation, migration scripts, wrappers, and benchmark harnesses.</td></tr>
+          <tr><td>AI output cannot be trusted blindly.</td><td>Stack Overflow 2025 reports more developers distrust than trust AI-tool accuracy, and complex tasks remain high risk.<a class="source" href="#s16">[S16]</a></td><td>Do not accept AI-generated hot-path code without human review, tests, and perf evidence.</td></tr>
+          <tr><td>Rust translation is not turnkey.</td><td>A 2025-revised study of translating real-world code to Rust found the most successful LLM translated 47% of benchmarks.<a class="source" href="#s21">[S21]</a></td><td>Do not plan a Java→Rust rewrite as an AI-assisted automated translation exercise.</td></tr>
+          <tr><td>LLMs are stronger for popular languages than low-resource/specialized languages.</td><td>A survey on LLM code generation reports strong performance for popular languages but challenges for low-resource and domain-specific languages due to data scarcity and specialized syntax.<a class="source" href="#s22">[S22]</a></td><td>Java will often be easier for AI on ordinary services; Rust may be harder for first-pass generation but easier to compile-check.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Practical view by language</h3>
+      <div class="grid three">
+        <div class="mini-card"><h4>Java + AI</h4><p>Likely easiest for agents in ordinary enterprise code, APIs, tests, refactors, and tooling because examples and libraries are abundant. Low-latency Java remains specialized; agents may accidentally allocate, add logging, use blocking queues, or introduce framework overhead.</p></div>
+        <div class="mini-card"><h4>Rust + AI</h4><p>The Rust compiler gives agents strong feedback loops, and safe Rust reduces memory-risk classes. But ownership, lifetimes, async, unsafe, FFI, and no-allocation design can reduce first-pass success. AI can help but will not eliminate Rust learning cost.</p></div>
+        <div class="mini-card"><h4>C++ + AI</h4><p>Agents can generate plausible C++ quickly, but compile success is not enough. Undefined behaviour, lifetime bugs, races, false sharing, allocator surprises, and rare-tail defects are hard for agents to detect without strong tests and expert review.</p></div>
+      </div>
+      <div class="callout">
+        <strong>AI recommendation:</strong> use agents to accelerate non-hot-path migration work, test generation, benchmark harnesses, docs, schema codegen, and repetitive adapters. For pricing/distribution hot paths, require human review plus latency regression evidence before merge.</div>
+    </section>
+
+    <section id="roadmap">
+      <h2>11. Recommended decision path</h2>
+      <h3>1. Freeze the target into a measurable SLA</h3>
+      <ul>
+        <li>Define p50/p99/p99.9/p99.99 for each stage and full path.</li>
+        <li>Define message sizes, rates, bursts, client counts, currency pairs, model complexity, persistence/encryption settings, and failure modes.</li>
+        <li>Separate quote-distribution latency from client deal-acceptance latency.</li>
+      </ul>
+
+      <h3>2. Build a production-like benchmark harness before language migration</h3>
+      <ul>
+        <li>Use market replay and stress bursts, not synthetic average load only.</li>
+        <li>Measure coordinated-omission-safe histograms; report p99.99 and maximums.</li>
+        <li>Run single-host IPC, network, failover, and degraded-mode tests.</li>
+        <li>Compare Java optimized baseline against Rust and C++ prototypes using identical wire formats and hardware.</li>
+      </ul>
+
+      <h3>3. Optimize current Java first</h3>
+      <ul>
+        <li>Remove allocation after startup in pricing/distribution paths.</li>
+        <li>Use SBE/Agrona/direct buffers and primitive collections where appropriate.</li>
+        <li>Replace blocking queues and shared locks with single-writer ring/event-loop patterns.</li>
+        <li>Pre-touch memory; set heap strategy; collect safepoint/JFR/perf data.</li>
+        <li>Pin threads; isolate cores; validate NUMA and NIC affinity.</li>
+      </ul>
+
+      <h3>4. Prototype only the measured bottleneck in Rust and/or C++</h3>
+      <p>Candidate prototypes:</p>
+      <ul>
+        <li>Pricing kernel for a subset of currency pairs.</li>
+        <li>Market-data normalization or distribution gateway.</li>
+        <li>SBE/Aeron bridge with native fan-out.</li>
+        <li>Deal-acceptance micro-kernel excluding FIX session management.</li>
+      </ul>
+
+      <h3>5. Choose using a scorecard, not a slogan</h3>
+      <table>
+        <thead><tr><th>Criterion</th><th>Question</th><th>Required evidence</th></tr></thead>
+        <tbody>
+          <tr><td>Latency</td><td>Does it meet p99.99 with ≥30% headroom under stress?</td><td>Same hardware, same payloads, same bursts, same histograms.</td></tr>
+          <tr><td>Correctness</td><td>Can it replay and match Java outputs bit-for-bit or within defined tolerance?</td><td>Replay suite, property tests, model-validation sign-off.</td></tr>
+          <tr><td>Operability</td><td>Can production support debug it at 03:00?</td><td>Runbooks, metrics, flamegraphs, incident drills.</td></tr>
+          <tr><td>Talent</td><td>Can at least three engineers maintain it?</td><td>Named owners, hiring plan, training plan.</td></tr>
+          <tr><td>Ecosystem</td><td>Are Aeron/FIX/SBE/vendor integrations mature enough?</td><td>Integration test, vendor support, versioning plan.</td></tr>
+          <tr><td>AI/code velocity</td><td>Does AI assistance reduce or increase review burden?</td><td>Review data, defect data, generated-test quality.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Final recommendation</h3>
+      <div class="verdict">Adopt a hybrid strategy: keep Java as the platform default, invest in low-latency Java and hardware tuning, and create a narrowly scoped Rust/C++ benchmark lane for specific hot-path components. Revisit a broader Rust strategy only if the pilot proves material p99.99 improvement after accounting for hiring, ecosystem, operational, and migration risk.</div>
+    </section>
+
+    <section id="sources">
+      <h2>12. Sources and evidence notes</h2>
+      <p class="small">Source note: vendor and project benchmarks are useful indicators, not guarantees. Numbers should be reproduced with our hardware, message sizes, persistence, encryption, burst rates, and monitoring overhead.</p>
+      <ol class="footnotes">
+        <li id="s1"><strong>AWS / Aeron, 2026:</strong> “Aeron on AWS: 2025 Performance Benchmark Results.” Published 12 Feb 2026. <a href="https://aws.amazon.com/blogs/industries/aeron-on-aws-2025-performance-benchmark-results/">aws.amazon.com</a></li>
+        <li id="s2"><strong>Man Group, 2020:</strong> “Special FX: Is a high-performance, low-latency execution system possible on Aeron?” <a href="https://www.man.com/technology/special-fx-execution-system-on-aeron">man.com</a></li>
+        <li id="s3"><strong>Aeron repository:</strong> Efficient reliable UDP unicast, UDP multicast, and IPC message transport; Java, C, and C++ clients. <a href="https://github.com/aeron-io/aeron">github.com/aeron-io/aeron</a></li>
+        <li id="s4"><strong>Agrona repository:</strong> High-performance Java data structures and utility methods used by Aeron and SBE. <a href="https://github.com/aeron-io/agrona">github.com/aeron-io/agrona</a></li>
+        <li id="s5"><strong>Oracle JDK 21 ZGC documentation:</strong> ZGC as scalable low-latency GC with expensive work concurrent and pauses under a millisecond. <a href="https://docs.oracle.com/en/java/javase/21/gctuning/z-garbage-collector.html">docs.oracle.com</a></li>
+        <li id="s6"><strong>OpenHFT Chronicle Queue:</strong> Off-heap Java persisted low-latency messaging and published latency claims. <a href="https://github.com/OpenHFT/Chronicle-Queue">github.com/OpenHFT/Chronicle-Queue</a></li>
+        <li id="s7"><strong>Martin Fowler / LMAX Architecture:</strong> JVM-based trading platform and single-threaded business logic processor benchmark. <a href="https://martinfowler.com/articles/lmax.html">martinfowler.com</a></li>
+        <li id="s8"><strong>FIX Simple Binary Encoding:</strong> FIX standard targeting high-performance trading systems and low-latency encoding/decoding. <a href="https://fixprotocol.io/fix-simple-binary-encoding/">fixprotocol.io</a></li>
+        <li id="s9"><strong>QuickFIX/J:</strong> Open-source Java FIX Protocol engine and protocol coverage. <a href="https://quickfixj.org/">quickfixj.org</a></li>
+        <li id="s10"><strong>B2BITS Performance Lab:</strong> FIX latency/throughput tuning and sub-100µs caveats. <a href="https://www.b2bits.com/performance_lab">b2bits.com</a></li>
+        <li id="s11"><strong>DPDK:</strong> Libraries, hugepage support, memory pools, poll-mode drivers, kernel-bypass latency/throughput rationale. <a href="https://www.dpdk.org/about/">dpdk.org</a></li>
+        <li id="s12"><strong>The Rust Programming Language:</strong> Ownership enables memory-safety guarantees without a garbage collector. <a href="https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html">doc.rust-lang.org</a></li>
+        <li id="s13"><strong>cppreference:</strong> C++ zero-overhead principle. <a href="https://en.cppreference.com/cpp/language/Zero-overhead_principle">en.cppreference.com</a></li>
+        <li id="s14"><strong>Rust Blog / 2024 State of Rust Survey:</strong> professional usage and organisation adoption trends among respondents. <a href="https://blog.rust-lang.org/2025/02/13/2024-State-Of-Rust-Survey-results/">blog.rust-lang.org</a></li>
+        <li id="s15"><strong>Stack Overflow Developer Survey 2025 — Technology:</strong> language usage and desired/admired metrics. <a href="https://survey.stackoverflow.co/2025/technology">survey.stackoverflow.co</a></li>
+        <li id="s16"><strong>Stack Overflow Developer Survey 2025 — AI:</strong> trust, productivity, and complex-task concerns for AI tools. <a href="https://survey.stackoverflow.co/2025/ai">survey.stackoverflow.co</a></li>
+        <li id="s17"><strong>Red Hat TuneD profiles:</strong> latency-performance, network-latency, CPU governor, low C-states, CPU partitioning. <a href="https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/monitoring_and_managing_system_status_and_performance/optimizing-system-performance-with-tuned">docs.redhat.com</a></li>
+        <li id="s18"><strong>Selby Jennings:</strong> hardware acceleration in trading, FPGA development difficulty and hiring constraints. <a href="https://www.selbyjennings.com/en-nl/industry-insights/hiring-advice/hardware-acceleration-in-trading-introduction-and-hiring-outlook">selbyjennings.com</a></li>
+        <li id="s19"><strong>Oxford Knight job advert:</strong> London FPGA engineer, £200k base plus bonus. <a href="https://oxfordknight.co.uk/jobs/fpga-engineer/">oxfordknight.co.uk</a></li>
+        <li id="s20"><strong>Microsoft Research / GitHub Copilot experiment:</strong> controlled productivity experiment reporting 55.8% faster completion on a JavaScript HTTP-server task. <a href="https://www.microsoft.com/en-us/research/publication/the-impact-of-ai-on-developer-productivity-evidence-from-github-copilot/">microsoft.com</a></li>
+        <li id="s21"><strong>arXiv 2405.11514:</strong> “Towards Translating Real-World Code with LLMs: A Study of Translating to Rust.” <a href="https://arxiv.org/abs/2405.11514">arxiv.org</a></li>
+        <li id="s22"><strong>arXiv 2410.03981:</strong> “A Survey on LLM-based Code Generation for Low-Resource and Domain-Specific Programming Languages.” <a href="https://arxiv.org/abs/2410.03981">arxiv.org</a></li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
